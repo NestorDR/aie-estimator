@@ -1,0 +1,58 @@
+# .gitattributes
+# Ensures consistent line endings across Windows and Linux deployments (in case people don't have core.autocrlf set)
+# Declare files that will always have LF or explicitly CRLF line endings on checkout.
+
+# Set default behavior for all text files
+* text=auto
+
+# Python / SQL (always LF)
+*.py text eol=lf
+*.sql text eol=lf
+
+# JavaScript / TypeScript / React source files (always LF)
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
+*.json text eol=lf
+
+# Web Markup, Vector Graphics, and Stylesheets (always LF)
+*.html text eol=lf
+*.htm text eol=lf
+*.css text eol=lf
+*.scss text eol=lf
+*.pcss text eol=lf
+*.svg text eol=lf
+
+# Documentation and Configuration (always LF)
+*.md text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.toml text eol=lf
+*.lock text eol=lf
+.env* text eol=lf
+
+# Package Lockfiles (always LF)
+pnpm-lock.yaml text eol=lf
+
+# Linux Shell Scripts & Docker (always LF)
+*.sh text eol=lf
+Dockerfile* text eol=lf
+
+# Windows Batch / CMD Scripts (explicitly CRLF so Windows cmd.exe executes cleanly)
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary Files (Prevent line ending normalization on binary assets)
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
