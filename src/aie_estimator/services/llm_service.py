@@ -18,7 +18,7 @@ from openai import (
 )
 
 # --- App modules ---
-from aie_estimator.config import config
+from aie_estimator.settings import settings
 from aie_estimator.context.examples import ESTIMATION_EXAMPLES
 
 logger: Final[logging.Logger] = logging.getLogger(__name__)
@@ -118,13 +118,13 @@ def estimate(transcription: str) -> dict[str, str]:
     :return: Dictionary containing estimation text, model identifier, and provider name.
     :raises HTTPException: If provider credentials are missing or an API call error occurs.
     """
-    if config.llm_provider.lower() != "openai":
+    if settings.llm_provider.lower() != "openai":
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail=f"LLM provider '{config.llm_provider}' is not supported yet. Only 'openai' is configured.",
+            detail=f"LLM provider '{settings.llm_provider}' is not supported yet. Only 'openai' is configured.",
         )
 
-    if not config.openai_api_key:
+    if not settings.openai_api_key:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="OpenAI API key is not configured in the application environment.",
@@ -134,14 +134,14 @@ def estimate(transcription: str) -> dict[str, str]:
     user_message = f"Please estimate the software project discussed in this meeting transcript:\n\n{transcription}"
 
     try:
-        client = OpenAI(api_key=config.openai_api_key.get_secret_value())
-        logger.info(f"Dispatching estimation request to OpenAI Responses API using model: {config.llm_model}")
+        client = OpenAI(api_key=settings.openai_api_key.get_secret_value())
+        logger.info(f"Dispatching estimation request to OpenAI Responses API using model: {settings.llm_model}")
 
         response = call_with_retry(
             client=client,
             message=user_message,
             system_prompt=system_prompt,
-            model=config.llm_model,
+            model=settings.llm_model,
         )
 
         if response is None:
@@ -169,7 +169,7 @@ def estimate(transcription: str) -> dict[str, str]:
         return {
             "estimation": response.output_text,
             "model": response.model,
-            "provider": config.llm_provider,
+            "provider": settings.llm_provider,
         }
 
     except AuthenticationError as exc:

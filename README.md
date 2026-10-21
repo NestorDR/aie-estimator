@@ -15,7 +15,7 @@ The project enforces strict separation of concerns across dedicated application 
 - **Routers (`src/aie_estimator/routers/`)**: Defines HTTP routes, endpoint documentation, and request/response validation schemas using Pydantic.
 - **Services (`src/aie_estimator/services/`)**: Encapsulates business logic and LLM interactions. Assembles the CAG prompt and invokes LLM APIs with retry mechanisms.
 - **Context (`src/aie_estimator/context/`)**: Stores static reference datasets and few-shot estimation examples injected into model prompts.
-- **Configuration (`src/aie_estimator/config.py`)**: Environment-aware configuration management powered by `pydantic-settings`, supporting structured JSON logging and credential isolation via `SecretStr`.
+- **Settings (`src/aie_estimator/settings.py`)**: Environment-aware configuration and settings management powered by `pydantic-settings`, supporting structured JSON logging and credential isolation via `SecretStr`.
 - **Server (`src/aie_estimator/server.py`)**: Centralizes FastAPI application initialization, lifespan event handlers, router registration, and global exception mapping.
 
 ### Context-Augmented Generation (CAG) Workflow
@@ -40,7 +40,7 @@ flowchart TD
     RetryEngine -->|"OpenAI Responses API call"| Provider["OpenAI API\n(gpt-4o-mini)"]
     Provider -->|"Generated estimation"| RetryEngine
     RetryEngine -->|"Result dictionary"| Router
-    Router -->|"HTTP 200: EstimateResponse\n(estimation, model, provider)"| Client
+    Router -->|"HTTP 200: EstimationResponse\n(estimation, model, provider)"| Client
 ```
 
 ## Project Structure
@@ -53,12 +53,15 @@ aie-estimator/
 │   └── aie_estimator/
 │       ├── __init__.py
 │       ├── __main__.py                 # Application CLI entry point
-│       ├── config.py                   # Pydantic BaseSettings configuration
+│       ├── settings.py                 # Pydantic BaseSettings configuration
 │       ├── server.py                   # FastAPI server setup and lifespan handling
 │       ├── .env.example                # Example environment configuration
 │       ├── context/
 │       │   ├── __init__.py
 │       │   └── examples.py             # Historical few-shot estimation examples
+│       ├── models/
+│       │   ├── __init__.py
+│       │   └── estimations.py          # EstimationRequest and EstimationResponse schemas
 │       ├── routers/
 │       │   ├── __init__.py
 │       │   ├── estimations_router.py   # POST /api/v1/estimate endpoint

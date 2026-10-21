@@ -7,7 +7,7 @@ import logging
 from fastapi import APIRouter
 
 # --- App modules ---
-from aie_estimator.config import config
+from aie_estimator.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -19,5 +19,9 @@ router = APIRouter(
 
 @router.get("/health")
 async def get_status():
-    """Health check endpoint to verify API is running."""
-    return {"status": "healthy", "version": config.app_version}
+    """
+    Health check endpoint to verify API is running.
+
+    :return: Dictionary indicating service health and version.
+    """
+    return {"status": "healthy", "version": settings.app_version}

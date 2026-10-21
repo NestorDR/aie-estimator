@@ -1,4 +1,4 @@
-# src/aie_estimator/config.py
+# src/aie_estimator/settings.py
 
 # --- Python Standard Library ---
 from enum import Enum
@@ -78,7 +78,7 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(message_dict, default=str)
 
 
-class Config(BaseSettings):
+class Settings(BaseSettings):
     """Application settings loaded from environment variables for a specific environment."""
 
     # Application environment and version
@@ -124,9 +124,9 @@ class Config(BaseSettings):
 
         Example of load settings:
             # For configuration environment
-            config = Config(app_env=Environment.DEV)
+            settings = Settings(app_env=Environment.DEV)
             # Override the default port (specific settings) during initialization
-            config = Settings(app_env=Environment.TEST, uvicorn_port=8080)
+            settings = Settings(app_env=Environment.TEST, uvicorn_port=8080)
         """
         environment = (kwargs.get("app_env") or environ.get("APP_ENV", Environment.DEV.value)).lower()
         if isinstance(environment, str):
@@ -204,7 +204,7 @@ class Config(BaseSettings):
             "disable_existing_loggers": False,
             "formatters": {
                 "complex": {"format": str_fmt},
-                "json": {"()": "aie_estimator.config.JsonFormatter", "fmt_dict": json_fmt},
+                "json": {"()": "aie_estimator.settings.JsonFormatter", "fmt_dict": json_fmt},
             },
             "handlers": {
                 "console": {
@@ -255,4 +255,4 @@ class Config(BaseSettings):
         return _config
 
 
-config = Config()
+settings = Settings()

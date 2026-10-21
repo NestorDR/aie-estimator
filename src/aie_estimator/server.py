@@ -11,7 +11,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 # --- App modules ---
-from aie_estimator.config import config
+from aie_estimator.settings import settings
 from aie_estimator.routers import estimations_router, health_router
 
 
@@ -19,7 +19,7 @@ class Server:
     """FastAPI server configuration and setup."""
 
     def __init__(self):
-        self.config = config
+        self.settings = settings
         self.logger = logging.getLogger(__name__)
         self.app = self._setup_fastapi()
 
@@ -42,16 +42,16 @@ class Server:
         """Handle app startup and shutdown events."""
         db_pool = None
         try:
-            self.logger.info(f"API startup initiated. Version: {self.config.app_version}")
+            self.logger.info(f"API startup initiated. Version: {self.settings.app_version}")
 
             # Create a DB connection pool on startup
-            # db_pool = await create_pool(self.config)
+            # db_pool = await create_pool(self.settings)
             # if not db_pool:
             #     msg = "Database pool initialization failed: create_pool returned a falsy value."
             #     self.logger.error(msg)
             #     raise RuntimeError(msg)
 
-            app.state.config = self.config
+            app.state.settings = self.settings
             # app.state.db_pool = db_pool
 
             # self.logger.info("Database pool created successfully and settings stored in app state.")
@@ -85,7 +85,7 @@ class Server:
         @app.get("/", tags=["Root"])
         async def read_root():
             """Provides a simple status check endpoint."""
-            return {"status": "OK", "message": f"Welcome to the Estimator Services version {self.config.app_version}!"}
+            return {"status": "OK", "message": f"Welcome to the Estimator Services version {self.settings.app_version}!"}
 
     def _register_exception_handlers(self, app: FastAPI) -> None:
         """Register exception handlers for the FastAPI application."""
