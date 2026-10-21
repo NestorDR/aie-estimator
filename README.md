@@ -12,7 +12,8 @@ Rather than relying on retrieval-augmented generation (RAG) with vector database
 
 The project enforces strict separation of concerns across dedicated application layers:
 
-- **Routers (`src/aie_estimator/routers/`)**: Defines HTTP routes, endpoint documentation, and request/response validation schemas using Pydantic.
+- **Models (`src/aie_estimator/models/`)**: Defines domain data schemas and Pydantic models (`EstimationRequest`, `EstimationResponse`) for request payload validation and response contracts.
+- **Routers (`src/aie_estimator/routers/`)**: Defines HTTP routes, endpoint documentation, status codes, and request/response handling.
 - **Services (`src/aie_estimator/services/`)**: Encapsulates business logic and LLM interactions. Assembles the CAG prompt and invokes LLM APIs with retry mechanisms.
 - **Context (`src/aie_estimator/context/`)**: Stores static reference datasets and few-shot estimation examples injected into model prompts.
 - **Settings (`src/aie_estimator/settings.py`)**: Environment-aware configuration and settings management powered by `pydantic-settings`, supporting structured JSON logging and credential isolation via `SecretStr`.
@@ -22,7 +23,7 @@ The project enforces strict separation of concerns across dedicated application 
 
 ```mermaid
 flowchart TD
-    Client(["Client / Caller"]) -->|"POST /api/v1/estimate (transcript)"| Router["Router: EstimationsRouter\n(Pydantic Validation)"]
+    Client(["Client / Caller"]) -->|"POST /api/v1/estimate\n(EstimationRequest)"| Router["Router: EstimationsRouter\n(Pydantic Validation)"]
 
     subgraph ServiceLayer ["LLM Service Layer"]
         Router -->|"Valid transcription"| PromptBuilder["CAG Prompt Assembly"]
