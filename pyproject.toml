@@ -1,11 +1,9 @@
 [project]
 name = "aie-estimator"
 version = "0.1.0"
-description = "Add your description here"
+description = "Estimator"
 readme = "README.md"
-authors = [
-    { name = "NestorDR", email = "ndr1970@gmail.com" }
-]
+authors = [{ name = "NestorDR", email = "ndr1970@gmail.com" }]
 requires-python = ">=3.14"
 dependencies = [
     "fastapi>=0.146.0",
@@ -15,16 +13,56 @@ dependencies = [
     "uvicorn[standard]>=0.54.0",
 ]
 
+[dependency-groups]
+dev = ["pre-commit>=4.7.0", "pytest>=9.1.1", "ruff>=0.17.1"]
+
 [project.scripts]
-aie-estimator = "aie_estimator:main"
+aie-estimator = "aie_estimator.__main__:main"
 
 [build-system]
 requires = ["uv_build>=0.13.1,<0.14.0"]
 build-backend = "uv_build"
 
 [tool.fastapi]
-entrypoint = "aie_estimator.main:app"
+entrypoint = "aie_estimator.server:server.app"
 reload = true
 
-[dependency-groups]
-dev = []
+[tool.ruff]
+line-length = 140
+target-version = "py314"
+
+[tool.ruff.lint]
+exclude = [
+    ".git",
+    "__pycache__",
+    ".venv",
+    "venv",
+    ".pytest_cache",
+    "build",
+    "dist",
+    "*.egg-info",
+    "docs",
+    "zero",
+]
+# Linting rules.
+# E (pycodestyle) and F (pyflakes) are roughly equivalent to flake8's default rules.
+# I (isort) for import sorting.
+# B (bugbear) for detecting potential bugs.
+# N (naming) for naming conventions.
+# R (refactoring) for refactoring suggestions.
+# S (security) for security-related issues.
+select = ["E", "F", "B", "R", "S", "N"]
+ignore = [ # Ignored rules
+    "E501", # Ignored because line-length is handled by the 'line-length' setting.
+    "E203", # Whitespace before ':' (common conflict with Black).
+    "B008", # Ignore the use of functions as the default argument in function signatures (common in FastAPI).
+    "B017", # Ignore assert blind exception: `Exception`
+]
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+    "S101", # Ignore the use of asserting in test files
+    "S311", # Ignore the use of pseudo-random generators in test files
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

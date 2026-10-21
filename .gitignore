@@ -23,7 +23,7 @@ venv.bak/
 #.env files
 .env
 .env.*
-!.env.*.template
+!.env.*.example
 
 # Logs
 logs/
