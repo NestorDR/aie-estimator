@@ -18,7 +18,7 @@ from openai import (
 )
 
 # --- App modules ---
-from aie_estimator.settings import settings
+from aie_estimator.settings import get_settings
 from aie_estimator.context.examples import ESTIMATION_EXAMPLES
 
 logger: Final[logging.Logger] = logging.getLogger(__name__)
@@ -119,6 +119,7 @@ def estimate(transcription: str) -> dict[str, str]:
     :return: Dictionary containing estimation text, model identifier, and provider name.
     :raises HTTPException: If provider credentials are missing or an API call error occurs.
     """
+    settings = get_settings()
     if settings.llm_provider.lower() != "openai":
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,

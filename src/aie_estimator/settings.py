@@ -2,6 +2,7 @@
 
 # --- Python Standard Library ---
 from enum import Enum
+from functools import lru_cache
 import importlib.metadata
 import json
 import logging
@@ -41,11 +42,15 @@ class JsonFormatter(logging.Formatter):
 
     @override
     def usesTime(self) -> bool:
-        """Returns whether asctime is requested from LogRecord."""
+        """
+        Returns whether asctime is requested from LogRecord.
+        """
         return "asctime" in self.fmt_dict.values()
 
     def _build_message_dict(self, record: logging.LogRecord) -> dict:
-        """Return dict with requested LogRecord attributes."""
+        """
+        Return dict with requested LogRecord attributes.
+        """
         try:
             return {k: record.__dict__[v] for k, v in self.fmt_dict.items()}
 
@@ -55,7 +60,9 @@ class JsonFormatter(logging.Formatter):
 
     @override
     def format(self, record: logging.LogRecord) -> str:
-        """Adapted from the parent class to output as JSON instead of string."""
+        """
+        Adapted from the parent class to output as JSON instead of string.
+        """
         record.message = record.getMessage()
 
         if self.usesTime():
@@ -79,11 +86,13 @@ class JsonFormatter(logging.Formatter):
 
 
 class Settings(BaseSettings):
-    """Application settings loaded from environment variables for a specific environment."""
+    """
+    Application settings loaded from environment variables for a specific environment.
+    """
 
     # Application environment and version
     app_env: Environment = Environment.DEV
-    app_version: str = "0.0.0"
+    app_version: str = "0.0.0"  # It will be updated with the version from the installed package metadata
 
     # Logging settings
     log_level: str = "INFO"
@@ -122,11 +131,11 @@ class Settings(BaseSettings):
         2. Loads the corresponding .env file (e.g., .env.development for DEV environment)
         3. Initializes configuration with values from environment variables and .env file
 
-        Example of load settings:
-            # For configuration environment
-            settings = Settings(app_env=Environment.DEV)
-            # Override the default port (specific settings) during initialization
-            settings = Settings(app_env=Environment.TEST, uvicorn_port=8080)
+        Usage examples:
+            # Explicit environment selection
+            test_settings = Settings(app_env=Environment.DEV)
+            # Override default port during initialization (e.g., in test fixtures)
+            test_settings = Settings(app_env=Environment.TEST, server_port=8080)
         """
         environment = (kwargs.get("app_env") or environ.get("APP_ENV", Environment.DEV.value)).lower()
         if isinstance(environment, str):
@@ -255,4 +264,11 @@ class Settings(BaseSettings):
         return _config
 
 
-settings = Settings()
+@lru_cache
+def get_settings() -> Settings:
+    """
+    Return cached application settings (singleton).
+
+    :return: The process-local singleton Settings instance.
+    """
+    return Settings()

@@ -8,10 +8,11 @@ import logging
 from fastapi import FastAPI, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 # --- App modules ---
-from aie_estimator.settings import settings
+from aie_estimator.settings import Settings, get_settings
 from aie_estimator.routers import estimations_router, health_router
 
 
@@ -19,12 +20,14 @@ class Server:
     """FastAPI server configuration and setup."""
 
     def __init__(self):
-        self.settings = settings
+        self.settings: Settings = get_settings()
         self.logger = logging.getLogger(__name__)
         self.app = self._setup_fastapi()
 
     def _setup_fastapi(self) -> FastAPI:
-        """Set up the FastAPI application with all configurations."""
+        """
+        Set up the FastAPI application with all configurations.
+        """
         app = FastAPI(
             title="API - Estimator",
             description="REST API for the Estimator Services (Master AI Engineering).",
@@ -34,12 +37,15 @@ class Server:
 
         self._register_routers(app)
         self._register_exception_handlers(app)
+        self._register_cors_middleware(app)
 
         return app
 
     @asynccontextmanager
     async def lifespan(self, app: FastAPI):
-        """Handle app startup and shutdown events."""
+        """
+        Handle app startup and shutdown events.
+        """
         db_pool = None
         try:
             self.logger.info(f"API startup initiated. Version: {self.settings.app_version}")
@@ -77,18 +83,25 @@ class Server:
             self.logger.info("API shutdown completed.")
 
     def _register_routers(self, app: FastAPI) -> None:
-        """Register/Configure application routes and health checks."""
+        """
+        Register/Configure application routes and health checks.
+        """
         app.include_router(health_router.router)
         app.include_router(estimations_router.router)
 
         # Root endpoint
         @app.get("/", tags=["Root"])
         async def read_root():
-            """Provides a simple status check endpoint."""
-            return {"status": "OK", "message": f"Welcome to the Estimator Services version {self.settings.app_version}!"}
+            """
+            Provides a simple status check endpoint.
+            """
+            return {"status": "OK",
+                    "message": f"Welcome to the Estimator Services version {self.settings.app_version}!"}
 
     def _register_exception_handlers(self, app: FastAPI) -> None:
-        """Register exception handlers for the FastAPI application."""
+        """
+        Register exception handlers for the FastAPI application.
+        """
 
         @app.exception_handler(RequestValidationError)
         async def validation_exception_handler(request: Request, e: RequestValidationError):
@@ -121,7 +134,27 @@ class Server:
             Ensures sensitive error details are not exposed in production.
             """
             self.logger.exception("Unhandled exception occurred.", exc_info=e)
-            return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"detail": "Unexpected server error"})
+            return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                                content={"detail": "Unexpected server error"})
+
+    def _register_cors_middleware(self, app: FastAPI) -> None:
+        """
+        Register CORS middleware with specific origins, methods, and headers.
+        """
+        origins = [
+            "http://localhost",
+            "http://localhost:8080",
+        ]
+
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=origins,
+            allow_credentials=True,
+            allow_methods=["*"],  # Allow all methods
+            allow_headers=["*"],  # Allow all headers
+        )
+
+        self.logger.info("CORS middleware registered successfully.")
 
 
 # Create the server instance

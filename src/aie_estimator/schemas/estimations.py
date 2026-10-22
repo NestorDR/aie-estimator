@@ -9,7 +9,7 @@ class EstimationRequest(BaseModel):
 
     transcription: str = Field(
         ...,
-        min_length=1,
+        min_length=50,
         description="Meeting transcript text containing client requirements and project scope.",
         examples=["In the meeting with the marketing team, the client explained that they need a landing page with a contact form..."],
     )

@@ -5,12 +5,14 @@ import uvicorn
 
 # --- App modules ---
 from aie_estimator.server import server
-from aie_estimator.settings import Environment, settings
+from aie_estimator.settings import Environment, get_settings
 
 
 def main():
     """Main entry point for running the application with Uvicorn."""
-    server.logger.info(f"Starting Uvicorn server on {settings.server_ip}:{settings.server_port}. Environment: {settings.app_env}")
+    settings = get_settings()
+    server.logger.info(
+        f"Starting Uvicorn server on {settings.server_ip}:{settings.server_port}. Environment: {settings.app_env}")
 
     uvicorn.run(
         app="aie_estimator.server:server.app",
