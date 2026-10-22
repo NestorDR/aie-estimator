@@ -26,11 +26,8 @@ def test_get_settings_cache_clear(monkeypatch: pytest.MonkeyPatch) -> None:
 
     :param monkeypatch: Pytest monkeypatch fixture.
     """
-    try:
-        monkeypatch.setenv("APP_ENV", "test")
-        get_settings.cache_clear()
+    monkeypatch.setenv("APP_ENV", "test")
+    get_settings.cache_clear()
 
-        reloaded_settings = get_settings()
-        assert reloaded_settings.app_env == Environment.TEST
-    finally:
-        get_settings.cache_clear()
+    reloaded_settings = get_settings()
+    assert reloaded_settings.app_env == Environment.TEST

@@ -65,4 +65,7 @@ ignore = [ # Ignored rules
 ]
 
 [tool.pytest.ini_options]
-pythonpath = ["."]
+pythonpath = ["src"]                            # Add src to pythonpath for imports
+testpaths = ["tests"]                           # Specify test directory
+python_files = ["test_*.py"]
+
