@@ -1,7 +1,7 @@
-# src/aie_estimator/models/__init__.py
+# src/aie_estimator/schemas/__init__.py
 
 # --- App modules ---
-from aie_estimator.models.estimations import (
+from aie_estimator.schemas.estimations import (
     EstimationRequest as EstimationRequest,
     EstimationResponse as EstimationResponse,
 )

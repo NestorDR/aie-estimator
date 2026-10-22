@@ -8,7 +8,7 @@ from typing import Final
 from fastapi import APIRouter, status
 
 # --- App modules ---
-from aie_estimator.models import EstimationRequest, EstimationResponse
+from aie_estimator.schemas import EstimationRequest, EstimationResponse
 from aie_estimator.services import llm_service
 
 logger: Final[logging.Logger] = logging.getLogger(__name__)

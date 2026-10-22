@@ -1,4 +1,4 @@
-# src/aie_estimator/models/estimations.py
+# src/aie_estimator/schemas/estimations.py
 
 # --- Third Party Libraries ---
 from pydantic import BaseModel, Field

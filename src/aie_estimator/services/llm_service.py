@@ -48,13 +48,13 @@ def build_system_prompt() -> str:
 
 
 def call_with_retry(
-    client: OpenAI,
-    message: str,
-    system_prompt: str | None = None,
-    model: str = "gpt-4o-mini",
-    temperature: float = 0.3,
-    effort: str = "medium",
-    max_retries: int = 3,
+        client: OpenAI,
+        message: str,
+        system_prompt: str | None = None,
+        model: str = "gpt-4o-mini",
+        temperature: float = 0.3,
+        effort: str = "medium",
+        max_retries: int = 3,
 ) -> Any:
     """
     Execute a request against OpenAI Responses API with exponential backoff and jitter retry logic.
@@ -63,8 +63,8 @@ def call_with_retry(
     :param message: The user transcript input string.
     :param system_prompt: Optional instructions and context to be injected to the model.
     :param model: Target model identifier.
-    :param temperature: Randomness parameter for non-reasoning models.
-    :param effort: Reasoning effort for reasoning-capable models.
+    :param temperature: Randomness parameter for non-reasoning schemas.
+    :param effort: Reasoning effort for reasoning-capable schemas.
     :param max_retries: Maximum number of attempts for transient failures.
 
     :return: The OpenAI response object or None if attempts are exhausted.
@@ -94,16 +94,17 @@ def call_with_retry(
         try:
             return client.responses.create(**request_params)
 
-        except (BadRequestError, RateLimitError, InternalServerError, APIConnectionError) as exc:
-            if isinstance(exc, BadRequestError) and "temperature" in str(exc) and "temperature" in request_params:
+        except (BadRequestError, RateLimitError, InternalServerError, APIConnectionError) as e:
+            if isinstance(e, BadRequestError) and "temperature" in str(e) and "temperature" in request_params:
                 request_params.pop("temperature", None)
 
             if attempt >= max_retries - 1:
                 raise
 
             jitter: float = random.SystemRandom().uniform(0, 1)
-            wait: float = (2**attempt) + jitter
-            logger.warning(f"Transient error from OpenAI API (attempt {attempt + 1}/{max_retries}). Retrying in {wait:.2f}s: {exc!r}")
+            wait: float = (2 ** attempt) + jitter
+            logger.warning(
+                f"Transient error from OpenAI API (attempt {attempt + 1}/{max_retries}). Retrying in {wait:.2f}s: {e!r}")
             time.sleep(wait)
 
     return None
@@ -152,18 +153,15 @@ def estimate(transcription: str) -> dict[str, str]:
 
         if response.status != "completed":
             if response.status == "incomplete":
-                raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=f"Incomplete response from OpenAI: {response.incomplete_details}",
-                )
-            if response.status == "failed":
-                raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=f"OpenAI request failed: {response.error}",
-                )
+                detail = f"Incomplete response from OpenAI: {response.incomplete_details}"
+            elif response.status == "failed":
+                detail = f"OpenAI request failed: {response.error}"
+            else:
+                detail = f"OpenAI response status not completed: {response.status}"
+
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"OpenAI response status not completed: {response.status}",
+                detail=detail,
             )
 
         return {
@@ -172,47 +170,47 @@ def estimate(transcription: str) -> dict[str, str]:
             "provider": settings.llm_provider,
         }
 
-    except AuthenticationError as exc:
-        logger.exception(f"OpenAI authentication failed: {exc}", exc_info=exc)
+    except AuthenticationError as e:
+        logger.exception(f"OpenAI authentication failed: {e}", exc_info=e)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="OpenAI authentication failed. Check your API key.",
-        ) from exc
+        ) from e
 
-    except RateLimitError as exc:
-        logger.exception(f"OpenAI rate limit reached: {exc}", exc_info=exc)
+    except RateLimitError as e:
+        logger.exception(f"OpenAI rate limit reached: {e}", exc_info=e)
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="OpenAI rate limit exceeded. Please retry later.",
-        ) from exc
+        ) from e
 
-    except BadRequestError as exc:
-        logger.exception(f"OpenAI malformed request: {exc}", exc_info=exc)
+    except BadRequestError as e:
+        logger.exception(f"OpenAI malformed request: {e}", exc_info=e)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"OpenAI malformed request: {exc!s}",
-        ) from exc
+            detail=f"OpenAI malformed request: {e!s}",
+        ) from e
 
-    except APIConnectionError as exc:
-        logger.exception(f"OpenAI connection error: {exc}", exc_info=exc)
+    except APIConnectionError as e:
+        logger.exception(f"OpenAI connection error: {e}", exc_info=e)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Failed to connect to OpenAI API service.",
-        ) from exc
+        ) from e
 
-    except InternalServerError as exc:
-        logger.exception(f"OpenAI internal error: {exc}", exc_info=exc)
+    except InternalServerError as e:
+        logger.exception(f"OpenAI internal error: {e}", exc_info=e)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="OpenAI internal server error. Please retry shortly.",
-        ) from exc
+        ) from e
 
     except HTTPException:
         raise
 
-    except Exception as exc:
-        logger.exception(f"Unexpected error during estimation generation: {exc}", exc_info=exc)
+    except Exception as e:
+        logger.exception(f"Unexpected error during estimation generation: {e}", exc_info=e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Estimation generation error: {exc!s}",
-        ) from exc
+            detail=f"Estimation generation error: {e!s}",
+        ) from e

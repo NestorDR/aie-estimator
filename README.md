@@ -12,7 +12,7 @@ Rather than relying on retrieval-augmented generation (RAG) with vector database
 
 The project enforces strict separation of concerns across dedicated application layers:
 
-- **Models (`src/aie_estimator/models/`)**: Defines domain data schemas and Pydantic models (`EstimationRequest`, `EstimationResponse`) for request payload validation and response contracts.
+- **Schemas (`src/aie_estimator/schemas`)**: Defines domain data schemas and Pydantic models (`EstimationRequest`, `EstimationResponse`) for request payload validation and response contracts.
 - **Routers (`src/aie_estimator/routers/`)**: Defines HTTP routes, endpoint documentation, status codes, and request/response handling.
 - **Services (`src/aie_estimator/services/`)**: Encapsulates business logic and LLM interactions. Assembles the CAG prompt and invokes LLM APIs with retry mechanisms.
 - **Context (`src/aie_estimator/context/`)**: Stores static reference datasets and few-shot estimation examples injected into model prompts.
@@ -60,7 +60,7 @@ aie-estimator/
 │       ├── context/
 │       │   ├── __init__.py
 │       │   └── examples.py             # Historical few-shot estimation examples
-│       ├── models/
+│       ├── schemas/
 │       │   ├── __init__.py
 │       │   └── estimations.py          # EstimationRequest and EstimationResponse schemas
 │       ├── routers/
