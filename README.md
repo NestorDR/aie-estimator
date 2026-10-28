@@ -35,12 +35,18 @@ flowchart TD
 
         Examples -->|"Inject few-shot examples"| PromptBuilder
         Role -->|"Inject role & guidelines"| PromptBuilder
-        PromptBuilder -->|"Assemble payload"| RetryEngine["Retry Engine\n(Exponential Backoff + Jitter)"]
+        PromptBuilder -->|"Assemble payload"| ProviderRouter{"Provider Router\n(ModelSpec.provider)"}
+
+        ProviderRouter -->|"provider == openai"| RetryEngine["OpenAI Retry Engine\n(Responses API + Backoff)"]
+        ProviderRouter -->|"provider == anthropic"| AnthropicEngine["Anthropic Engine\n(Messages API + Thinking)"]
     end
 
-    RetryEngine -->|"OpenAI Responses API call"| Provider["OpenAI API\n(gpt-4o-mini)"]
-    Provider -->|"Generated estimation"| RetryEngine
-    RetryEngine -->|"Result dictionary"| Router
+    RetryEngine -->|"Responses API call"| OpenAI["OpenAI API\n(gpt-4o-mini / o1 / o3)"]
+    AnthropicEngine -->|"Messages API call"| Anthropic["Anthropic API\n(Claude 3.5 / 3.7)"]
+
+    OpenAI -->|"Estimation text & usage"| ServiceOutput["Result Dictionary"]
+    Anthropic -->|"Estimation text & usage"| ServiceOutput
+    ServiceOutput -->|"Result dictionary"| Router
     Router -->|"HTTP 200: EstimationResponse\n(estimation, model, provider)"| Client
 ```
 
@@ -49,6 +55,10 @@ flowchart TD
 ```
 aie-estimator/
 ├── auto/                               # Developer automation scripts
+├── docs/                               # Architecture and feature guides
+│   ├── llm-service.md                  # LLM provider integration and error handling
+│   ├── logging.md                      # Structlog configuration and conventions
+│   └── testing.md                      # Testing guidelines and pytest conventions
 ├── samples/                            # Sample scripts and testing utilities
 ├── src/
 │   └── aie_estimator/
@@ -69,7 +79,8 @@ aie-estimator/
 │       │   └── health_router.py        # GET /health status endpoint
 │       └── services/
 │           ├── __init__.py
-│           └── llm_service.py          # CAG prompt assembly and OpenAI integration
+│           └── llm_service.py          # CAG prompt assembly and multi-provider (OpenAI/Anthropic) integration
+├── tests/                              # Unit and integration test suites
 ├── .gitignore
 ├── pyproject.toml                      # Project metadata, dependencies, and tools config
 ├── README.md                           # Project documentation
@@ -80,7 +91,7 @@ aie-estimator/
 
 - Python >= 3.14
 - [`uv`](https://docs.astral.sh/uv/) package manager
-- OpenAI API key (for default LLM provider)
+- OpenAI API key (`OPENAI_API_KEY`) and/or Anthropic API key (`ANTHROPIC_API_KEY`)
 
 ## Installation & Setup
 
@@ -101,7 +112,7 @@ aie-estimator/
    cp src/aie_estimator/.env.example src/aie_estimator/.env.development
    ```
 
-   Edit `src/aie_estimator/.env.development` and configure your API keys:
+    Edit `src/aie_estimator/.env.development` and configure your API keys:
    ```ini
    APP_ENV=development
    LOG_LEVEL=INFO
@@ -110,7 +121,7 @@ aie-estimator/
    SERVER_IP=127.0.0.1
    SERVER_PORT=8000
    OPENAI_API_KEY=your_openai_api_key_here
-   LLM_PROVIDER=openai
+   ANTHROPIC_API_KEY=your_anthropic_api_key_here
    LLM_MODEL=gpt-4o-mini
    ```
 
@@ -220,3 +231,13 @@ Verify local setup against the baseline project criteria:
   ```bash
   uv run pre-commit run --all-files
   ```
+
+## Documentation
+
+Detailed architecture guides and technical documentation are maintained in the [`docs/`](docs/) directory:
+
+- [LLM Service Architecture & Multi-Provider Integration](docs/llm-service.md): Deep dive into OpenAI Responses API, Anthropic Messages API, extended thinking, client lifecycle, retry backoff, and exception handling.
+- [Model Catalog & Request Validation](docs/model-catalog.md): Centralized model catalog, supported OpenAI/Anthropic models, reasoning metadata, and boundary validation.
+- [Logging Architecture & Structlog](docs/logging.md): Configuration, formatting sinks, processor pipeline, and context variables binding.
+- [Testing Guidelines](docs/testing.md): Test suite organization, pytest fixtures, and coverage expectations.
+

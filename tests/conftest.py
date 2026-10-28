@@ -13,19 +13,22 @@ import pytest
 
 # --- App modules ---
 from aie_estimator.server import Server
+from aie_estimator.services.llm_service import _reset_clients
 from aie_estimator.settings import Environment, Settings, get_settings
 
 
 @pytest.fixture(autouse=True)
 def clean_settings_cache() -> Generator[None, None, None]:
     """
-    Ensure the settings lru_cache is cleared before and after each test.
+    Ensure the settings lru_cache and cached LLM clients are cleared before and after each test.
 
     :return: None.
     """
     get_settings.cache_clear()
+    _reset_clients()
     yield
     get_settings.cache_clear()
+    _reset_clients()
 
 
 @pytest.fixture
@@ -38,7 +41,6 @@ def test_settings() -> Settings:
     return Settings(
         app_env=Environment.TEST,
         openai_api_key=SecretStr("sk-test-mock-key-12345"),
-        llm_provider="openai",
         llm_model="gpt-4o-mini",
     )
 

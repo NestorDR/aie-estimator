@@ -4,17 +4,22 @@
 from enum import Enum
 from functools import lru_cache
 import importlib.metadata
-import json
 import logging
+import logging.handlers
 from os import environ
 from pathlib import Path
-from typing import override
+from typing import Final
 
 # --- Third Party Libraries ---
-from pydantic import computed_field, SecretStr, ValidationError
+from pydantic import SecretStr, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
+import structlog
+from structlog.processors import CallsiteParameter, CallsiteParameterAdder
 
-logger = logging.getLogger(__name__)
+# --- App modules ---
+from aie_estimator.schemas.models import MODEL_CATALOG
+
+log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
 
 
 class Environment(str, Enum):
@@ -25,64 +30,6 @@ class Environment(str, Enum):
     DEV = "development"
     PROD = "production"
     TEST = "test"
-
-
-class JsonFormatter(logging.Formatter):
-    """
-    Formatter that outputs JSON strings after parsing the LogRecord.
-
-    :param fmt_dict: Mapping between key names in the outputted JSON log and keys from the LogRecord.
-
-    :raise UnknownFormattingKeyException: If the key doesn't exist in LogRecord.
-    """
-
-    def __init__(self, fmt_dict: dict, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.fmt_dict = fmt_dict
-
-    @override
-    def usesTime(self) -> bool:
-        """
-        Returns whether asctime is requested from LogRecord.
-        """
-        return "asctime" in self.fmt_dict.values()
-
-    def _build_message_dict(self, record: logging.LogRecord) -> dict:
-        """
-        Return dict with requested LogRecord attributes.
-        """
-        try:
-            return {k: record.__dict__[v] for k, v in self.fmt_dict.items()}
-
-        except KeyError as e:
-            print(f"Unknown key in log format: {e.args[0]}")
-            return {}
-
-    @override
-    def format(self, record: logging.LogRecord) -> str:
-        """
-        Adapted from the parent class to output as JSON instead of string.
-        """
-        record.message = record.getMessage()
-
-        if self.usesTime():
-            record.asctime = self.formatTime(record)
-
-        message_dict = self._build_message_dict(record)
-
-        if record.exc_info:
-            # Cache the traceback text to avoid converting it multiple times
-            # (it's constant anyway)
-            if not record.exc_text:
-                record.exc_text = self.formatException(record.exc_info)
-
-        if record.exc_text:
-            message_dict["exc_info"] = record.exc_text
-
-        if record.stack_info:
-            message_dict["stack_info"] = self.formatStack(record.stack_info)
-
-        return json.dumps(message_dict, default=str)
 
 
 class Settings(BaseSettings):
@@ -107,8 +54,16 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr | None = None
     gemini_api_key: SecretStr | None = None
     openai_api_key: SecretStr | None = None
-    llm_provider: str = "openai"
     llm_model: str = "gpt-4o-mini"
+
+    @property
+    def llm_provider(self) -> str:
+        """Derive the default provider from llm_model via MODEL_CATALOG.
+
+        :return: Provider identifier ('openai' or 'anthropic').
+        """
+        spec = MODEL_CATALOG.get(self.llm_model)
+        return spec.provider if spec is not None else "openai"
 
     # Configure env file handling
     model_config = SettingsConfigDict(
@@ -148,13 +103,16 @@ class Settings(BaseSettings):
 
         if env_path.exists():
             kwargs["_env_file"] = str(env_path)  # Update kwargs with correct env_file
-            logger.info(f"Loading environment variables from: {env_path}")
+            log.info("loading_environment_file", env_path=str(env_path))
         else:
-            logger.warning(f"Environment file {env_path} not found. Using system environment variables only.")
+            log.warning("environment_file_not_found", env_path=str(env_path))
 
         try:
             # Initialize the base class with the identified environment
             super().__init__(**kwargs)
+
+            # Configure structlog immediately after base settings initialization
+            self.configure_logging()
 
             try:
                 # Fetch the version from the installed package metadata
@@ -165,103 +123,98 @@ class Settings(BaseSettings):
             except importlib.metadata.PackageNotFoundError:
                 pass
 
-            logger.info(f"Settings loaded for environment: {self.app_env} (Version: {self.app_version})")
+            log.info("settings_loaded", app_env=self.app_env.value, app_version=self.app_version)
 
         except ValidationError as e:
-            logger.exception("Initialization failed. Missing required environment variables or invalid values.", exc_info=e)
+            log.exception("settings_initialization_failed", exc_info=e)
             raise
 
         except Exception as e:
-            msg = "Unexpected error during initialization."
-            logger.exception(msg, exc_info=e)
-            raise Exception(msg) from e
+            log.exception("unexpected_initialization_error", exc_info=e)
+            raise Exception("Unexpected error during initialization.") from e
 
-    @computed_field
-    def log_config(self) -> dict:
-        str_fmt = "%(asctime)s - %(name)s : %(levelname)s - %(filename)s - %(lineno)d - %(message)s"
+    def configure_logging(self) -> None:
+        """
+        Configure unified structlog and standard library logging handlers.
 
-        json_fmt = {
-            "level": "levelname",
-            "message": "message",
-            "logger": "name",
-            "timestamp": "asctime",
-            "filename": "filename",
-            "line": "lineno",
-        }
+        Sets up console and optional rotating file handlers with structlog formatting,
+        and bridges standard library loggers (Uvicorn, FastAPI) to structlog.
+        """
+        log_level = getattr(logging, self.log_level.upper(), logging.INFO)
+        use_json = self.json_logging or (self.app_env == Environment.PROD)
 
-        handlers = ["console"]
-        if self.enable_file_logging:
-            handlers.append("file")
-
-        logger_config = {
-            "level": self.log_level,
-            "handlers": [],
-            "propagate": True,
-        }
-
-        loggers = [
-            "aie_estimator",
-            "asyncio",
-            "psycopg",
-            "uvicorn",
-            "uvicorn.access",
-            "uvicorn.error",
+        shared_processors: list[structlog.types.Processor] = [
+            structlog.contextvars.merge_contextvars,
+            structlog.stdlib.add_log_level,
+            structlog.stdlib.add_logger_name,
+            CallsiteParameterAdder(
+                {
+                    CallsiteParameter.FILENAME,
+                    CallsiteParameter.LINENO,
+                    CallsiteParameter.FUNC_NAME,
+                }
+            ),
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.processors.StackInfoRenderer(),
+            structlog.processors.format_exc_info,
         ]
 
-        _config = {
-            "version": 1,
-            "disable_existing_loggers": False,
-            "formatters": {
-                "complex": {"format": str_fmt},
-                "json": {"()": "aie_estimator.settings.JsonFormatter", "fmt_dict": json_fmt},
-            },
-            "handlers": {
-                "console": {
-                    "class": "logging.StreamHandler",
-                    "level": self.log_level,
-                    "formatter": "json" if self.json_logging else "complex",
-                    "stream": "ext://sys.stdout",
-                },
-            },
-            # root logger will use the handlers, all other loggers will propagate to it
-            "root": {
-                "level": self.log_level,
-                "handlers": handlers,
-            },
-            "loggers": {x: logger_config.copy() for x in loggers},
-        }
+        structlog.configure(
+            processors=shared_processors + [structlog.stdlib.ProcessorFormatter.wrap_for_formatter],
+            logger_factory=structlog.stdlib.LoggerFactory(),
+            wrapper_class=structlog.stdlib.BoundLogger,
+            context_class=dict,
+            cache_logger_on_first_use=self.app_env == Environment.PROD,
+        )
 
-        _config["loggers"]["asyncio"]["level"] = "WARNING"
-        _config["loggers"]["psycopg"]["level"] = "WARNING"
-        _config["loggers"]["uvicorn.access"]["level"] = "WARNING"
+        console_renderer = (
+            structlog.processors.JSONRenderer()
+            if use_json
+            else structlog.dev.ConsoleRenderer(colors=True)
+        )
+        console_formatter = structlog.stdlib.ProcessorFormatter(
+            foreign_pre_chain=shared_processors,
+            processors=[structlog.stdlib.ProcessorFormatter.remove_processors_meta, console_renderer],
+        )
+
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(console_formatter)
+        handlers: list[logging.Handler] = [console_handler]
 
         if self.enable_file_logging:
-            log_base_path = Path(__file__).resolve().parent.parent.parent  # go up 3 levels
-            log_folder = log_base_path / "logs"
-            log_folder.mkdir(parents=True, exist_ok=True)
+            log_dir = Path(__file__).resolve().parents[2] / "logs"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            log_file = log_dir / ("app.log" if self.app_env == Environment.PROD else "dev.log")
 
-            log_files = {Environment.PROD: "app.log", Environment.TEST: "test.log"}
-            log_filename = log_files.get(Environment(self.app_env), "dev.log")
-            log_file_path = log_folder / log_filename
+            file_renderer = (
+                structlog.processors.JSONRenderer()
+                if use_json
+                else structlog.dev.ConsoleRenderer(colors=False)
+            )
+            file_formatter = structlog.stdlib.ProcessorFormatter(
+                foreign_pre_chain=shared_processors,
+                processors=[structlog.stdlib.ProcessorFormatter.remove_processors_meta, file_renderer],
+            )
+            file_handler = logging.handlers.RotatingFileHandler(
+                filename=log_file,
+                maxBytes=5 * 1024 * 1024,
+                backupCount=3,
+                encoding="utf-8",
+            )
+            file_handler.setFormatter(file_formatter)
+            handlers.append(file_handler)
 
-            handler_class = "handlers.RotatingFileHandler" if self.app_env == Environment.PROD else "FileHandler"
-            handler_params = {
-                "level": self.log_level,
-                "formatter": "complex",
-                "filename": log_file_path,
-                **(
-                    {
-                        "maxBytes": 524288,  # 512 KB
-                        "backupCount": 3,
-                        "encoding": "utf-8",
-                    }
-                    if self.app_env == Environment.PROD
-                    else {}
-                ),
-            }
-            _config["handlers"]["file"] = {"class": f"logging.{handler_class}", **handler_params}
+        root_logger = logging.getLogger()
+        root_logger.handlers.clear()
+        for handler in handlers:
+            root_logger.addHandler(handler)
+        root_logger.setLevel(log_level)
 
-        return _config
+        # Suppress verbose noisy namespaces
+        logging.getLogger("asyncio").setLevel(logging.WARNING)
+        logging.getLogger("psycopg").setLevel(logging.WARNING)
+        logging.getLogger("uvicorn.access").setLevel(log_level)
+
 
 
 @lru_cache

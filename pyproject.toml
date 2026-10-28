@@ -6,10 +6,12 @@ readme = "README.md"
 authors = [{ name = "NestorDR", email = "ndr1970@gmail.com" }]
 requires-python = ">=3.14"
 dependencies = [
+    "anthropic>=2.3.0",
     "fastapi>=0.146.0",
     "openai>=3.35.1",
     "pydantic-settings>=2.16.0",
     "python-dotenv>=1.2.4",
+    "structlog>=26.1.0",
     "uvicorn[standard]>=0.54.0",
 ]
 

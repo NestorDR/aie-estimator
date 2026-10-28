@@ -6,12 +6,13 @@ from typing import Final
 
 # --- Third Party Libraries ---
 from fastapi import APIRouter, status
+import structlog
 
 # --- App modules ---
-from aie_estimator.schemas import EstimationRequest, EstimationResponse
-from aie_estimator.services import llm_service
+from aie_estimator.schemas.estimations import EstimationRequest, EstimationResponse
+from aie_estimator.services import llm_service, evaluation
 
-logger: Final[logging.Logger] = logging.getLogger(__name__)
+log: Final[logging.Logger] = structlog.get_logger()
 
 router = APIRouter(
     prefix="/api/v1",
@@ -26,19 +27,31 @@ router = APIRouter(
     summary="Generate software project estimation",
     description="Analyzes a meeting transcript and generates an effort breakdown using Context-Augmented Generation.",
 )
-async def create_estimation(payload: EstimationRequest) -> EstimationResponse:
+async def create_estimation(request: EstimationRequest) -> EstimationResponse:
     """
     Generate an estimation from the provided meeting transcription text.
 
-    :param payload: Validated request containing the meeting transcript.
+    :param request: Validated request containing the meeting transcript.
 
     :return: Generated estimation with model and provider metadata.
     """
-    logger.info(f"Received estimation request with transcript length: {len(payload.transcription)} chars")
-    result = llm_service.estimate(transcription=payload.transcription)
-
-    return EstimationResponse(
-        estimation=result["estimation"],
-        model=result["model"],
-        provider=result["provider"],
+    log.info("create_estimation_requested")
+    opts = llm_service.GenerationOptions(
+        preprocessing=request.preprocessing,
+        example_format=request.example_format,
+        num_examples=request.num_examples,
+        use_examples=request.use_examples,
+        model=request.model,
+        max_tokens=request.max_tokens,
+        thinking_budget=request.thinking_budget,
     )
+
+    result = llm_service.generate_estimation(request.transcription, opts)
+
+    validation = (
+        evaluation.evaluate_estimation_structure(result["estimation"], result["finish_reason"])
+        if request.evaluate
+        else None
+    )
+
+    return EstimationResponse(**result, validation=validation)
