@@ -144,12 +144,12 @@ aie-estimator/
 Start the detached Docker Compose services from the project root using `auto\dc.cmd <dev|prod>`:
 
 - **Development (Redis Cache Service Only)**:
-  Builds and launches the Redis cache data store on development environment using `docker/docker-compose.dev.yml` and `src/aie_estimator/.env.dev`:
+  Builds and launches the Redis cache on the development environment using `docker/docker-compose.dev.yml` and `src/aie_estimator/.env.dev`:
   ```cmd
   auto\dc.cmd dev
   ```
 - **Production (Containerized FastAPI + Redis Stack)**:
-  Builds the multi-stage production image (`docker/Dockerfile`) and launches it along with the Redis cache data store on production environment using `docker/docker-compose.prod.yml` and `src/aie_estimator/.env.prod`:
+  Builds the multi-stage production image (`docker/Dockerfile`) and launches it along with the Redis cache on the production environment using `docker/docker-compose.prod.yml` and `src/aie_estimator/.env.prod`:
   ```cmd
   auto\dc.cmd prod
   ```
