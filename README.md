@@ -1,6 +1,6 @@
 # AIE Estimator
 
-FastAPI backend service for automated software engineering effort estimation using Context-Augmented Generation (CAG).
+FastAPI backend service for automated software engineering effort estimation using Context-Augmented Generation (CAG) queryable via a conversational user interface based on Streamlit.
 
 ## About
 
