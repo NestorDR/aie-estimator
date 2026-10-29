@@ -1,0 +1,10 @@
+# .pre-commit-config.yaml
+
+repos:
+  # Ruff pre-commit hook - Run as linter
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.12.12
+    hooks:
+      - id: ruff
+        args: ["--fix"]   # Automatically fix issues when possible
+      # - id: ruff-format

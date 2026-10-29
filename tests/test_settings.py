@@ -44,6 +44,28 @@ def test_get_settings_cache_clear(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.parametrize(
+    ("env_str", "expected_env"),
+    [
+        ("dev", Environment.DEV),
+        ("prod", Environment.PROD),
+        ("test", Environment.TEST),
+    ],
+    ids=["env_dev", "env_prod", "env_test"],
+)
+def test_settings_initialization_valid_env_strings(env_str: str, expected_env: Environment) -> None:
+    """
+    GIVEN valid environment string representations
+    WHEN Settings is instantiated with app_env
+    THEN Settings is successfully initialized with the corresponding Environment enum member.
+
+    :param env_str: String representation of the target environment.
+    :param expected_env: Expected Environment enum member.
+    """
+    settings = Settings(app_env=env_str)
+    assert settings.app_env == expected_env
+
+
+@pytest.mark.parametrize(
     ("kwargs", "expected_exception", "match_pattern"),
     [
         ({"app_env": "invalid_environment_name"}, ValueError, r"is not a valid"),

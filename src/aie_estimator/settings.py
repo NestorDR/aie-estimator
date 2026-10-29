@@ -24,11 +24,11 @@ log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
 
 class Environment(str, Enum):
     """
-    Defines the possible environments for the application itself (e.g., development, test, production).
+    Defines the possible environments for the application itself (e.g., dev, test, prod).
     """
 
-    DEV = "development"
-    PROD = "production"
+    DEV = "dev"
+    PROD = "prod"
     TEST = "test"
 
 
@@ -88,7 +88,7 @@ class Settings(BaseSettings):
 
         The initialization process:
         1. Determines which environment to use (from kwargs or environment variables)
-        2. Loads the corresponding .env file (e.g., .env.development for DEV environment)
+        2. Loads the corresponding .env file (e.g., .env.dev for DEV environment)
         3. Initializes configuration with values from environment variables and .env file
 
         Usage examples:
@@ -96,6 +96,11 @@ class Settings(BaseSettings):
             test_settings = Settings(app_env=Environment.DEV)
             # Override default port during initialization (e.g., in test fixtures)
             test_settings = Settings(app_env=Environment.TEST, server_port=8080)
+
+        :param kwargs: Keyword arguments to override settings during instantiation.
+        
+        :raises ValueError: If an unrecognized environment identifier is provided.
+        :raises ValidationError: If setting validation fails.
         """
         environment = (kwargs.get("app_env") or environ.get("APP_ENV", Environment.DEV.value)).lower()
         if isinstance(environment, str):

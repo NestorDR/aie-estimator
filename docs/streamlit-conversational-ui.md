@@ -14,17 +14,24 @@ Complementing the UI, an exact-match caching layer (`src/aie_estimator/services/
 
 ### 1. Launching the Services
 
-#### Option A: Unified Launcher (Windows)
+#### Option A: Windows Automation Scripts
 
-Launch both services with a single command (spawns Streamlit in a separate window and streams FastAPI logs to the active console):
+Start the detached Redis container, the FastAPI backend, and the Streamlit interface from the project root:
 
 ```cmd
+:: Start the Redis cache container (estimator-redis)
+auto\dc.cmd dev
+
+:: Terminal 1: Start FastAPI backend in the current console
 auto\dev.cmd
+
+:: Terminal 2: Start Streamlit Conversational Interface in the current console
+auto\stl.cmd
 ```
 
-#### Option B: Independent Terminals
+#### Option B: Direct CLI Commands
 
-Start the FastAPI estimation backend and the Streamlit interface in separate terminals:
+Start the FastAPI estimation backend and the Streamlit interface in separate terminals via `uv`:
 
 ```bash
 # Terminal 1: Start FastAPI backend
@@ -37,7 +44,7 @@ uv run streamlit run streamlit_app.py
 
 Streamlit automatically opens the application at `http://localhost:8501`.
 
-![Streamlit Conversational UI](../assets/session03_streamlit_ui.png)
+![Streamlit Conversational UI](assets/session03_streamlit_ui.png)
 
 ### 2. Interactive Meeting Estimation
 
@@ -113,7 +120,7 @@ Redis operations in `EstimationCache` are encapsulated in try/except blocks catc
 ### 5. Environment Configuration & Settings
 
 The cache layer is configured in [src/aie_estimator/settings.py](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/settings.py) and reads environment variables from `.env.<environment>`:
-- `REDIS_HOST`: Redis server host (default: `localhost`).
+- `REDIS_HOST`: Redis server host (`localhost` for host development with `docker/docker-compose.dev.yml`, `redis` inside the Docker Compose network for `docker/docker-compose.prod.yml`).
 - `REDIS_PORT`: Redis server port (default: `6379`).
 - `CACHE_TTL`: Cache entry time-to-live in seconds (default: `86400`).
 - `ESTIMATOR_API_BASE_URL`: Streamlit backend target address (default: `http://localhost:8000`).

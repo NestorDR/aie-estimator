@@ -148,6 +148,6 @@ In automated unit tests (`pytest`), tests must never write files to disk. Tests 
 - `structlog.stdlib.ProcessorFormatter` is assigned with the appropriate renderer.
 - Zero files are written to the workspace during test runs, preventing concurrency conflicts and CI environment pollution.
 
-Writing to `logs/dev.log` for full stack error inspection is reserved exclusively for local application runtime, enabled via `ENABLE_FILE_LOGGING=true` in `.env.development`.
+Writing to `logs/dev.log` for full stack error inspection is reserved exclusively for local application runtime, enabled via `ENABLE_FILE_LOGGING=true` in `.env.dev`.
 
 

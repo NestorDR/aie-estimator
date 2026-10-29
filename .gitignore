@@ -12,6 +12,8 @@ settings.*.yml
 *.tar
 *.zip
 *.7z
+# project volumes
+docker/volumes/
 
 # Environment
 .venv

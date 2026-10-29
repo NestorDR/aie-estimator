@@ -1,0 +1,59 @@
+# docker/docker-compose.prod.yml
+
+services:
+  # --- FastAPI backend estimator service ---
+  estimator:
+    build:
+      context: ..                             # Project root directory relative to this file
+      dockerfile: docker/Dockerfile           # Multi-stage production Dockerfile, its path is relative to this docker-compose.yml
+    image: aie-estimator:prod-0.1.0           # Tagged production image matching pyproject.toml version
+    container_name: estimator-prod            # Fixed container name for the FastAPI service
+    restart: unless-stopped                   # Restart automatically unless explicitly stopped
+    env_file:
+      - ../src/aie_estimator/.env.prod        # Unversioned file .env.* with secure credentials, its path is relative to this docker-compose.yml
+    ports:
+      - "${SERVER_PORT:-8000}:8000"           # Syntax: ${ENV_VAR_FOR_HOST_PORT:-DEFAULT_VALUE} : CONTAINER_PORT
+    depends_on:
+      redis:
+        condition: service_healthy            # Wait until Redis passes its healthcheck before starting
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')" ]
+      interval: 30s                           # Time between health checks
+      timeout: 5s                             # Timeout for each health check
+      retries: 5                              # Nº of retries before considering the container unhealthy
+      start_period: 10s                       # Initial delay before starting health checks
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # Maps host.docker.internal to the host IP
+
+  # --- Exact-match cache service ---
+  redis:
+    image: redis:8.10                         # 2026-10-29: redis:8.10.3 is the latest stable patch listed on Docker Hub
+    container_name: estimator-redis-prod      # Fixed container name for the Redis cache service
+    restart: unless-stopped                   # Restart automatically unless explicitly stopped
+    env_file:
+      - ../src/aie_estimator/.env.prod        # Unversioned file .env.* with secure credentials, its path is relative to this docker-compose.yml
+    ports:
+      - "${REDIS_PORT:-6379}:6379"            # Syntax: ${ENV_VAR_FOR_HOST_PORT:-DEFAULT_VALUE} : CONTAINER_PORT
+    volumes:
+      # Bind mounts (https://docs.docker.com/engine/storage/bind-mounts/) a file or dir on the host machine
+      # 1. When you use a "Bind Mount", a file or dir on the host machine is mounted directly from the host into a container.
+      #    In general, this is preferred to Named Volumes if you need to access the data from outside the container.
+      - ./volumes/redis_data:/data
+      # 2. By contrast, when you use "Named Volumes", they are persistent data stores created and managed by Docker.
+      # - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 30s                           # Time between health checks
+      timeout: 5s                             # Timeout for each health check
+      retries: 5                              # Nº of retries before considering the container unhealthy
+      start_period: 60s                       # Initial delay before starting health checks
+    # Required to be connected from the aie-estimator project running on IDE or Windows
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # Maps host.docker.internal to the host IP
+
+# Network configuration for service communication
+networks:
+  # Define the shared bridge network for inter-service communication.
+  default:
+    name: estimator-network                   # Network name
+    driver: bridge                            # Standard bridge network for local deployment

@@ -58,8 +58,8 @@ flowchart TD
 
 ```
 aie-estimator/
-├── assets/                             # UI screenshots and visual artifacts
-├── auto/                               # Developer automation scripts (dev.cmd, test.cmd, lint.cmd)
+├── auto/                               # Developer automation scripts (dev.cmd, stl.cmd, dc.cmd, test.cmd, lint.cmd, etc.)
+├── docker/                             # Containerization and Compose configurations
 ├── docs/                               # Architecture and feature guides
 ├── src/
 │   └── aie_estimator/
@@ -85,8 +85,10 @@ aie-estimator/
 │           ├── evaluation.py           # Output evaluation and scoring
 │           └── llm_service.py          # CAG prompt assembly and multi-provider integration
 ├── tests/                              # Unit and integration test suites
+├── .dockerignore
 ├── .gitignore
 ├── .gitattributes
+├── .pre-commit-config.yaml
 ├── pyproject.toml                      # Project metadata, dependencies, and tools config
 ├── README.md                           # Project documentation
 ├── streamlit_app.py                    # Streamlit conversational chat interface
@@ -97,6 +99,7 @@ aie-estimator/
 
 - Python >= 3.14
 - [`uv`](https://docs.astral.sh/uv/) package manager
+- Docker Desktop / Docker Compose (for Redis exact-match cache and containerized deployments)
 - OpenAI API key (`OPENAI_API_KEY`) and/or Anthropic API key (`ANTHROPIC_API_KEY`)
 
 ## Installation & Setup
@@ -115,12 +118,12 @@ aie-estimator/
 3. **Configure environment variables:**
    Copy the example environment file to the target environment configuration:
    ```bash
-   cp src/aie_estimator/.env.example src/aie_estimator/.env.development
+   cp src/aie_estimator/.env.example src/aie_estimator/.env.dev
    ```
 
-    Edit `src/aie_estimator/.env.development` and configure your API keys:
+    Edit `src/aie_estimator/.env.dev` and configure your API keys:
    ```ini
-   APP_ENV=development
+   APP_ENV=dev
    LOG_LEVEL=INFO
    JSON_LOGGING=false
    ENABLE_FILE_LOGGING=false
@@ -136,17 +139,32 @@ aie-estimator/
 
 ## Running the Application
 
-### Automated Development Launcher (Windows)
+### 1. Docker Compose Environments
 
-Launch both the Streamlit conversational UI (in an asynchronous secondary window) and the FastAPI backend service (streaming logs to the active console):
+Start the detached Docker Compose services from the project root using `auto\dc.cmd <dev|prod>`:
+
+- **Development (Redis Cache Service Only)**:
+  Builds and launches the Redis cache data store on development environment using `docker/docker-compose.dev.yml` and `src/aie_estimator/.env.dev`:
+  ```cmd
+  auto\dc.cmd dev
+  ```
+- **Production (Containerized FastAPI + Redis Stack)**:
+  Builds the multi-stage production image (`docker/Dockerfile`) and launches it along with the Redis cache data store on production environment using `docker/docker-compose.prod.yml` and `src/aie_estimator/.env.prod`:
+  ```cmd
+  auto\dc.cmd prod
+  ```
+
+### 2. Local Development Services
+
+#### FastAPI Backend Service
+
+Launch the FastAPI backend in the active console:
 
 ```cmd
 auto\dev.cmd
 ```
 
-### Running Services Independently
-
-#### 1. FastAPI Backend Service
+Or directly via `uv`:
 
 ```bash
 uv run aie-estimator
@@ -156,9 +174,15 @@ uv run uvicorn aie_estimator.server:server.app --reload --host localhost --port 
 
 The API service starts on `http://localhost:8000`.
 
-#### 2. Streamlit Conversational Interface
+#### Streamlit Conversational Interface
 
-With the FastAPI service running, launch the interactive chat interface:
+With the FastAPI service running, launch the interactive chat interface in a separate terminal:
+
+```cmd
+auto\stl.cmd
+```
+
+Or directly via `uv`:
 
 ```bash
 uv run streamlit run streamlit_app.py
@@ -166,7 +190,7 @@ uv run streamlit run streamlit_app.py
 
 The conversational interface opens in your browser at `http://localhost:8501`:
 
-![Streamlit Conversational UI](assets/session03_streamlit_ui.png)
+![Streamlit Conversational UI](docs/assets/session03_streamlit_ui.png)
 
 ## API Documentation & Endpoints
 

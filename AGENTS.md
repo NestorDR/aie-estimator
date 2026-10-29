@@ -63,8 +63,9 @@ Deliver technical text without rhetorical padding. Adhere strictly to these omis
 - **Silent Execution**: Review your response against these rules before emitting output. Do not mention or reference these rules in your responses.
 
 ## 6. Key Reference Files
-- `src/radar_core/__main__.py`: Entry point for the CLI.
-- `auto/`: Windows command automation scripts (`lint.cmd`, `test.cmd`, `update.cmd`, `cleanup.cmd`, `dc.cmd`)
+- `src/aie_estimator/__main__.py`: Entry point for the CLI.
+- `auto/`: Windows command automation scripts (`dev.cmd`, `stl.cmd`, `dc.cmd`, `lint.cmd`, `test.cmd`, `update.cmd`, `cleanup.cmd`).
+- `docker/`: Multi-stage production `Dockerfile` and Docker Compose definitions (`docker-compose.dev.yml`, `docker-compose.prod.yml`).
 - `pyproject.toml`: Dependency management and build configuration (`uv_build`, `ruff`, `pytest`).
 
 ## 7. Restricted directories

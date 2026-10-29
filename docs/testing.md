@@ -273,6 +273,6 @@ pytest tests/routers/test_health_router.py::test_get_health[dependency_override]
 ### 3. Filesystem Isolation and Zero File Writes
 
 - **Zero Disk Writes**: Unit tests executed by `pytest` must never create files or directories within the workspace (`logs/`, etc.). Any file handler initialization must be intercepted with `unittest.mock.patch(..., autospec=True)`.
-- **Runtime File Logging**: Generating `logs/dev.log` for debugging and inspecting full stack error traces is an application runtime feature, activated via `ENABLE_FILE_LOGGING=true` in `src/aie_estimator/.env.development`, never by test fixtures.
+- **Runtime File Logging**: Generating `logs/dev.log` for debugging and inspecting full stack error traces is an application runtime feature, activated via `ENABLE_FILE_LOGGING=true` in `../src/aie_estimator/.env.dev`, never by test fixtures.
 - **Handler Cleanup**: Tests adding mocked handlers to standard library loggers must clear `logging.getLogger().handlers.clear()` in a `finally` block to prevent mock leaks into subsequent test cases.
 
