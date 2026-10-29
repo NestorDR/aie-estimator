@@ -20,7 +20,7 @@ router = APIRouter(
 
 @router.get("/health")
 async def get_status(
-        settings: Annotated[Settings, Depends(get_settings)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, str]:
     """
     Health check endpoint to verify API is running.

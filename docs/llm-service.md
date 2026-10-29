@@ -37,7 +37,7 @@ Configure custom model overrides, two-phase preprocessing, or extended thinking 
 from aie_estimator.services.llm_service import GenerationOptions, generate_estimation
 
 opts = GenerationOptions(
-    model="claude-3-7-sonnet-20250219",
+    model="gpt-6-luna",
     two_phase=True,
     thinking_budget=2048,
     temperature=None,
@@ -65,7 +65,7 @@ openai_response = _call_openai(
 anthropic_response = _call_anthropic(
     messages=[{"role": "user", "content": "Estimate this backend project..."}],
     system_prompt="You are a senior technical estimator.",
-    model="claude-3-5-sonnet-20241022",
+    model="gpt-6-luna",
     max_tokens=4096,
 )
 ```

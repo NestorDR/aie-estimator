@@ -21,6 +21,7 @@ import structlog
 from aie_estimator.context.examples import format_examples_for_prompt, select_examples
 from aie_estimator.schemas.estimations import ExampleFormat, PreprocessingMode
 from aie_estimator.schemas.models import MODEL_CATALOG
+from aie_estimator.services.cache import EstimationCache, get_estimation_cache
 from aie_estimator.settings import get_settings
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
@@ -103,7 +104,7 @@ def _reset_clients() -> None:
 
 PROMPT_OUTPUT_BASIC = "Generate an estimation for the project described above."
 
-PROMPT_OUTPUT_STRUCTURED = ("""
+PROMPT_OUTPUT_STRUCTURED = """
 Generate the estimation with this exact structure:
 
 ## Project summary
@@ -121,12 +122,12 @@ Generate the estimation with this exact structure:
 
 ## Risks and assumptions
 - [3-5 bullet points covering technical risks, scope assumptions, and external dependencies]
-""")
+"""
 
 # Switch: change the right-hand side to PROMPT_OUTPUT_STRUCTURED
 ACTIVE_OUTPUT_PROMPT = PROMPT_OUTPUT_BASIC
 
-INLINE_CLEANING_BLOCK = ("""
+INLINE_CLEANING_BLOCK = """
 The transcription you receive is from a real meeting and may contain:
 - Informal small talk you must ignore
 - Implicit requirements you must surface explicitly
@@ -134,14 +135,14 @@ The transcription you receive is from a real meeting and may contain:
 - Non-technical jargon you must interpret
 
 Extract ONLY the functional and technical requirements relevant to the estimation.
-""")
+"""
 
 # System prompt to instruct the LLM to extract structured data (e.g., JSON) from unstructured text.
-EXTRACTION_SYSTEM_PROMPT = ("""
+EXTRACTION_SYSTEM_PROMPT = """
 You are an analyst. Read the meeting transcription and produce a clean, deduplicated bullet list of 
 functional requirements, non-functional requirements, integrations, constraints and explicit deadlines. 
 Ignore fillers, divagations and off-topic remarks. Output Markdown only.
-""")
+"""
 
 
 # endregion Prompt building blocks
@@ -161,10 +162,10 @@ class GenerationOptions:
 
 
 def build_system_prompt(
-        example_format: ExampleFormat = "markdown",
-        num_examples: int = 3,
-        use_examples: bool = True,
-        inline_cleaning: bool = False,
+    example_format: ExampleFormat = "markdown",
+    num_examples: int = 3,
+    use_examples: bool = True,
+    inline_cleaning: bool = False,
 ) -> str:
     """
     System prompt construction.
@@ -193,10 +194,9 @@ def build_system_prompt(
         rendered = format_examples_for_prompt(select_examples(num_examples), example_format)
         if rendered:
             examples_block = (
-                    "Below are reference estimations from previous projects. Use them as a guide "
-                    "for structure, level of detail, and realistic pricing. Adapt the content to "
-                    "match the specific project described in the transcription.\n\n"
-                    + rendered
+                "Below are reference estimations from previous projects. Use them as a guide "
+                "for structure, level of detail, and realistic pricing. Adapt the content to "
+                "match the specific project described in the transcription.\n\n" + rendered
             )
 
     cleaning_block = INLINE_CLEANING_BLOCK if inline_cleaning else ""
@@ -207,9 +207,10 @@ def build_system_prompt(
 
 # region Two-phase preprocessing (phase 1: requirement extraction)
 
+
 def extract_requirements(
-        transcription: str,
-        opts: GenerationOptions,
+    transcription: str,
+    opts: GenerationOptions,
 ) -> tuple[str, dict]:
     """
     Run phase-1 LLM call to extract clean requirements from raw transcription.
@@ -253,15 +254,16 @@ def extract_requirements(
 
 # region Provider wrappers
 
+
 def call_with_retry(
-        client: OpenAI,
-        messages: str | list[dict[str, Any]],
-        system_prompt: str | None = None,
-        model: str = "gpt-4o-mini",
-        max_tokens: int = DEFAULT_MAX_TOKENS,
-        temperature: float = 0.3,
-        effort: str = "medium",
-        max_retries: int = 3,
+    client: OpenAI,
+    messages: str | list[dict[str, Any]],
+    system_prompt: str | None = None,
+    model: str = "gpt-4o-mini",
+    max_tokens: int = DEFAULT_MAX_TOKENS,
+    temperature: float = 0.3,
+    effort: str = "medium",
+    max_retries: int = 3,
 ) -> Any:
     """
     Execute a request against OpenAI Responses API with exponential backoff and jitter retry logic.
@@ -311,22 +313,20 @@ def call_with_retry(
                 raise
 
             jitter: float = random.SystemRandom().uniform(0, 1)
-            wait: float = (2 ** attempt) + jitter
-            log.warning(
-                f"Transient error from OpenAI API (attempt {attempt + 1}/{max_retries}). Retrying in {wait:.2f}s: {e!r}"
-            )
+            wait: float = (2**attempt) + jitter
+            log.warning(f"Transient error from OpenAI API (attempt {attempt + 1}/{max_retries}). Retrying in {wait:.2f}s: {e!r}")
             time.sleep(wait)
 
     return None
 
 
 def _call_openai(
-        messages: str | list[dict[str, Any]],
-        system_prompt: str | None,
-        model: str,
-        max_tokens: int,
-        temperature: float = 0.3,
-        effort: str = "medium",
+    messages: str | list[dict[str, Any]],
+    system_prompt: str | None,
+    model: str,
+    max_tokens: int,
+    temperature: float = 0.3,
+    effort: str = "medium",
 ) -> dict[str, Any]:
     """
     Send an estimation request to the OpenAI Responses API with retries and structured logging.
@@ -337,7 +337,7 @@ def _call_openai(
     :param max_tokens: Maximum output token budget.
     :param temperature: Sampling temperature for non-reasoning models.
     :param effort: Reasoning effort for reasoning models ('low', 'medium', 'high').
-    
+
     :return: Standardized response dictionary containing estimation, model, provider, finish_reason, and usage.
     :raises LLMServiceError: If the API call fails after all retry attempts.
     """
@@ -406,12 +406,12 @@ def _call_openai(
 
 
 def _call_anthropic(
-        messages: str | list[dict[str, Any]],
-        system_prompt: str | None,
-        model: str,
-        max_tokens: int,
-        thinking_budget: int | None = None,
-        temperature: float = 0.3,
+    messages: str | list[dict[str, Any]],
+    system_prompt: str | None,
+    model: str,
+    max_tokens: int,
+    thinking_budget: int | None = None,
+    temperature: float = 0.3,
 ) -> dict[str, Any]:
     """
     Send an estimation request to the Anthropic Messages API with structured logging and retry capability.
@@ -427,11 +427,7 @@ def _call_anthropic(
     """
     client = get_anthropic_client()
 
-    formatted_messages = (
-        [{"role": "user", "content": messages}]
-        if isinstance(messages, str)
-        else messages
-    )
+    formatted_messages = [{"role": "user", "content": messages}] if isinstance(messages, str) else messages
 
     kwargs: dict[str, Any] = {
         "model": model,
@@ -502,15 +498,16 @@ def _call_anthropic(
 
 # endregion Provider wrappers
 
+
 def generate_estimation(transcription: str, opts: GenerationOptions | None = None) -> dict[str, str]:
     """
     Generate a software estimation from a meeting transcription using the configured LLM.
 
     :param transcription: Meeting transcription text to analyze.
     :param opts: Optional generation configuration overrides.
-    
+
     :return: Dictionary containing estimation text, model, provider, finish reason, and token usage.
-    :raises LLMServiceError: If an unrecoverable failure occurs calling the LLM provider.
+    :raises LLMServiceError: If an unrecoverable failure occurs, call the LLM provider.
     """
     opts = opts or GenerationOptions()
     settings = get_settings()
@@ -535,6 +532,23 @@ def generate_estimation(transcription: str, opts: GenerationOptions | None = Non
     model = opts.model or settings.llm_model
     model_spec = MODEL_CATALOG.get(model)
     provider = model_spec.provider if model_spec is not None else settings.llm_provider
+
+    cache = get_estimation_cache()
+    cache_key = EstimationCache.make_key(
+        system_prompt=system_prompt,
+        user_message=user_input,
+        model=model,
+        max_tokens=opts.max_tokens,
+        thinking_budget=opts.thinking_budget,
+        preprocessing=opts.preprocessing,
+    )
+
+    cached_result = cache.get(cache_key)
+    if cached_result is not None:
+        cached_result["latency_ms"] = int((time.perf_counter() - t0) * 1000)
+        cached_result["cache_hit"] = True
+        log.info("estimation_served_from_cache", model=model, latency_ms=cached_result["latency_ms"])
+        return cached_result
 
     log.info(
         "generating_estimation",
@@ -579,5 +593,8 @@ def generate_estimation(transcription: str, opts: GenerationOptions | None = Non
     result["preprocessing"] = opts.preprocessing
     result["extracted_requirements"] = extracted_requirements
     result["latency_ms"] = int((time.perf_counter() - t0) * 1000)
+    result["cache_hit"] = False
+
+    cache.set(cache_key, result)
 
     return result

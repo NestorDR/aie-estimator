@@ -48,10 +48,6 @@ async def create_estimation(request: EstimationRequest) -> EstimationResponse:
 
     result = llm_service.generate_estimation(request.transcription, opts)
 
-    validation = (
-        evaluation.evaluate_estimation_structure(result["estimation"], result["finish_reason"])
-        if request.evaluate
-        else None
-    )
+    validation = evaluation.evaluate_estimation_structure(result["estimation"], result["finish_reason"]) if request.evaluate else None
 
     return EstimationResponse(**result, validation=validation)

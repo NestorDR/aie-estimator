@@ -3,7 +3,7 @@
 ## 1. About project
 
 Welcome to an AI Engineering Learning Project based on the online course in Spanish [AI Engineering](https://lidr.notion.site/ai-engineering#313a43932781814e9265fe5f8cbe5d3d) 
-Most recent class: [Session 2 of October 22, 2026](https://github.com/LIDR-academy-temp/ai-engineering/tree/session_2_live)
+Next class: [Session 3 of October 29, 2026](https://github.com/LIDR-academy-temp/ai-engineering/tree/session_3_live)
 
 ## 2. Code Style and Conventions
 Always apply good software engineering practices: **KISS, YAGNI, DRY, SOLID, ACID, design patterns, Pythonic style, and explicit is better than implicit** to ensure maintainability, readability, and reusability.

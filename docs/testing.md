@@ -6,8 +6,8 @@ Testing architecture, shared fixtures, and execution conventions for the `aie-es
 
 ### Structure and Configuration
 
-- **Test Directory**: `tests/` (`conftest.py`, `test_settings.py`, `routers/test_health_router.py`)
-- **Import Resolution**: `tool.pytest.ini_options.pythonpath = ["src"]` in `pyproject.toml`
+- **Test Directory**: `tests/` (`conftest.py`, `test_settings.py`, `test_models_catalog.py`, `test_streamlit_app.py`, `routers/`, `services/`)
+- **Import Resolution**: `tool.pytest.ini_options.pythonpath = [".", "src"]` in `pyproject.toml`
 - **Execution Target**: `pytest tests/ --cache-clear --basetemp="%TEMP%\pytest_runner"`
 
 ### Global Fixtures (`tests/conftest.py`)

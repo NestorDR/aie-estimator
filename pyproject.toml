@@ -8,9 +8,14 @@ requires-python = ">=3.14"
 dependencies = [
     "anthropic>=2.3.0",
     "fastapi>=0.146.0",
+    "httpx>=0.28.1",
+    "litellm>=1.83.0",
     "openai>=3.35.1",
     "pydantic-settings>=2.16.0",
     "python-dotenv>=1.2.4",
+    "redis>=8.1.0",
+    "sse-starlette>=3.6.0",
+    "streamlit>=1.66.1",
     "structlog>=26.1.0",
     "uvicorn[standard]>=0.54.0",
 ]
@@ -67,7 +72,7 @@ ignore = [ # Ignored rules
 ]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]                            # Add src to pythonpath for imports
+pythonpath = [".", "src"]                       # Add root and src to pythonpath for imports
 testpaths = ["tests"]                           # Specify test directory
 python_files = ["test_*.py"]
 

@@ -32,7 +32,7 @@ def evaluate_estimation_structure(text: str, finish_reason: str) -> StructureChe
 
     :param text: Generated markdown estimation text to evaluate.
     :param finish_reason: Upstream model finish reason indicator.
-    
+
     :return: StructureCheck instance containing structural validation results.
     """
     has_title = bool(re.search(r"^##\s+\S", text, re.MULTILINE))
@@ -45,9 +45,7 @@ def evaluate_estimation_structure(text: str, finish_reason: str) -> StructureChe
             re.IGNORECASE | re.MULTILINE,
         )
     )
-    has_duration_section = bool(
-        re.search(r"(Estimated\s+Duration|Duration:|\bweeks?\b)", text, re.IGNORECASE)
-    )
+    has_duration_section = bool(re.search(r"(Estimated\s+Duration|Duration:|\bweeks?\b)", text, re.IGNORECASE))
 
     sum_hours: int | None = None
     sum_cost: int | None = None
@@ -86,7 +84,6 @@ def evaluate_estimation_structure(text: str, finish_reason: str) -> StructureChe
         cost_match = abs(sum_cost - declared_total_cost) / declared_total_cost <= 0.02
     else:
         cost_match = None
-    
 
     finish_reason_ok = finish_reason in _OK_FINISH_REASONS
 
@@ -114,13 +111,9 @@ def evaluate_estimation_structure(text: str, finish_reason: str) -> StructureChe
     if not has_duration_section:
         issues.append("Missing estimated duration in weeks")
     if hours_match is False:
-        issues.append(
-            f"Total hours mismatch: declared {declared_total_hours} vs sum of rows {sum_hours}"
-        )
+        issues.append(f"Total hours mismatch: declared {declared_total_hours} vs sum of rows {sum_hours}")
     if cost_match is False:
-        issues.append(
-            f"Total cost mismatch: declared {declared_total_cost} EUR vs sum of rows {sum_cost} EUR"
-        )
+        issues.append(f"Total cost mismatch: declared {declared_total_cost} EUR vs sum of rows {sum_cost} EUR")
     if not finish_reason_ok:
         issues.append(f"Response truncated or unexpected finish_reason='{finish_reason}'")
 

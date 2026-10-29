@@ -2,6 +2,10 @@
 
 FastAPI backend service for automated software engineering effort estimation using Context-Augmented Generation (CAG).
 
+## About
+
+This is my personal repository where I am coding the project while following the [LIDR AI Engineering program](https://lidr.notion.site/ai-engineering). It explores production Generative AI: Context-Augmented Generation (CAG), advanced RAG, multi-agent workflows, LLMOps, and evaluation with Python, FastAPI, and leading LLMs, starting with an automated software engineering effort estimator.
+
 ## Overview
 
 AIE Estimator processes client meeting transcripts and generates structured project estimates—including task breakdowns, estimated hours, team compositions, and delivery timelines.
@@ -23,7 +27,7 @@ The project enforces strict separation of concerns across dedicated application 
 
 ```mermaid
 flowchart TD
-    Client(["Client / Caller"]) -->|"POST /api/v1/estimate\n(EstimationRequest)"| Router["Router: EstimationsRouter\n(Pydantic Validation)"]
+    Client(["Streamlit UI / Caller"]) -->|"POST /api/v1/estimate\n(EstimationRequest)"| Router["Router: EstimationsRouter\n(Pydantic Validation)"]
 
     subgraph ServiceLayer ["LLM Service Layer"]
         Router -->|"Valid transcription"| PromptBuilder["CAG Prompt Assembly"]
@@ -35,17 +39,17 @@ flowchart TD
 
         Examples -->|"Inject few-shot examples"| PromptBuilder
         Role -->|"Inject role & guidelines"| PromptBuilder
-        PromptBuilder -->|"Assemble payload"| ProviderRouter{"Provider Router\n(ModelSpec.provider)"}
 
-        ProviderRouter -->|"provider == openai"| RetryEngine["OpenAI Retry Engine\n(Responses API + Backoff)"]
-        ProviderRouter -->|"provider == anthropic"| AnthropicEngine["Anthropic Engine\n(Messages API + Thinking)"]
+        PromptBuilder -->|"Assemble payload"| CacheCheck{"Exact-Match Cache\n(Redis SHA-256)"}
+
+        CacheCheck -->|"Cache Hit"| ServiceOutput["Result Dictionary"]
+        CacheCheck -->|"Cache Miss"| Dispatcher["Multi-Provider Dispatcher\n(Retry & Backoff)"]
     end
 
-    RetryEngine -->|"Responses API call"| OpenAI["OpenAI API\n(gpt-4o-mini / o1 / o3)"]
-    AnthropicEngine -->|"Messages API call"| Anthropic["Anthropic API\n(Claude 3.5 / 3.7)"]
+    Dispatcher -->|"API call"| LLMProvider["LLM Provider\n(OpenAI & Anthropic APIs)"]
+    LLMProvider -->|"Estimation text & usage"| CacheStore["Store in Redis Cache"]
+    CacheStore --> ServiceOutput
 
-    OpenAI -->|"Estimation text & usage"| ServiceOutput["Result Dictionary"]
-    Anthropic -->|"Estimation text & usage"| ServiceOutput
     ServiceOutput -->|"Result dictionary"| Router
     Router -->|"HTTP 200: EstimationResponse\n(estimation, model, provider)"| Client
 ```
@@ -54,12 +58,9 @@ flowchart TD
 
 ```
 aie-estimator/
-├── auto/                               # Developer automation scripts
+├── assets/                             # UI screenshots and visual artifacts
+├── auto/                               # Developer automation scripts (dev.cmd, test.cmd, lint.cmd)
 ├── docs/                               # Architecture and feature guides
-│   ├── llm-service.md                  # LLM provider integration and error handling
-│   ├── logging.md                      # Structlog configuration and conventions
-│   └── testing.md                      # Testing guidelines and pytest conventions
-├── samples/                            # Sample scripts and testing utilities
 ├── src/
 │   └── aie_estimator/
 │       ├── __init__.py
@@ -72,18 +73,23 @@ aie-estimator/
 │       │   └── examples.py             # Historical few-shot estimation examples
 │       ├── schemas/
 │       │   ├── __init__.py
-│       │   └── estimations.py          # EstimationRequest and EstimationResponse schemas
+│       │   ├── estimations.py          # EstimationRequest and EstimationResponse schemas
+│       │   └── models.py               # Model catalog and specification schemas
 │       ├── routers/
 │       │   ├── __init__.py
 │       │   ├── estimations_router.py   # POST /api/v1/estimate endpoint
 │       │   └── health_router.py        # GET /health status endpoint
 │       └── services/
 │           ├── __init__.py
-│           └── llm_service.py          # CAG prompt assembly and multi-provider (OpenAI/Anthropic) integration
+│           ├── cache.py                # Deterministic exact-match Redis cache
+│           ├── evaluation.py           # Output evaluation and scoring
+│           └── llm_service.py          # CAG prompt assembly and multi-provider integration
 ├── tests/                              # Unit and integration test suites
 ├── .gitignore
+├── .gitattributes
 ├── pyproject.toml                      # Project metadata, dependencies, and tools config
 ├── README.md                           # Project documentation
+├── streamlit_app.py                    # Streamlit conversational chat interface
 └── uv.lock                             # Locked dependency graph
 ```
 
@@ -118,34 +124,55 @@ aie-estimator/
    LOG_LEVEL=INFO
    JSON_LOGGING=false
    ENABLE_FILE_LOGGING=false
-   SERVER_IP=127.0.0.1
+   SERVER_HOST=localhost
    SERVER_PORT=8000
    OPENAI_API_KEY=your_openai_api_key_here
    ANTHROPIC_API_KEY=your_anthropic_api_key_here
    LLM_MODEL=gpt-4o-mini
+   REDIS_HOST=localhost
+   REDIS_PORT=6379
+   CACHE_TTL=86400
    ```
 
 ## Running the Application
 
-### Using the Project CLI Entry Point
+### Automated Development Launcher (Windows)
+
+Launch both the Streamlit conversational UI (in an asynchronous secondary window) and the FastAPI backend service (streaming logs to the active console):
+
+```cmd
+auto\dev.cmd
+```
+
+### Running Services Independently
+
+#### 1. FastAPI Backend Service
 
 ```bash
 uv run aie-estimator
+# or with auto-reload:
+uv run uvicorn aie_estimator.server:server.app --reload --host localhost --port 8000
 ```
 
-### Using Uvicorn Directly with Auto-Reload
+The API service starts on `http://localhost:8000`.
+
+#### 2. Streamlit Conversational Interface
+
+With the FastAPI service running, launch the interactive chat interface:
 
 ```bash
-uv run uvicorn aie_estimator.server:server.app --reload --host 127.0.0.1 --port 8000
+uv run streamlit run streamlit_app.py
 ```
 
-The service starts on `http://127.0.0.1:8000`.
+The conversational interface opens in your browser at `http://localhost:8501`:
+
+![Streamlit Conversational UI](assets/session03_streamlit_ui.png)
 
 ## API Documentation & Endpoints
 
 Interactive documentation is available at:
-- **Swagger UI**: `http://127.0.0.1:8000/docs`
-- **ReDoc**: `http://127.0.0.1:8000/redoc`
+- **Swagger UI**: `http://localhost:8000/docs`
+- **ReDoc**: `http://localhost:8000/redoc`
 
 ### Endpoints Summary
 
@@ -182,7 +209,7 @@ Analyzes meeting transcript text and returns an effort estimation breakdown.
 #### Example cURL
 
 ```bash
-curl -X POST http://127.0.0.1:8000/api/v1/estimate \
+curl -X POST http://localhost:8000/api/v1/estimate \
   -H "Content-Type: application/json" \
   -d '{
     "transcription": "In the meeting with the marketing team, the client explained that they need a landing page with a contact form, integration with their existing CRM (HubSpot), and a blog section with a WYSIWYG editor. The target timeline is 4 weeks. Designs already exist in Figma."
@@ -213,6 +240,8 @@ Verify local setup against the baseline project criteria:
 - [x] `GET /health` returns HTTP 200 with `status: healthy`
 - [x] `POST /api/v1/estimate` processes transcriptions and returns structured estimations
 - [x] Prompts include historical few-shot reference examples from `src/aie_estimator/context/examples.py`
+- [x] Streamlit conversational UI accessible at `http://localhost:8501` via `streamlit run streamlit_app.py`
+- [x] Redis exact-match cache short-circuits repeated estimation requests with offline fallback
 - [x] Swagger documentation is accessible at `/docs`
 - [x] `.env*` files are excluded in `.gitignore`
 
@@ -238,6 +267,7 @@ Detailed architecture guides and technical documentation are maintained in the [
 
 - [LLM Service Architecture & Multi-Provider Integration](docs/llm-service.md): Deep dive into OpenAI Responses API, Anthropic Messages API, extended thinking, client lifecycle, retry backoff, and exception handling.
 - [Model Catalog & Request Validation](docs/model-catalog.md): Centralized model catalog, supported OpenAI/Anthropic models, reasoning metadata, and boundary validation.
+- [Conversational UI & Exact-Match Cache](docs/streamlit-conversational-ui.md): Streamlit chat interface, simulated progressive streaming, deterministic Redis exact-match caching, and graceful degradation.
 - [Logging Architecture & Structlog](docs/logging.md): Configuration, formatting sinks, processor pipeline, and context variables binding.
 - [Testing Guidelines](docs/testing.md): Test suite organization, pytest fixtures, and coverage expectations.
 

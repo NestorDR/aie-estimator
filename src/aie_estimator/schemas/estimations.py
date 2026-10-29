@@ -21,8 +21,7 @@ class EstimationRequest(BaseModel):
         ...,
         min_length=50,
         description="Meeting transcript text containing client requirements and project scope.",
-        examples=[
-            "In the meeting with the marketing team, the client explained that they need a landing page with a contact form..."],
+        examples=["In the meeting with the marketing team, the client explained that they need a landing page with a contact form..."],
     )
     # region Added in live session
     preprocessing: PreprocessingMode = Field(
@@ -131,3 +130,4 @@ class EstimationResponse(BaseModel):
     )
     latency_ms: int = Field(..., description="Server-side total latency in milliseconds")
     validation: StructureCheck | None = None
+    cache_hit: bool = Field(default=False, description="True when the response was served from cache")

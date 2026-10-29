@@ -14,15 +14,14 @@ The catalog serves four primary architectural purposes:
 
 ## Supported Models Catalog
 
-| Model Identifier | Provider | Reasoning Capable | Notes |
-| :--- | :--- | :---: | :--- |
-| `gpt-4o-mini` | `openai` | No | Default low-latency OpenAI model for fast estimates. |
-| `gpt-4o` | `openai` | No | Standard high-accuracy multimodal OpenAI model. |
-| `gpt-6-luna` | `openai` | Yes | Reasoning model; receives `reasoning={"effort": effort}` instead of temperature. |
-| `o1-preview` | `openai` | Yes | Advanced OpenAI reasoning model. |
-| `o3-mini` | `openai` | Yes | Efficient reasoning model. |
-| `claude-haiku-4-5-20251001` | `anthropic` | Yes | Fast Anthropic model with extended thinking budget support. |
-| `claude-3-7-sonnet-20250219` | `anthropic` | Yes | Flagship Anthropic model with extended thinking budget support. |
+| Model Identifier            | Provider    | Reasoning Capable | Notes                                                                            |
+|:----------------------------|:------------|:-----------------:|:---------------------------------------------------------------------------------|
+| `gpt-4o-mini`               | `openai`    |        No         | Default low-latency OpenAI model for fast estimates.                             |
+| `gpt-4o`                    | `openai`    |        No         | Standard high-accuracy multimodal OpenAI model.                                  |
+| `o3-mini`                   | `openai`    |        Yes        | Efficient reasoning model.                                                       |
+| `gpt-5-nano`                | `openai`    |        Yes        | Advanced OpenAI reasoning model.                                                 |
+| `gpt-6-luna`                | `openai`    |        Yes        | Reasoning model; receives `reasoning={"effort": effort}` instead of temperature. |
+| `claude-haiku-4-5-20251001` | `anthropic` |        Yes        | Fast Anthropic model with extended thinking budget support.                      |
 
 ---
 
@@ -35,7 +34,7 @@ Clients can optionally override the default model in `POST /api/v1/estimate`:
 ```json
 {
   "transcription": "Client: We need a scalable notification service supporting email and SMS. Launch target is within 3 weeks.",
-  "model": "claude-3-7-sonnet-20250219",
+  "model": "gpt-5-nano",
   "thinking_budget": 2048
 }
 ```
@@ -60,7 +59,7 @@ The endpoint immediately returns HTTP 422:
     {
       "type": "value_error",
       "loc": ["body", "model"],
-      "msg": "Value error, Input should be one of: gpt-4o-mini, gpt-4o, o1-preview, o3-mini, gpt-6-luna, claude-haiku-4-5-20251001, claude-3-7-sonnet-20250219"
+      "msg": "Value error, Input should be one of: gpt-4o-mini, gpt-4o, o3-mini, gpt-5-nano, gpt-6-luna, claude-haiku-4-5-20251001"
     }
   ]
 }
@@ -73,8 +72,8 @@ from aie_estimator.schemas.models import MODEL_CATALOG, SUPPORTED_MODELS, ModelS
 
 print(SUPPORTED_MODELS)  # ("gpt-4o-mini", "gpt-4o", ...)
 spec: ModelSpec = MODEL_CATALOG["gpt-6-luna"]
-print(spec.provider)      # "openai"
-print(spec.is_reasoning)   # True
+print(spec.provider)  # "openai"
+print(spec.is_reasoning)  # True
 ```
 
 ### 3. Adding a New Model

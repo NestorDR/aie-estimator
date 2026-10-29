@@ -49,4 +49,3 @@ def test_get_health(
         assert data["version"] == expected_version
     else:
         assert "version" in data
-

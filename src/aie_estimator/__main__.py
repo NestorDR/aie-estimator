@@ -20,14 +20,14 @@ def main() -> None:
     settings = get_settings()
     log.info(
         "starting_uvicorn_server",
-        server_ip=settings.server_ip,
+        server_host=settings.server_host,
         server_port=settings.server_port,
         app_env=settings.app_env.value,
     )
 
     uvicorn.run(
         app="aie_estimator.server:server.app",
-        host=settings.server_ip,
+        host=settings.server_host,
         port=settings.server_port,
         log_level=settings.log_level.lower(),
         reload=settings.app_env != Environment.PROD,

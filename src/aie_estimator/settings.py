@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     enable_file_logging: bool = False
 
     # Server settings
-    server_ip: str = "127.0.0.1"
+    server_host: str = "localhost"
     server_port: int = 8000
 
     # AI settings
@@ -55,6 +55,11 @@ class Settings(BaseSettings):
     gemini_api_key: SecretStr | None = None
     openai_api_key: SecretStr | None = None
     llm_model: str = "gpt-4o-mini"
+
+    # Cache settings
+    redis_host: str = "localhost"
+    redis_port: int = 6379
+    cache_ttl: int = 86400
 
     @property
     def llm_provider(self) -> str:
@@ -167,11 +172,7 @@ class Settings(BaseSettings):
             cache_logger_on_first_use=self.app_env == Environment.PROD,
         )
 
-        console_renderer = (
-            structlog.processors.JSONRenderer()
-            if use_json
-            else structlog.dev.ConsoleRenderer(colors=True)
-        )
+        console_renderer = structlog.processors.JSONRenderer() if use_json else structlog.dev.ConsoleRenderer(colors=True)
         console_formatter = structlog.stdlib.ProcessorFormatter(
             foreign_pre_chain=shared_processors,
             processors=[structlog.stdlib.ProcessorFormatter.remove_processors_meta, console_renderer],
@@ -186,11 +187,7 @@ class Settings(BaseSettings):
             log_dir.mkdir(parents=True, exist_ok=True)
             log_file = log_dir / ("app.log" if self.app_env == Environment.PROD else "dev.log")
 
-            file_renderer = (
-                structlog.processors.JSONRenderer()
-                if use_json
-                else structlog.dev.ConsoleRenderer(colors=False)
-            )
+            file_renderer = structlog.processors.JSONRenderer() if use_json else structlog.dev.ConsoleRenderer(colors=False)
             file_formatter = structlog.stdlib.ProcessorFormatter(
                 foreign_pre_chain=shared_processors,
                 processors=[structlog.stdlib.ProcessorFormatter.remove_processors_meta, file_renderer],
@@ -214,7 +211,6 @@ class Settings(BaseSettings):
         logging.getLogger("asyncio").setLevel(logging.WARNING)
         logging.getLogger("psycopg").setLevel(logging.WARNING)
         logging.getLogger("uvicorn.access").setLevel(log_level)
-
 
 
 @lru_cache

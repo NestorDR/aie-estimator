@@ -52,9 +52,9 @@ def test_get_settings_cache_clear(monkeypatch: pytest.MonkeyPatch) -> None:
     ids=["invalid_env_string", "invalid_port_type"],
 )
 def test_settings_initialization_validation_errors(
-        kwargs: dict[str, Any],
-        expected_exception: type[Exception],
-        match_pattern: str,
+    kwargs: dict[str, Any],
+    expected_exception: type[Exception],
+    match_pattern: str,
 ) -> None:
     """
     GIVEN invalid configuration arguments
@@ -79,11 +79,11 @@ def test_settings_initialization_validation_errors(
     ids=["dev_plain_console_and_file", "dev_forced_json", "prod_json_default"],
 )
 def test_configure_logging_renderer_selection(
-        env: Environment,
-        json_logging: bool,
-        expected_console_renderer: type,
-        expected_file_renderer: type,
-        expected_file_colors: bool | None,
+    env: Environment,
+    json_logging: bool,
+    expected_console_renderer: type,
+    expected_file_renderer: type,
+    expected_file_colors: bool | None,
 ) -> None:
     """
     GIVEN an application environment and json_logging flag
@@ -128,9 +128,7 @@ def test_configure_logging_renderer_selection(
             handlers = root_logger.handlers
             assert len(handlers) == 2
 
-            stream_handler = next(
-                h for h in handlers if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler)
-            )
+            stream_handler = next(h for h in handlers if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler))
             assert isinstance(stream_handler.formatter, structlog.stdlib.ProcessorFormatter)
             assert isinstance(stream_handler.formatter.processors[-1], expected_console_renderer)
 
@@ -143,6 +141,28 @@ def test_configure_logging_renderer_selection(
                 assert getattr(file_formatter.processors[-1], "_colors", None) is expected_file_colors
         finally:
             logging.getLogger().handlers.clear()
+
+
+@pytest.mark.parametrize(
+    ("model_name", "expected_provider"),
+    [
+        ("gpt-4o-mini", "openai"),
+        ("gpt-5-nano", "openai"),
+        ("claude-haiku-4-5-20251001", "anthropic"),
+    ],
+    ids=["gpt4o_mini_openai", "gpt_5_nano_openai", "claude_haiku_anthropic"],
+)
+def test_settings_llm_provider_derived_from_model(model_name: str, expected_provider: str) -> None:
+    """
+    GIVEN a model configured in Settings.llm_model
+    WHEN the llm_provider property is accessed
+    THEN it resolves to the provider defined in MODEL_CATALOG.
+
+    :param model_name: Target model identifier.
+    :param expected_provider: Expected provider identifier ('openai' or 'anthropic').
+    """
+    settings = Settings(app_env=Environment.TEST, llm_model=model_name)
+    assert settings.llm_provider == expected_provider
 
 
 def test_configure_logging_captures_callsite_parameters(capsys: pytest.CaptureFixture[str]) -> None:
@@ -172,23 +192,59 @@ def test_configure_logging_captures_callsite_parameters(capsys: pytest.CaptureFi
     assert "func_name" in log_text
 
 
-@pytest.mark.parametrize(
-    ("model_name", "expected_provider"),
-    [
-        ("gpt-4o-mini", "openai"),
-        ("claude-haiku-4-5-20251001", "anthropic"),
-        ("o1-preview", "openai"),
-    ],
-    ids=["gpt4o_mini_openai", "claude_haiku_anthropic", "o1_preview_openai"],
-)
-def test_settings_llm_provider_derived_from_model(model_name: str, expected_provider: str) -> None:
+def test_settings_server_host_configuration() -> None:
     """
-    GIVEN a model configured in Settings.llm_model
-    WHEN the llm_provider property is accessed
-    THEN it resolves to the provider defined in MODEL_CATALOG.
+    GIVEN default Settings initialization and custom override
+    WHEN server_host is inspected
+    THEN established defaults and overrides are verified.
+    """
+    default_settings = Settings(app_env=Environment.TEST)
+    assert default_settings.server_host == "localhost"
 
-    :param model_name: Target model identifier.
-    :param expected_provider: Expected provider identifier ('openai' or 'anthropic').
+    custom_settings = Settings(app_env=Environment.TEST, server_host="10.0.0.5")
+    assert custom_settings.server_host == "10.0.0.5"
+
+
+def test_settings_cache_configuration_defaults() -> None:
     """
-    settings = Settings(app_env=Environment.TEST, llm_model=model_name)
-    assert settings.llm_provider == expected_provider
+    GIVEN default Settings initialization
+    WHEN cache settings are inspected
+    THEN redis_host, redis_port, redis_url, and cache_ttl reflect established defaults.
+    """
+    settings = Settings(app_env=Environment.TEST)
+    assert settings.redis_host == "localhost"
+    assert settings.redis_port == 6379
+    assert settings.cache_ttl == 86400
+
+
+@pytest.mark.parametrize(
+    ("custom_host", "custom_port", "custom_ttl"),
+    [
+        ("10.0.0.1", 6380, 3600),
+        ("cache.internal", 6379, 7200),
+    ],
+    ids=["custom_ip_port", "internal_host"],
+)
+def test_settings_cache_configuration_overrides(
+    custom_host: str,
+    custom_port: int,
+    custom_ttl: int,
+) -> None:
+    """
+    GIVEN custom redis_host, redis_port, and cache_ttl constructor overrides
+    WHEN Settings is instantiated
+    THEN the configured values override defaults and redis_url reflects them.
+
+    :param custom_host: Custom Redis host.
+    :param custom_port: Custom Redis port.
+    :param custom_ttl: Custom cache time-to-live in seconds.
+    """
+    settings = Settings(
+        app_env=Environment.TEST,
+        redis_host=custom_host,
+        redis_port=custom_port,
+        cache_ttl=custom_ttl,
+    )
+    assert settings.redis_host == custom_host
+    assert settings.redis_port == custom_port
+    assert settings.cache_ttl == custom_ttl

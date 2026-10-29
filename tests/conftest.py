@@ -13,6 +13,7 @@ import pytest
 
 # --- App modules ---
 from aie_estimator.server import Server
+from aie_estimator.services.cache import _reset_estimation_cache
 from aie_estimator.services.llm_service import _reset_clients
 from aie_estimator.settings import Environment, Settings, get_settings
 
@@ -20,15 +21,17 @@ from aie_estimator.settings import Environment, Settings, get_settings
 @pytest.fixture(autouse=True)
 def clean_settings_cache() -> Generator[None, None, None]:
     """
-    Ensure the settings lru_cache and cached LLM clients are cleared before and after each test.
+    Ensure the settings lru_cache, cached LLM clients, and estimation cache are cleared before and after each test.
 
     :return: None.
     """
     get_settings.cache_clear()
     _reset_clients()
+    _reset_estimation_cache()
     yield
     get_settings.cache_clear()
     _reset_clients()
+    _reset_estimation_cache()
 
 
 @pytest.fixture
@@ -104,7 +107,7 @@ def sample_estimation_payload(sample_transcription: str) -> dict[str, Any]:
     Provide a valid request body for POST /api/v1/estimate.
 
     :param sample_transcription: Sample transcript fixture.
-    
+
     :return: Payload dictionary matching EstimationRequest schema.
     """
     return {"transcription": sample_transcription}

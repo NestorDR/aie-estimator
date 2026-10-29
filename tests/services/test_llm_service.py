@@ -87,11 +87,10 @@ def test_client_missing_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     [
         ("gpt-4o-mini", False),
         ("gpt-4o", False),
-        ("o1-preview", True),
         ("o3-mini", True),
         ("gpt-6-luna", True),
     ],
-    ids=["gpt4o_mini_standard", "gpt4o_standard", "o1_reasoning", "o3_reasoning", "gpt6_reasoning"],
+    ids=["gpt4o_mini_standard", "gpt4o_standard", "o3_reasoning", "gpt6_reasoning"],
 )
 def test_call_openai_model_parameter_selection(
     monkeypatch: pytest.MonkeyPatch,
@@ -243,7 +242,7 @@ def test_call_anthropic_thinking_and_temperature_exclusivity(
     """
     mock_client = MagicMock()
     mock_resp = MagicMock()
-    mock_resp.model = "claude-3-7-sonnet-20250219"
+    mock_resp.model = "claude-haiku-4-5-20251001"
     mock_resp.stop_reason = "end_turn"
     mock_resp.usage.input_tokens = 300
     mock_resp.usage.output_tokens = 200
@@ -259,7 +258,7 @@ def test_call_anthropic_thinking_and_temperature_exclusivity(
     result = _call_anthropic(
         messages=_SAMPLE_TRANSCRIPT,
         system_prompt="CAG instructions",
-        model="claude-3-7-sonnet-20250219",
+        model="claude-haiku-4-5-20251001",
         max_tokens=4000,
         thinking_budget=thinking_budget,
         temperature=0.3,
@@ -341,6 +340,7 @@ def test_server_llm_service_error_handler(app: FastAPI, client: TestClient, monk
     :param client: TestClient fixture.
     :param monkeypatch: Pytest monkeypatch fixture.
     """
+
     def mock_failing_generation(*args: Any, **kwargs: Any) -> dict[str, Any]:
         raise LLMServiceError("Upstream provider connection refused.")
 
@@ -431,3 +431,40 @@ def test_generate_estimation_model_driven_provider_dispatch(
         assert mock_openai.call_count == 0
         assert result["provider"] == "anthropic"
 
+
+def test_generate_estimation_cache_hit_bypasses_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    GIVEN a cached estimation entry in EstimationCache
+    WHEN generate_estimation is executed with matching parameters
+    THEN the cached result is returned with cache_hit=True without calling any provider.
+
+    :param monkeypatch: Pytest monkeypatch fixture.
+    """
+    test_settings = Settings(
+        app_env=Environment.TEST,
+        llm_model="gpt-4o-mini",
+    )
+    monkeypatch.setattr("aie_estimator.services.llm_service.get_settings", lambda: test_settings)
+
+    mock_cache = MagicMock()
+    cached_payload: dict[str, Any] = {
+        "estimation": "Cached software estimation breakdown.",
+        "model": "gpt-4o-mini",
+        "provider": "openai",
+        "finish_reason": "stop",
+        "usage": {"input_tokens": 50, "output_tokens": 50, "total_tokens": 100},
+    }
+    mock_cache.get.return_value = cached_payload
+    monkeypatch.setattr("aie_estimator.services.llm_service.get_estimation_cache", lambda: mock_cache)
+
+    mock_openai = MagicMock()
+    mock_anthropic = MagicMock()
+    monkeypatch.setattr("aie_estimator.services.llm_service._call_openai", mock_openai)
+    monkeypatch.setattr("aie_estimator.services.llm_service._call_anthropic", mock_anthropic)
+
+    result = llm_service.generate_estimation(_SAMPLE_TRANSCRIPT)
+
+    assert result["cache_hit"] is True
+    assert result["estimation"] == "Cached software estimation breakdown."
+    mock_openai.assert_not_called()
+    mock_anthropic.assert_not_called()

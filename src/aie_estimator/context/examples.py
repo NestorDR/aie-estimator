@@ -435,15 +435,15 @@ def select_examples(n: int) -> list[CanonicalExample]:
 
 
 def format_examples_for_prompt(
-        examples: list[CanonicalExample],
-        fmt: ExampleFormat = "markdown",
+    examples: list[CanonicalExample],
+    fmt: ExampleFormat = "markdown",
 ) -> str:
     """
     Render a list of canonical examples in the requested format for prompt injection.
 
     :param examples: List of CanonicalExample instances to format.
     :param fmt: Target output representation format ("markdown", "json", or "narrative").
-    
+
     :return: Formatted string containing serialized examples.
     :raises ValueError: If an unrecognized example format is provided.
     """
@@ -461,11 +461,7 @@ def format_examples_for_prompt(
 def _format_markdown(examples: list[CanonicalExample]) -> str:
     parts: list[str] = []
     for i, ex in enumerate(examples, start=1):
-        parts.append(
-            f"--- EXAMPLE {i} ---\n"
-            f"Meeting Summary:\n{ex.meeting_summary}\n\n"
-            f"Estimation:\n{ex.estimation_markdown}\n"
-        )
+        parts.append(f"--- EXAMPLE {i} ---\nMeeting Summary:\n{ex.meeting_summary}\n\nEstimation:\n{ex.estimation_markdown}\n")
     return "\n".join(parts)
 
 
@@ -474,10 +470,7 @@ def _format_json(examples: list[CanonicalExample]) -> str:
         {
             "meeting_summary": ex.meeting_summary,
             "title": ex.title,
-            "breakdown": [
-                {"task": task, "hours": hours, "cost_eur": cost}
-                for task, hours, cost in ex.breakdown
-            ],
+            "breakdown": [{"task": task, "hours": hours, "cost_eur": cost} for task, hours, cost in ex.breakdown],
             "totals": {"hours": ex.total_hours, "cost_eur": ex.total_cost},
             "team": ex.team,
             "duration_weeks": ex.duration_weeks,

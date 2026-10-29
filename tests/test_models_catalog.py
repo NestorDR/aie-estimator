@@ -101,4 +101,3 @@ def test_estimation_request_none_model_defaults_to_settings_llm_model() -> None:
     expected_model = get_settings().llm_model
     assert req_omitted.model == expected_model
     assert req_none.model == expected_model
-
