@@ -37,7 +37,7 @@ def simulate_stream(text: str, delay_seconds: float = STREAM_WORD_DELAY) -> Iter
     """
     Yield word-level chunks from complete text with minor delay to simulate progressive streaming.
 
-    :param text: Complete estimation markdown text to stream.
+    :param text: Complete estimation Markdown text to stream.
     :param delay_seconds: Pause between successive word chunks in seconds.
 
     :return: Iterator yielding string tokens.
