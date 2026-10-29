@@ -2,85 +2,78 @@
 
 ## Overview
 
-This document specifies the LLM service architecture, multi-provider execution engine, CAG prompt construction, and provider communication protocols within `aie-estimator`.
+`src/aie_estimator/services/llm_service.py` orchestrates software effort estimations across **OpenAI** and **Anthropic** using Context-Augmented Generation (CAG), configurable input preprocessing, and exact-match Redis caching.
 
-The service supports two upstream LLM providers:
-- **OpenAI**: Uses the modern Responses API (`client.responses.create`) with support for reasoning models (`o1`, `o3`), configurable token allocation (`max_output_tokens`), and automatic exponential backoff with full jitter.
-- **Anthropic**: Uses the Messages API (`client.messages.create`) supporting Claude models with optional extended thinking (`thinking={"type": "enabled", "budget_tokens": ...}`).
+Provider routing and reasoning capability resolution are driven by `MODEL_CATALOG` (`src/aie_estimator/schemas/models.py`):
 
-Both providers consume a unified internal interface and return structured estimations while abstracting provider-specific payloads, token accounting, and retry mechanisms.
+| Provider | API Endpoint | Retry Mechanism | Reasoning / Thinking Parameter |
+|:---------|:-------------|:----------------|:-------------------------------|
+| **OpenAI** | `client.responses.create` | Custom (`call_with_retry`, 3 attempts) | `reasoning={"effort": effort}` (`is_reasoning=True`) |
+| **Anthropic** | `client.messages.create` | SDK built-in (`max_retries=2`) | `thinking={"type": "enabled", "budget_tokens": ...}` |
 
 ---
 
 ## Usage Examples
 
-### 1. Generating an Estimation with Default Options
-
-Invoke `generate_estimation` with a meeting transcription string:
-
-```python
-from aie_estimator.services import llm_service
-
-transcription = "Client requires an e-commerce backend with Stripe integration and inventory management."
-result = llm_service.generate_estimation(transcription)
-
-print(result["estimation"])
-print(result["model"])
-print(result["provider"])
-```
-
-### 2. Passing Generation Options
-
-Configure custom model overrides, two-phase preprocessing, or extended thinking budgets via `GenerationOptions`:
+### 1. Generate Estimation (Default & Custom Options)
 
 ```python
 from aie_estimator.services.llm_service import GenerationOptions, generate_estimation
 
+# Default options (gpt-4o-mini, 3 markdown examples, no preprocessing)
+result = generate_estimation("Client needs an e-commerce backend with Stripe integration...")
+
+# Custom options
 opts = GenerationOptions(
-    model="gpt-6-luna",
-    two_phase=True,
+    preprocessing="two_phase",
+    example_format="markdown",
+    num_examples=3,
+    use_examples=True,
+    model="claude-haiku-4-5-20251001",
+    max_tokens=4000,
     thinking_budget=2048,
-    temperature=None,
 )
-
-result = generate_estimation(transcription, opts=opts)
+result = generate_estimation("Raw transcript...", opts=opts)
 ```
 
-### 3. Direct Provider Invocations
-
-When executing raw completions, call `_call_openai` or `_call_anthropic` with the normalized signature `(messages, system_prompt, model, max_tokens, ...)`:
+### 2. Prompt Construction & Requirement Extraction
 
 ```python
-from aie_estimator.services.llm_service import _call_anthropic, _call_openai
-
-# OpenAI Responses API invocation
-openai_response = _call_openai(
-    messages="Estimate this backend project...",
-    system_prompt="You are a senior technical estimator.",
-    model="gpt-4o-mini",
-    max_tokens=2048,
+from aie_estimator.services.llm_service import (
+    GenerationOptions,
+    build_system_prompt,
+    extract_requirements,
 )
 
-# Anthropic Messages API invocation
-anthropic_response = _call_anthropic(
-    messages=[{"role": "user", "content": "Estimate this backend project..."}],
-    system_prompt="You are a senior technical estimator.",
-    model="gpt-6-luna",
-    max_tokens=4096,
+system_prompt = build_system_prompt(
+    example_format="json",
+    num_examples=2,
+    use_examples=True,
+    inline_cleaning=True,
+)
+
+clean_reqs, prep_usage = extract_requirements(
+    transcription="Raw meeting transcript...",
+    opts=GenerationOptions(model="gpt-4o-mini"),
 )
 ```
 
-### 4. Client Lifecycle Management
-
-Cached client instances are retrieved via factory functions:
+### 3. Direct Provider & Client Lifecycle Calls
 
 ```python
-from aie_estimator.services.llm_service import _reset_clients, get_anthropic_client, get_openai_client
+from aie_estimator.services.llm_service import (
+    _call_anthropic,
+    _call_openai,
+    _reset_clients,
+    get_anthropic_client,
+    get_openai_client,
+)
 
-openai_client = get_openai_client()
-anthropic_client = get_anthropic_client()
+openai_res = _call_openai("Estimate project...", "System prompt", "gpt-4o-mini", max_tokens=2048)
+anthropic_res = _call_anthropic("Estimate project...", "System prompt", "claude-haiku-4-5-20251001", max_tokens=4000)
 
-# Reset cached client singletons during testing
+# Singleton retrieval and test reset
+openai_client, anthropic_client = get_openai_client(), get_anthropic_client()
 _reset_clients()
 ```
 
@@ -88,40 +81,28 @@ _reset_clients()
 
 ## Technical Considerations
 
-### 1. OpenAI Responses API Integration
+### 1. Execution Pipeline (`generate_estimation`)
 
-- **Endpoint and Payload**: The service invokes `client.responses.create()` passing `input` (raw prompt string or normalized list of message dictionaries), `instructions` (system prompt instructions), and `max_output_tokens`.
-- **Reasoning Models**: When targeting reasoning models (`o1`, `o3`, or model identifiers matching `-6-`), `reasoning={"effort": effort}` is passed and `temperature` is omitted. If an upstream `BadRequestError` indicates unsupported temperature, the request automatically falls back to omitting `temperature`.
-- **Completion Mapping**: The Responses API returns status `completed`. The service maps this to `finish_reason="stop"` to maintain evaluation compatibility with downstream scoring functions.
-- **Privacy and Storage**: Requests are submitted with `store=False` to prevent data retention on OpenAI servers.
+1. **Preprocessing (`opts.preprocessing`)**:
+   - `"none"`: Uses raw transcription as `user_input`.
+   - `"inline_cleaning"`: Appends `INLINE_CLEANING_BLOCK` to the system prompt (single LLM call) for a simple user input cleaning.
+   - `"two_phase"`: Runs `extract_requirements` (`EXTRACTION_MAX_TOKENS = 1500`) first; replaces `user_input` with extracted Markdown requirements and records `preprocessing_input_tokens` / `preprocessing_output_tokens`.
+2. **CAG System Prompt (`build_system_prompt`)**: Combines consultant role, billing rates (`62.50 EUR/h` dev, `50 EUR/h` design), `ACTIVE_OUTPUT_PROMPT` (`PROMPT_OUTPUT_BASIC` or `PROMPT_OUTPUT_STRUCTURED`), optional `INLINE_CLEANING_BLOCK`, and `0..N` few-shot examples (`markdown`, `json`, or `narrative`).
+3. **Cache Lookup (`EstimationCache`)**: Computes a SHA-256 key from `(system_prompt, user_message, model, max_tokens, thinking_budget, preprocessing)`. Returns immediately on hit (`cache_hit=True`); persists result on miss (`cache_hit=False`).
 
-### 2. Anthropic Messages API and Extended Thinking
+### 2. OpenAI Responses API (`_call_openai` & `call_with_retry`)
 
-- **System Prompt Separation**: Anthropic separates system guidance from the conversation history; `system=system_prompt` is passed as a top-level parameter, and conversation turns are formatted as `[{"role": "user" | "assistant", "content": ...}]`.
-- **Thinking Budget**: When `thinking_budget` is configured:
-  - `thinking={"type": "enabled", "budget_tokens": thinking_budget}` is passed.
-  - `temperature` is omitted.
-  - `max_tokens` must strictly exceed `thinking_budget`.
-- **Truncation Detection**: If Anthropic returns `stop_reason == "max_tokens"`, the service emits a structured warning (`anthropic_response_truncated`).
+- **Payload**: Sends `input=messages`, `instructions=system_prompt`, `max_output_tokens=max_tokens`, and `store=False`.
+- **Reasoning vs. Temperature**: Sends `reasoning={"effort": effort}` when `spec.is_reasoning` is `True`; otherwise sends `temperature=0.3`. Automatically strips `"temperature"` and retries if a `BadRequestError` rejects it.
+- **Backoff Formula**: Retries `BadRequestError`, `RateLimitError`, `InternalServerError`, and `APIConnectionError` up to 3 times with `wait = (2 ** attempt) + SystemRandom().uniform(0, 1)`.
+- **Completion Check**: Requires `response.status == "completed"` (mapped to `finish_reason="stop"`). Raises `LLMServiceError` on `"incomplete"` or `"failed"`.
 
-### 3. Unified Error Handling and Exception Shielding
+### 3. Anthropic Messages API (`_call_anthropic`)
 
-- **Decoupling**: Domain service functions do not raise HTTP exceptions or reference web framework primitives.
-- **Logging**: When an upstream provider call fails, original API exception details, status codes, and headers are logged via `structlog.get_logger(__name__).error(...)` or `exception(...)`.
-- **Exception Normalization**: All unrecoverable upstream failures are wrapped and re-raised as `LLMServiceError`.
-- **Global Error Handling**: In `src/aie_estimator/server.py`, `@app.exception_handler(LLMServiceError)` captures these domain exceptions and returns a consistent, sanitized HTTP 500 response (`{"detail": "An error occurred while generating the estimation. Please try again later."}`).
+- **Payload**: Wraps string input as `[{"role": "user", "content": messages}]` and passes `system=system_prompt` at top level.
+- **Extended Thinking**: When `thinking_budget` is set, enables `thinking`, omits `temperature`, pads `max_tokens = max(max_tokens, thinking_budget + 1024)`, and extracts the first `type == "text"` block from `response.content`. Logs `"thinking_budget_ignored_for_provider"` if passed to an OpenAI model.
+- **Truncation Warning**: Logs `"llm_response_truncated"` when `stop_reason == "max_tokens"`.
 
-### 4. Exponential Backoff and Jitter
+### 4. Error Shielding
 
-The OpenAI call engine implements exponential backoff with full jitter:
-
-```text
-wait_time = random(0, min(MAX_RETRY_DELAY, BASE_RETRY_DELAY * (2 ** attempt)))
-```
-
-Default parameters:
-- `BASE_RETRY_DELAY = 1.0` second
-- `MAX_RETRY_DELAY = 16.0` seconds
-- `MAX_RETRIES = 3` attempts
-
-Transient errors (`RateLimitError`, `APIConnectionError`, `InternalServerError`) trigger backoff, while non-retryable errors (`AuthenticationError`, `BadRequestError`) abort immediately.
+All upstream SDK exceptions and non-completed states are logged via `structlog` and normalized into `LLMServiceError`, decoupled from FastAPI HTTP primitives.
