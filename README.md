@@ -27,31 +27,29 @@ The project enforces strict separation of concerns across dedicated application 
 
 ```mermaid
 flowchart TD
-    Client(["Streamlit UI / Caller"]) -->|"POST /api/v1/estimate\n(EstimationRequest)"| Router["Router: EstimationsRouter\n(Pydantic Validation)"]
+    Client(["Streamlit Conversational UI / Caller"])
+
+    Client -->|"1. POST /api/v1/estimate\n(EstimationRequest)"| Router["Router: EstimationsRouter\n(Pydantic Ingress Validation)"]
 
     subgraph ServiceLayer ["LLM Service Layer"]
-        Router -->|"Valid transcription"| PromptBuilder["CAG Prompt Assembly"]
+        Router -->|"2. Transcription payload"| Preprocessing["Preprocessing\n(Optional: extract_requirements)"]
+        Preprocessing --> PromptBuilder["CAG Prompt Assembly"]
 
-        subgraph ContextStore ["CAG Context"]
-            Examples[("Reference Estimations\ncontext/examples.py")]
-            Role["System Instructions\n(Senior Estimator Role)"]
-        end
+        Context[("CAG Context\n(Role + Canonical Examples)")] --> PromptBuilder
 
-        Examples -->|"Inject few-shot examples"| PromptBuilder
-        Role -->|"Inject role & guidelines"| PromptBuilder
-
-        PromptBuilder -->|"Assemble payload"| CacheCheck{"Exact-Match Cache\n(Redis SHA-256)"}
+        PromptBuilder -->|"3. Query cache key"| CacheCheck{"Exact-Match Cache\n(Redis SHA-256)"}
 
         CacheCheck -->|"Cache Hit"| ServiceOutput["Result Dictionary"]
         CacheCheck -->|"Cache Miss"| Dispatcher["Multi-Provider Dispatcher\n(Retry & Backoff)"]
+
+        Dispatcher -->|"API call"| LLMProvider["LLM Provider\n(OpenAI & Anthropic APIs)"]
+        LLMProvider -->|"Store output"| CacheStore[("Redis Cache Store")]
+        CacheStore -.->|"Populates for subsequent requests"| CacheCheck
+        CacheStore --> ServiceOutput
     end
 
-    Dispatcher -->|"API call"| LLMProvider["LLM Provider\n(OpenAI & Anthropic APIs)"]
-    LLMProvider -->|"Estimation text & usage"| CacheStore["Store in Redis Cache"]
-    CacheStore --> ServiceOutput
-
-    ServiceOutput -->|"Result dictionary"| Router
-    Router -->|"HTTP 200: EstimationResponse\n(estimation, model, provider)"| Client
+    ServiceOutput -->|"4. Assembly result"| Evaluator["Router Evaluation\n(StructureCheck Level-1)"]
+    Evaluator -->|"5. HTTP 200: EstimationResponse\n(Iterative refinement in chat)"| Client
 ```
 
 ## Project Structure
