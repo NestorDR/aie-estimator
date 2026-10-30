@@ -27,13 +27,11 @@ The project enforces strict separation of concerns across dedicated application 
 
 ```mermaid
 flowchart TD
-    subgraph ClientLayer ["Client Interface"]
-        Client(["Streamlit Conversational UI / Caller"])
+    subgraph ClientLayer ["Client Interface / Caller"]
+        Client(["Streamlit Conversational UI"])
     end
 
-    Router["Router: EstimationsRouter\n(Pydantic Ingress Validation)"]
-
-    Client -->|"1. POST /api/v1/estimate\n(EstimationRequest)"| Router
+    Client -->|"1. POST /api/v1/estimate\n(EstimationRequest)"| Router["Router: EstimationsRouter\n(Pydantic Ingress Validation)"]
     Router -->|"2. Transcription payload"| Preprocessing
 
     subgraph ServiceLayer ["LLM Service Layer"]
