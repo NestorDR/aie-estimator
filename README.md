@@ -289,6 +289,7 @@ Verify local setup against the baseline project criteria:
 
 Detailed architecture guides and technical documentation are maintained in the [`docs/`](docs/) directory:
 
+- [API Schemas & Data Contracts](docs/api-schemas.md): Request and response payload schemas, field validation rules, token accounting, and Level-1 structural evaluation scoring.
 - [LLM Service Architecture & Multi-Provider Integration](docs/llm-service.md): Deep dive into OpenAI Responses API, Anthropic Messages API, extended thinking, client lifecycle, retry backoff, and exception handling.
 - [Model Catalog & Request Validation](docs/model-catalog.md): Centralized model catalog, supported OpenAI/Anthropic models, reasoning metadata, and boundary validation.
 - [Conversational UI & Exact-Match Cache](docs/streamlit-conversational-ui.md): Streamlit chat interface, simulated progressive streaming, deterministic Redis exact-match caching, and graceful degradation.

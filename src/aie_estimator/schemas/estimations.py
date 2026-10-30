@@ -45,7 +45,9 @@ class EstimationRequest(BaseModel):
     model: str | None = Field(
         default=get_settings().llm_model,
         validate_default=True,
-        # json_schema_extra={"enum": list(SUPPORTED_MODELS)},
+        # `json_schema_extra` informs FastAPI's OpenAPI schema generator, which Swagger UI (/docs) reads 
+        #  to render an interactive <select> dropdown menu in the browser.
+        json_schema_extra={"enum": list(SUPPORTED_MODELS)},
         description="Override the default LLM model for this request. Must be one of the catalog supported models.",
     )
     max_tokens: int = Field(

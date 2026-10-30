@@ -30,7 +30,7 @@ def evaluate_estimation_structure(text: str, finish_reason: str) -> StructureChe
     Pure regex/parsing — no LLM call. Evaluates whether the generated output conforms
     to structural requirements (title, table breakdown, totals, team, duration).
 
-    :param text: Generated markdown estimation text to evaluate.
+    :param text: Generated Markdown estimation text to evaluate.
     :param finish_reason: Upstream model finish reason indicator.
 
     :return: StructureCheck instance containing structural validation results.
