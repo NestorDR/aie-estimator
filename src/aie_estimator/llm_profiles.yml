@@ -1,0 +1,114 @@
+# src/aie_estimator/llm_profiles.yml
+
+# ------------------------------------------------------------------------------
+# General Engine & Privacy Guardrails
+# ------------------------------------------------------------------------------
+general_settings:
+  disable_telemetry: true       # Enforce strict zero-telemetry (GDPR / Corporate compliance)
+  drop_params: true             # Automatically strip unsupported parameters per provider to avoid 400 Bad Requests
+  modify_params: true           # Allow LiteLLM to normalize heterogeneous reasoning and token schemas
+
+# ------------------------------------------------------------------------------
+# Router Strategy & Resilience Configuration
+# ------------------------------------------------------------------------------
+router_settings:
+  # Route traffic dynamically to the lowest-cost healthy provider within each profile tier
+  routing_strategy: "cost-based-routing"
+
+  # Maximum network/execution retries before rotating to the next provider
+  num_retries: 2
+
+  # Global per-call timeout in seconds before triggering transient failover
+  timeout: 30.0
+
+  # Cross-tier fallback policy: If Tier 1 exhaustion occurs, promote to Tier 2
+  fallbacks:
+    - reasoner-fast: ["reasoner-deep"]
+
+# ------------------------------------------------------------------------------
+# Logical Model Catalog
+# ------------------------------------------------------------------------------
+model_list:
+  # ============================================================================
+  # PROFILE: reasoner-fast (Tier 1)
+  # Primary Scope: Phase-1 extraction, CAG few-shot parsing, standard estimations
+  # Strategy: Sub-dollar per million tokens, minimal latency, lightweight reasoning
+  # ============================================================================
+
+  # OpenAI 6 (Low-latency compact reasoning engine)
+  - model_name: "reasoner-fast"
+    litellm_params:
+      model: "openai/gpt-6-luna"
+      api_key: "os.environ/OPENAI_API_KEY"
+      reasoning_effort: "low" # Qualitative categorical effort mapping for OpenAI schemas
+
+  # Google Gemini (Ultra-low cost high-volume baseline)
+  - model_name: "reasoner-fast"
+    litellm_params:
+      model: "gemini/gemini-3.5-flash-lite"
+      api_key: "os.environ/GEMINI_API_KEY"
+      reasoning_effort: "low"
+
+  # Anthropic Haiku
+  - model_name: "reasoner-fast"
+    litellm_params:
+      model: "claude-haiku-5-5"
+      api_key: "os.environ/ANTHROPIC_API_KEY"
+      thinking:
+        type: "adaptive"
+      output_config:
+        effort: "low"
+
+  # Mistral AI (European Sovereign Endpoint - Fully GDPR/AI Act Compliant)
+  - model_name: "reasoner-fast"
+    litellm_params:
+      model: "mistral/mistral-small-3.2-24b-instruct"
+      api_key: "os.environ/MISTRAL_API_KEY"
+      temperature: 0.15 # Deterministic output for rate and calculation stability
+
+  # DeepSeek (Hosted on European Cloud of Scaleway Paris DC)
+  - model_name: "reasoner-fast"
+    litellm_params:
+      model: "openai/deepseek-ai/DeepSeek-V4-Flash"
+      api_base: "https://api.scaleway.ai/v1"
+      api_key: "os.environ/SCALEWAY_API_KEY"
+      input_cost_per_token: 0.00000015   # Scaleway real rate at Oct 30, 2026
+      output_cost_per_token: 0.00000030
+      temperature: 0.2
+
+  # ============================================================================
+  # PROFILE: reasoner-deep (Tier 2)
+  # Primary Scope: Complex transcriptions, contradictory requirements, risk matrices
+  # Strategy: Frontier models with extended chain-of-thought budgets and deep synthesis
+  # ============================================================================
+
+  # OpenAI 6 (Deep architectural reasoning mode)
+  - model_name: "reasoner-deep"
+    litellm_params:
+      model: "openai/gpt-6-luna"
+      api_key: "os.environ/OPENAI_API_KEY"
+      reasoning_effort: "high"
+
+  # Google Gemini (Extended reasoning Flash model)
+  - model_name: "reasoner-deep"
+    litellm_params:
+      model: "gemini/gemini-3.8-flash"
+      api_key: "os.environ/GEMINI_API_KEY"
+      reasoning_effort: "medium"
+
+  # Anthropic Claude Sonnet (Premier analytical reasoning benchmark)
+  - model_name: "reasoner-deep"
+    litellm_params:
+      model: "claude-sonnet-5-5"
+      api_key: "os.environ/ANTHROPIC_API_KEY"
+      thinking:
+        type: "adaptive"
+      output_config:
+        effort: "medium"
+
+  # DeepSeek - (European High-Compute Sovereign Reasoning Nebius AI Netherlands/EU DC)
+  - model_name: "reasoner-deep"
+    litellm_params:
+      model: "openai/deepseek-ai/DeepSeek-R2"
+      api_base: "https://api.nebius.ai/v1"
+      api_key: "os.environ/NEBIUS_API_KEY"

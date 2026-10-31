@@ -73,11 +73,11 @@ When an identical transcription is submitted again with the same parameters:
 
 ### 1. Decoupled HTTP Architecture
 
-`streamlit_app.py` acts strictly as an HTTP client communicating with `POST /api/v1/estimate` using `httpx.Client`. The backend router contract and Pydantic validation schemas remain untouched, preventing coupling between UI presentation and core service internals.
+`streamlit_app.py` acts strictly as an HTTP client communicating with `POST /api/v1/estimate` using `httpx.AsyncClient` invoked via `asyncio.run()`. The backend router contract and Pydantic validation schemas remain untouched, preventing coupling between UI presentation and core service internals while preparing the client for native Server-Sent Events (SSE) streaming.
 
 ### 2. Simulated Progressive Streaming
 
-Because the `POST /api/v1/estimate` endpoint operates synchronously in this stage, `streamlit_app.py` emulates streaming output via `st.write_stream` using a word-level generator with a 10 ms delay:
+Because the `POST /api/v1/estimate` endpoint operates without SSE streaming in this stage, `streamlit_app.py` emulates streaming output via `st.write_stream` using a word-level generator with a 10 ms delay:
 
 ```python
 def simulate_stream(text: str, delay_seconds: float = 0.01) -> Iterator[str]:
@@ -91,16 +91,17 @@ This delivers progressive visual feedback while preparing a drop-in migration pa
 
 ### 3. Deterministic SHA-256 Cache Keying
 
-Cache keys are computed using a SHA-256 hash across all input parameters that affect output generation:
+Cache keys are computed using a SHA-256 hash across all input parameters that affect output generation, including `engine`:
 
 ```python
 payload = json.dumps(
     {
+        "engine": engine,
         "max_tokens": max_tokens,
         "model": model,
         "preprocessing": preprocessing,
+        "reasoning_effort": reasoning_effort,
         "system_prompt": system_prompt,
-        "thinking_budget": thinking_budget,
         "user_message": user_message,
     },
     sort_keys=True,
@@ -112,10 +113,11 @@ Because the `system_prompt` string incorporates active instructions, pricing rat
 
 ### 4. Resilience and Graceful Degradation
 
-Redis operations in `EstimationCache` are encapsulated in try/except blocks catching `redis.RedisError`. If Redis is offline, unconfigured, or unreachable:
-- Cache lookups log a warning and return `None` (cache miss).
-- Cache storage attempts log a warning and return silently.
+Redis operations in `EstimationCache` are non-blocking asynchronous coroutines implemented with `redis.asyncio.Redis` and encapsulated in try/except blocks catching `redis.exceptions.RedisError`. If Redis is offline, unconfigured, or unreachable:
+- Asynchronous cache lookups (`await cache.get(key)`) log a warning and return `None` (cache miss).
+- Asynchronous cache storage attempts (`await cache.set(key, ...)`) log a warning and return silently.
 - Estimation requests complete normally through direct LLM calls without throwing HTTP 500 errors.
+- On shutdown, `await cache.close()` cleanly closes the connection pool.
 
 ### 5. Environment Configuration & Settings
 

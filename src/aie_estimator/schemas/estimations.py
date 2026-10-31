@@ -7,11 +7,13 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 # --- App modules ---
-from aie_estimator.schemas.models import SUPPORTED_MODELS
+from aie_estimator.schemas.models import get_supported_models
 from aie_estimator.settings import get_settings
 
 PreprocessingMode = Literal["none", "inline_cleaning", "two_phase"]
 ExampleFormat = Literal["markdown", "json", "narrative"]
+ExecutionEngine = Literal["litellm", "native"]
+ReasoningEffort = Literal["low", "medium", "high"]
 
 
 class EstimationRequest(BaseModel):
@@ -43,11 +45,11 @@ class EstimationRequest(BaseModel):
         description="Toggle the CAG examples block on/off (overrides num_examples when False)",
     )
     model: str | None = Field(
-        default=get_settings().llm_model,
+        default=None,
         validate_default=True,
-        # `json_schema_extra` informs FastAPI's OpenAPI schema generator, which Swagger UI (/docs) reads 
-        #  to render an interactive <select> dropdown menu in the browser.
-        json_schema_extra={"enum": list(SUPPORTED_MODELS)},
+        # `json_schema_extra` informs FastAPI's OpenAPI schema generator, which Swagger UI (/docs) reads
+        # to render an interactive <select> dropdown menu in the browser.
+        json_schema_extra=lambda schema: schema.update(enum=get_supported_models()),
         description="Override the default LLM model for this request. Must be one of the catalog supported models.",
     )
     max_tokens: int = Field(
@@ -56,33 +58,36 @@ class EstimationRequest(BaseModel):
         le=16000,
         description="Maximum output tokens for the estimation call",
     )
-    thinking_budget: int | None = Field(
+    reasoning_effort: ReasoningEffort | None = Field(
         default=None,
-        ge=0,
-        le=16000,
-        description="Extended thinking budget (Anthropic only). Ignored for OpenAI.",
+        description="Qualitative reasoning effort tier: 'low' | 'medium' | 'high'.",
     )
     evaluate: bool = Field(
         default=True,
         description="Run the structural evaluation on the generated estimation",
+    )
+    engine: ExecutionEngine = Field(
+        default="litellm",
+        description="Execution engine: 'litellm' for dynamic multi-provider routing, or 'native' for legacy direct SDK calls.",
     )
     # endregion Added in live session
 
     @field_validator("model", mode="after")
     @classmethod
     def validate_model(cls, value: str | None) -> str:
-        """Validate that the model is registered in SUPPORTED_MODELS.
+        """Validate that the model is registered in the model catalog or logical profiles.
 
         :param value: Optional model identifier from request.
 
         :return: Validated model identifier, defaulting to settings.llm_model if None.
-        :raises ValueError: If a model is not registered in SUPPORTED_MODELS.
+        :raises ValueError: If a model is not registered in the catalog.
         """
         if value is None or value in ("none", ""):
             return get_settings().llm_model
-        if value not in SUPPORTED_MODELS:
-            supported = ", ".join(SUPPORTED_MODELS)
-            raise ValueError(f"Input should be one of: {supported}")
+        supported = get_supported_models()
+        if value not in supported:
+            supported_str = ", ".join(supported)
+            raise ValueError(f"Input should be one of: {supported_str}")
         return value
 
 
@@ -121,6 +126,10 @@ class EstimationResponse(BaseModel):
     estimation: str = Field(..., description="Formatted software project effort estimation breakdown.")
     model: str = Field(..., description="Model identifier used to produce the estimation.")
     provider: str = Field(..., description="LLM provider name used to produce the estimation.")
+    cost_usd: float | None = Field(
+        default=None,
+        description="Calculated execution cost in USD reported by the routing engine.",
+    )
 
     # region Added in live session
     usage: TokenUsage

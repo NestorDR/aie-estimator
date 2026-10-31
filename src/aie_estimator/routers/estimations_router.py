@@ -10,7 +10,7 @@ import structlog
 
 # --- App modules ---
 from aie_estimator.schemas.estimations import EstimationRequest, EstimationResponse
-from aie_estimator.services import llm_service, evaluation
+from aie_estimator.services import evaluation, llm_service
 
 log: Final[logging.Logger] = structlog.get_logger()
 
@@ -43,10 +43,11 @@ async def create_estimation(request: EstimationRequest) -> EstimationResponse:
         use_examples=request.use_examples,
         model=request.model,
         max_tokens=request.max_tokens,
-        thinking_budget=request.thinking_budget,
+        reasoning_effort=request.reasoning_effort,
+        engine=request.engine,
     )
 
-    result = llm_service.generate_estimation(request.transcription, opts)
+    result = await llm_service.generate_estimation(request.transcription, opts)
 
     validation = evaluation.evaluate_estimation_structure(result["estimation"], result["finish_reason"]) if request.evaluate else None
 

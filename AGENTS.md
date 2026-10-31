@@ -73,6 +73,10 @@ Deliver technical text without rhetorical padding. Adhere strictly to these omis
 
 ## 7. Key Reference Files
 - `src/aie_estimator/__main__.py`: Entry point for the CLI.
+- `src/aie_estimator/llm_profiles.yml`: Reasoning profile configurations, fallbacks, and cost-routing candidate models.
+- `src/aie_estimator/services/litellm_provider.py`: LiteLLM Router integration, reasoning parameter dispatch, and cost extraction.
+- `src/aie_estimator/services/native_providers.py`: Native provider dispatch for OpenAI and Anthropic SDKs.
+- `src/aie_estimator/services/cache.py`: Exact-match Redis caching service.
 - `auto/`: Windows command automation scripts (`dev.cmd`, `stl.cmd`, `dc.cmd`, `lint.cmd`, `test.cmd`, `update.cmd`, `cleanup.cmd`).
 - `docker/`: Multi-stage production `Dockerfile` and Docker Compose definitions (`docker-compose.dev.yml`, `docker-compose.prod.yml`).
 - `pyproject.toml`: Dependency management and build configuration (`uv_build`, `ruff`, `pytest`).

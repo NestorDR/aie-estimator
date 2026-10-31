@@ -14,6 +14,7 @@ import structlog
 
 # --- App modules ---
 from aie_estimator.routers import estimations_router, health_router
+from aie_estimator.services.cache import get_estimation_cache
 from aie_estimator.services.llm_service import LLMServiceError
 from aie_estimator.settings import Settings, get_settings
 
@@ -85,6 +86,8 @@ class Server:
             if db_pool:
                 await db_pool.close()
                 self.log.info("database_connection_pool_closed")
+            cache = get_estimation_cache()
+            await cache.close()
             self.log.info("api_shutdown_completed")
 
     def _register_routers(self, app: FastAPI) -> None:

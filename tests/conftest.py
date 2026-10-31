@@ -12,10 +12,23 @@ from pydantic import SecretStr
 import pytest
 
 # --- App modules ---
+from aie_estimator.schemas.models import DEFAULT_GPT_LLM, get_model_catalog, get_supported_models
 from aie_estimator.server import Server
-from aie_estimator.services.cache import _reset_estimation_cache
-from aie_estimator.services.llm_service import _reset_clients
+from aie_estimator.services.cache import get_estimation_cache
+from aie_estimator.services.litellm_provider import get_litellm_router
+from aie_estimator.services.native_providers import get_anthropic_client, get_openai_client
 from aie_estimator.settings import Environment, Settings, get_settings
+
+
+def _clear_all_caches() -> None:
+    """Clear all application @lru_cache singletons between tests."""
+    get_settings.cache_clear()
+    get_openai_client.cache_clear()
+    get_anthropic_client.cache_clear()
+    get_litellm_router.cache_clear()
+    get_model_catalog.cache_clear()
+    get_supported_models.cache_clear()
+    get_estimation_cache.cache_clear()
 
 
 @pytest.fixture(autouse=True)
@@ -25,13 +38,9 @@ def clean_settings_cache() -> Generator[None, None, None]:
 
     :return: None.
     """
-    get_settings.cache_clear()
-    _reset_clients()
-    _reset_estimation_cache()
+    _clear_all_caches()
     yield
-    get_settings.cache_clear()
-    _reset_clients()
-    _reset_estimation_cache()
+    _clear_all_caches()
 
 
 @pytest.fixture
@@ -44,7 +53,7 @@ def test_settings() -> Settings:
     return Settings(
         app_env=Environment.TEST,
         openai_api_key=SecretStr("sk-test-mock-key-12345"),
-        llm_model="gpt-4o-mini",
+        llm_model=DEFAULT_GPT_LLM,
     )
 
 
@@ -83,7 +92,7 @@ def mock_openai_response() -> MagicMock:
     mock_resp = MagicMock()
     mock_resp.status = "completed"
     mock_resp.output_text = "Estimated project duration: 3 weeks. Total effort: 120 hours."
-    mock_resp.model = "gpt-4o-mini"
+    mock_resp.model = DEFAULT_GPT_LLM
     return mock_resp
 
 

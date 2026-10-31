@@ -2,44 +2,42 @@
 
 ## Overview
 
-The `aie-estimator` service utilizes a centralized, typed model catalog to manage supported Large Language Models across multiple upstream providers (**OpenAI** and **Anthropic**).
+The `aie-estimator` service utilizes an externalized, dynamic model catalog defined in `src/aie_estimator/llm_profiles.yml` and accessed via `src/aie_estimator/schemas/models.py`.
 
 The catalog serves four primary architectural purposes:
-1. **Request Boundary Validation**: Enforces strict payload validation via Pydantic and `@field_validator` against `SUPPORTED_MODELS`, rejecting unsupported or placeholder values (such as Swagger's default `"string"`) with HTTP 422 Unprocessable Entity before any service execution or external API calls occur.
-2. **OpenAPI / Swagger UI Hardening**: Automatically renders an interactive `<select>` dropdown menu in Swagger UI (`/docs`), preventing invalid free-text placeholders.
-3. **Model-Driven Provider Dispatch**: Determines the target upstream provider dynamically based on model metadata (`ModelSpec.provider`), completely eliminating the need for a separate `LLM_PROVIDER` environment configuration.
-4. **Structured Capability Mapping**: Replaces brittle substring heuristics (`startswith(...)` or `"-6-" in model`) with an explicit `is_reasoning` capability flag across both OpenAI and Anthropic models.
+1. **Request Boundary Validation**: Validates client request payloads against `get_supported_models()`, accepting both logical routing profiles (`reasoner-fast`, `reasoner-deep`) and direct physical models (`gpt-6-luna`, `claude-haiku-5-5`), rejecting invalid or placeholder inputs with HTTP 422 Unprocessable Entity.
+2. **Dynamic Configuration Externalization**: Defines models, provider parameters, reasoning effort, token budgets, and fallback tiers in YAML rather than hardcoded Python dictionaries.
+3. **Logical Abstraction Over Physical Models**: Provides abstract profiles (`reasoner-fast`, `reasoner-deep`) that allow callers to express reasoning intent while the router dynamically balances cost and latency across upstream providers.
+4. **Structured Capability Mapping**: Each catalog entry is represented by a `ModelSpec` dataclass specifying `provider`, `is_reasoning`, and `is_profile`.
 
 ---
 
-## Supported Models Catalog
+## Supported Models and Logical Profiles
 
-| Model Identifier            | Provider    | Reasoning Capable | Notes                                                                            |
-|:----------------------------|:------------|:-----------------:|:---------------------------------------------------------------------------------|
-| `gpt-4o-mini`               | `openai`    |        No         | Default low-latency OpenAI model for fast estimates.                             |
-| `gpt-4o`                    | `openai`    |        No         | Standard high-accuracy multimodal OpenAI model.                                  |
-| `o3-mini`                   | `openai`    |        Yes        | Efficient reasoning model.                                                       |
-| `gpt-5-nano`                | `openai`    |        Yes        | Advanced OpenAI reasoning model.                                                 |
-| `gpt-6-luna`                | `openai`    |        Yes        | Reasoning model; receives `reasoning={"effort": effort}` instead of temperature. |
-| `claude-haiku-4-5-20251001` | `anthropic` |        Yes        | Fast Anthropic model with extended thinking budget support.                      |
+| Model Identifier | Provider | Reasoning Capable | Logical Profile | Purpose / Target Scope |
+| :--- | :--- | :---: | :---: | :--- |
+| `reasoner-fast` | `litellm` | Yes | Yes | Tier-1 cost-optimized reasoning (GPT-6 Luna, Gemini 3.5 Flash Lite, Claude Haiku 5.5, Mistral Small, Scaleway DeepSeek V4 Flash). |
+| `reasoner-deep` | `litellm` | Yes | Yes | Tier-2 deep synthesis reasoning (GPT-6 Luna High, Gemini 3.8 Flash, Claude Sonnet 5.5, Nebius DeepSeek R2). |
+| `gpt-6-luna` | `openai` | Yes | No | Default OpenAI reasoning model with qualitative reasoning effort. |
+| `claude-haiku-5-5` | `anthropic` | Yes | No | Anthropic reasoning model with adaptive thinking and qualitative effort support. |
 
 ---
 
 ## Usage Examples
 
-### 1. Specifying Model in API Payload
+### 1. Specifying Model or Profile in API Payload
 
-Clients can optionally override the default model in `POST /api/v1/estimate`:
+Clients can pass either a logical profile or a physical model identifier in `POST /api/v1/estimate`:
 
 ```json
 {
   "transcription": "Client: We need a scalable notification service supporting email and SMS. Launch target is within 3 weeks.",
-  "model": "gpt-5-nano",
-  "thinking_budget": 2048
+  "model": "reasoner-fast",
+  "engine": "litellm"
 }
 ```
 
-If `model` is omitted or passed as `null`, the request validator automatically defaults it to `settings.llm_model` (e.g. `"gpt-4o-mini"`).
+If `model` is omitted or passed as `null`, the request validator defaults it to `settings.llm_model` (e.g. `"gpt-6-luna"`).
 
 If an unsupported model string is provided:
 
@@ -59,46 +57,38 @@ The endpoint immediately returns HTTP 422:
     {
       "type": "value_error",
       "loc": ["body", "model"],
-      "msg": "Value error, Input should be one of: gpt-4o-mini, gpt-4o, o3-mini, gpt-5-nano, gpt-6-luna, claude-haiku-4-5-20251001"
+      "msg": "Value error, Input should be one of: reasoner-fast, reasoner-deep, gpt-6-luna, claude-haiku-5-5"
     }
   ]
 }
 ```
 
-### 2. Inspecting Catalog Specs Programmatically
+### 2. Inspecting Catalog Programmatically
 
 ```python
-from aie_estimator.schemas.models import MODEL_CATALOG, SUPPORTED_MODELS, ModelSpec
+from aie_estimator.schemas.models import (
+    DEFAULT_FAST_PROFILE,
+    PROVIDER_PREFIXES,
+    get_model_catalog,
+    get_supported_models,
+)
 
-print(SUPPORTED_MODELS)  # ("gpt-4o-mini", "gpt-4o", ...)
-spec: ModelSpec = MODEL_CATALOG["gpt-6-luna"]
-print(spec.provider)  # "openai"
-print(spec.is_reasoning)  # True
+# Dynamic accessor functions
+catalog = get_model_catalog()
+supported = get_supported_models()
+
+spec = catalog[DEFAULT_FAST_PROFILE]
+print(spec.is_profile)   # True
+print(spec.provider)     # "litellm"
+print(spec.is_reasoning) # True
 ```
-
-### 3. Adding a New Model
-
-To register a new model in the catalog:
-1. Open `src/aie_estimator/schemas/models.py`.
-2. Add a corresponding `ModelSpec` entry to `MODEL_CATALOG`. `SUPPORTED_MODELS`, request schema validation, and Swagger documentation update automatically with zero redundancy.
 
 ---
 
 ## Technical Considerations
 
-### Boundary Validation vs Upstream 500s
-Previously, unvalidated model inputs were forwarded directly to upstream vendor endpoints, causing OpenAI `NotFoundError (404)` exceptions that were masked as internal server errors (HTTP 500). Constraining the request model field using `SUPPORTED_MODELS` with `json_schema_extra` and `@field_validator("model", mode="after")` guarantees that client payload errors fail immediately at the HTTP perimeter while keeping interactive Swagger UI `<select>` menus intact.
+### Boundary Validation
+Model validation is dynamic, executed by `@field_validator("model", mode="after")` using `get_supported_models()`. OpenAPI documentation exposes the allowed options via `json_schema_extra={"enum": list(get_supported_models())}` so interactive Swagger UI dropdown menus stay synchronized with `llm_profiles.yml`.
 
-### Model-Driven Provider Dispatch
-Provider selection is entirely derived from `MODEL_CATALOG`:
-
-```python
-model = opts.model or settings.llm_model
-spec = MODEL_CATALOG.get(model)
-provider = spec.provider if spec is not None else settings.llm_provider
-```
-
-The system no longer requires a separate `LLM_PROVIDER` environment variable. Instead, `Settings.llm_provider` is a read-only computed property resolving to `MODEL_CATALOG[settings.llm_model].provider`. Both `extract_requirements` and `generate_estimation` route dynamically according to the requested model.
-
-### Reasoning Parameter Exclusivity
-When dispatching to OpenAI's Responses API (`_call_openai`), reasoning models (`spec.is_reasoning == True`) receive `reasoning={"effort": effort}` while `temperature` is omitted to prevent `BadRequestError`.
+### Configuration Fallback
+If `src/aie_estimator/llm_profiles.yml` is missing or temporarily unreadable, `get_model_catalog()` gracefully returns `_DEFAULT_CATALOG` to prevent startup panics or cascading service crashes.

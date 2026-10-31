@@ -17,7 +17,7 @@ import structlog
 from structlog.processors import CallsiteParameter, CallsiteParameterAdder
 
 # --- App modules ---
-from aie_estimator.schemas.models import MODEL_CATALOG
+from aie_estimator.schemas.models import DEFAULT_GPT_LLM, PROVIDER_PREFIXES, UNKNOWN_PROVIDER, get_model_catalog
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
 
@@ -33,9 +33,7 @@ class Environment(str, Enum):
 
 
 class Settings(BaseSettings):
-    """
-    Application settings loaded from environment variables for a specific environment.
-    """
+    """ Application settings loaded from environment variables for a specific environment. """
 
     # Application environment and version
     app_env: Environment = Environment.DEV
@@ -54,7 +52,10 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr | None = None
     gemini_api_key: SecretStr | None = None
     openai_api_key: SecretStr | None = None
-    llm_model: str = "gpt-4o-mini"
+    mistral_api_key: SecretStr | None = None
+    scaleway_api_key: SecretStr | None = None
+    nebius_api_key: SecretStr | None = None
+    llm_model: str = DEFAULT_GPT_LLM
 
     # Cache settings
     redis_host: str = "localhost"
@@ -63,12 +64,13 @@ class Settings(BaseSettings):
 
     @property
     def llm_provider(self) -> str:
-        """Derive the default provider from llm_model via MODEL_CATALOG.
-
-        :return: Provider identifier ('openai' or 'anthropic').
         """
-        spec = MODEL_CATALOG.get(self.llm_model)
-        return spec.provider if spec is not None else "openai"
+        Derive the default provider from llm_model via the model catalog.
+
+        :return: Provider identifier ('openai', 'anthropic', 'litellm', etc.), or UNKNOWN_PROVIDER if not found.
+        """
+        spec = get_model_catalog().get(self.llm_model)
+        return spec.provider if spec is not None else UNKNOWN_PROVIDER
 
     # Configure env file handling
     model_config = SettingsConfigDict(
@@ -124,6 +126,9 @@ class Settings(BaseSettings):
             # Configure structlog immediately after base settings initialization
             self.configure_logging()
 
+            # Mirror secret API keys into os.environ for LiteLLM and external SDKs
+            self.mirror_secrets_to_environ()
+
             try:
                 # Fetch the version from the installed package metadata
                 installed_version = importlib.metadata.version("aie_estimator")
@@ -142,6 +147,16 @@ class Settings(BaseSettings):
         except Exception as e:
             log.exception("unexpected_initialization_error", exc_info=e)
             raise Exception("Unexpected error during initialization.") from e
+
+    def mirror_secrets_to_environ(self) -> None:
+        """
+        Mirror loaded API key secrets into os.environ for third-party libraries (e.g., LiteLLM) if not already set.
+        """
+        for provider in PROVIDER_PREFIXES:
+            env_var = f"{provider.upper()}_API_KEY"
+            secret_val: SecretStr | None = getattr(self, env_var.lower(), None)
+            if secret_val is not None and not environ.get(env_var):
+                environ[env_var] = secret_val.get_secret_value()
 
     def configure_logging(self) -> None:
         """
@@ -177,7 +192,8 @@ class Settings(BaseSettings):
             cache_logger_on_first_use=self.app_env == Environment.PROD,
         )
 
-        console_renderer = structlog.processors.JSONRenderer() if use_json else structlog.dev.ConsoleRenderer(colors=True)
+        console_renderer = structlog.processors.JSONRenderer() if use_json else structlog.dev.ConsoleRenderer(
+            colors=True)
         console_formatter = structlog.stdlib.ProcessorFormatter(
             foreign_pre_chain=shared_processors,
             processors=[structlog.stdlib.ProcessorFormatter.remove_processors_meta, console_renderer],
@@ -192,7 +208,8 @@ class Settings(BaseSettings):
             log_dir.mkdir(parents=True, exist_ok=True)
             log_file = log_dir / ("app.log" if self.app_env == Environment.PROD else "dev.log")
 
-            file_renderer = structlog.processors.JSONRenderer() if use_json else structlog.dev.ConsoleRenderer(colors=False)
+            file_renderer = structlog.processors.JSONRenderer() if use_json else structlog.dev.ConsoleRenderer(
+                colors=False)
             file_formatter = structlog.stdlib.ProcessorFormatter(
                 foreign_pre_chain=shared_processors,
                 processors=[structlog.stdlib.ProcessorFormatter.remove_processors_meta, file_renderer],

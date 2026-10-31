@@ -49,8 +49,8 @@ log.info(
 )
 
 # Warning event
-if opts.thinking_budget is not None:
-    log.warning("thinking_budget_ignored_for_provider", provider="openai")
+if finish_reason == "max_tokens":
+    log.warning("llm_response_truncated", provider="anthropic", model=model, stop_reason=finish_reason)
 
 # Exception logging with traceback
 try:

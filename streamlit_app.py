@@ -1,6 +1,7 @@
 # streamlit_app.py
 
 # --- Python Standard Library ---
+import asyncio
 from collections.abc import Iterator
 import os
 import time
@@ -48,9 +49,9 @@ def simulate_stream(text: str, delay_seconds: float = STREAM_WORD_DELAY) -> Iter
         time.sleep(delay_seconds)
 
 
-def send_estimation_request(transcription: str) -> dict[str, Any]:
+async def send_estimation_request(transcription: str) -> dict[str, Any]:
     """
-    Dispatch an HTTP POST request to the backend estimation endpoint.
+    Dispatch an asynchronous HTTP POST request to the backend estimation endpoint.
 
     :param transcription: Meeting transcript text to analyze.
 
@@ -58,8 +59,8 @@ def send_estimation_request(transcription: str) -> dict[str, Any]:
     :raises httpx.HTTPError: If the backend service is unreachable or responds with an HTTP error.
     """
     payload = {"transcription": transcription}
-    with httpx.Client(timeout=120.0) as client:
-        response = client.post(estimate_endpoint, json=payload)
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        response = await client.post(estimate_endpoint, json=payload)
         response.raise_for_status()
         return response.json()
 
@@ -95,7 +96,7 @@ if prompt := st.chat_input("Paste meeting transcription text (min 50 characters)
         with st.chat_message("assistant"):
             with st.spinner("Analyzing transcription and assembling estimation..."):
                 try:
-                    result = send_estimation_request(prompt)
+                    result = asyncio.run(send_estimation_request(prompt))
                     st.session_state.last_metrics = result
                     estimation_markdown = result.get("estimation", "")
                     rendered_response = st.write_stream(simulate_stream(estimation_markdown))

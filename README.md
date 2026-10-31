@@ -18,9 +18,9 @@ The project enforces strict separation of concerns across dedicated application 
 
 - **Schemas (`src/aie_estimator/schemas`)**: Defines domain data schemas and Pydantic models (`EstimationRequest`, `EstimationResponse`) for request payload validation and response contracts.
 - **Routers (`src/aie_estimator/routers/`)**: Defines HTTP routes, endpoint documentation, status codes, and request/response handling.
-- **Services (`src/aie_estimator/services/`)**: Encapsulates business logic and LLM interactions. Assembles the CAG prompt and invokes LLM APIs with retry mechanisms.
+- **Services (`src/aie_estimator/services/`)**: Encapsulates core business logic, CAG prompt assembly, multi-provider LLM dispatch, and response caching.
 - **Context (`src/aie_estimator/context/`)**: Stores static reference datasets and few-shot estimation examples injected into model prompts.
-- **Settings (`src/aie_estimator/settings.py`)**: Environment-aware configuration and settings management powered by `pydantic-settings`, supporting structured JSON logging and credential isolation via `SecretStr`.
+- **Settings (`src/aie_estimator/settings.py`)**: Environment-aware configuration and settings management powered by `pydantic-settings`, supporting structured JSON logging, credential isolation via `SecretStr`, and secret synchronization to `os.environ`.
 - **Server (`src/aie_estimator/server.py`)**: Centralizes FastAPI application initialization, lifespan event handlers, router registration, and global exception mapping.
 
 ### Context-Augmented Generation (CAG) Workflow
@@ -43,10 +43,12 @@ flowchart TD
         PromptBuilder -->|"3. Query cache key"| CacheCheck{"Exact-Match Cache\n(Redis SHA-256)"}
 
         CacheCheck -->|"Cache Hit"| ServiceOutput["Result Dictionary"]
-        CacheCheck -->|"Cache Miss"| Dispatcher["Multi-Provider Dispatcher\n(Retry & Backoff)"]
+        CacheCheck -->|"Cache Miss"| Dispatcher["Execution Engine Dispatcher\n(LiteLLM Router / Native)"]
 
-        Dispatcher -->|"API call"| LLMProvider["LLM Provider\n(OpenAI & Anthropic APIs)"]
-        LLMProvider -->|"Store output"| CacheStore[("Redis Cache Store")]
+        Dispatcher -->|"litellm engine"| LiteLLMRouting["LiteLLM Router\n(Profiles, Cost-Routing & Backoff)"]
+        Dispatcher -->|"native engine"| NativeProviders["Native Providers\n(OpenAI & Anthropic SDKs)"]
+        LiteLLMRouting -->|"Store output"| CacheStore[("Redis Cache Store")]
+        NativeProviders -->|"Store output"| CacheStore
         CacheStore -.->|"Populates for subsequent requests"| CacheCheck
         CacheStore --> ServiceOutput
     end
@@ -68,6 +70,7 @@ aie-estimator/
 │       ├── __main__.py                 # Application CLI entry point
 │       ├── settings.py                 # Pydantic BaseSettings configuration
 │       ├── server.py                   # FastAPI server setup and lifespan handling
+│       ├── llm_profiles.yml            # LiteLLM router profiles, tiers, and telemetry config
 │       ├── .env.example                # Example environment configuration
 │       ├── context/
 │       │   ├── __init__.py
@@ -84,7 +87,9 @@ aie-estimator/
 │           ├── __init__.py
 │           ├── cache.py                # Deterministic exact-match Redis cache
 │           ├── evaluation.py           # Output evaluation and scoring
-│           └── llm_service.py          # CAG prompt assembly and multi-provider integration
+│           ├── litellm_provider.py     # LiteLLM router profiles, reasoning dispatch, and cost tracking
+│           ├── llm_service.py          # CAG prompt assembly and multi-engine coordination
+│           └── native_providers.py     # Native OpenAI and Anthropic SDK integrations
 ├── tests/                              # Unit and integration test suites
 ├── .dockerignore
 ├── .gitignore
@@ -132,7 +137,7 @@ aie-estimator/
    SERVER_PORT=8000
    OPENAI_API_KEY=your_openai_api_key_here
    ANTHROPIC_API_KEY=your_anthropic_api_key_here
-   LLM_MODEL=gpt-4o-mini
+   LLM_MODEL=gpt-6-luna
    REDIS_HOST=localhost
    REDIS_PORT=6379
    CACHE_TTL=86400
@@ -217,7 +222,12 @@ Analyzes meeting transcript text and returns an effort estimation breakdown.
 
 ```json
 {
-  "transcription": "Client requires a web platform for customer feedback collection with sentiment analysis and Slack notifications. Target release is 4 weeks."
+  "transcription": "Client requires a web platform for customer feedback collection with sentiment analysis and Slack notifications. Target release is 4 weeks.",
+  "model": "reasoner-fast",
+  "engine": "litellm",
+  "reasoning_effort": "low",
+  "preprocessing": "none",
+  "max_tokens": 4096
 }
 ```
 
@@ -226,8 +236,19 @@ Analyzes meeting transcript text and returns an effort estimation breakdown.
 ```json
 {
   "estimation": "## Estimation: Customer Feedback Platform\n\n### Task Breakdown:\n1. Backend API & Webhook Ingestion: 30 hours\n2. Sentiment Analysis Pipeline: 25 hours\n3. Slack Notification Integration: 15 hours\n4. Frontend Dashboard: 35 hours\n5. Testing & Deployment: 20 hours\n\n**Total Estimated Hours:** 125 hours\n**Recommended Team:** 2 Full-Stack Developers\n**Estimated Duration:** 3-4 weeks",
-  "model": "gpt-4o-mini",
-  "provider": "openai"
+  "model": "openai/gpt-6-luna",
+  "provider": "litellm",
+  "cost_usd": 0.00342,
+  "tokens": {
+    "prompt_tokens": 1420,
+    "completion_tokens": 380,
+    "total_tokens": 1800
+  },
+  "evaluation": {
+    "total_score": 100,
+    "passed": true,
+    "feedback": "All Level-1 structural requirements satisfied."
+  }
 }
 ```
 
@@ -237,7 +258,9 @@ Analyzes meeting transcript text and returns an effort estimation breakdown.
 curl -X POST http://localhost:8000/api/v1/estimate \
   -H "Content-Type: application/json" \
   -d '{
-    "transcription": "In the meeting with the marketing team, the client explained that they need a landing page with a contact form, integration with their existing CRM (HubSpot), and a blog section with a WYSIWYG editor. The target timeline is 4 weeks. Designs already exist in Figma."
+    "transcription": "In the meeting with the marketing team, the client explained that they need a landing page with a contact form, integration with their existing CRM (HubSpot), and a blog section with a WYSIWYG editor. The target timeline is 4 weeks. Designs already exist in Figma.",
+    "model": "reasoner-fast",
+    "reasoning_effort": "low"
   }'
 ```
 
@@ -293,6 +316,7 @@ Detailed architecture guides and technical documentation are maintained in the [
 - [API Schemas & Data Contracts](docs/api-schemas.md): Request and response payload schemas, field validation rules, token accounting, and Level-1 structural evaluation scoring.
 - [LLM Service Architecture & Multi-Provider Integration](docs/llm-service.md): Deep dive into OpenAI Responses API, Anthropic Messages API, extended thinking, client lifecycle, retry backoff, and exception handling.
 - [Model Catalog & Request Validation](docs/model-catalog.md): Centralized model catalog, supported OpenAI/Anthropic models, reasoning metadata, and boundary validation.
+- [Reasoning Profiles & Dynamic Routing](docs/reasoning-profiles.md): LiteLLM router profiles, qualitative reasoning effort tiers, cost-optimized dynamic fallback, and credential filtering.
 - [Conversational UI & Exact-Match Cache](docs/streamlit-conversational-ui.md): Streamlit chat interface, simulated progressive streaming, deterministic Redis exact-match caching, and graceful degradation.
 - [Logging Architecture & Structlog](docs/logging.md): Configuration, formatting sinks, processor pipeline, and context variables binding.
 - [Testing Guidelines](docs/testing.md): Test suite organization, pytest fixtures, and coverage expectations.

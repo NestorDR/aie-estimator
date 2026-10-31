@@ -3,15 +3,21 @@
 # --- Python Standard Library ---
 import logging
 import logging.handlers
+from os import environ
 from typing import Any
 from unittest.mock import patch
 
 # --- Third Party Libraries ---
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 import pytest
 import structlog
 
 # --- App modules ---
+from aie_estimator.schemas.models import (
+    DEFAULT_CLAUDE_LLM,
+    DEFAULT_FAST_PROFILE,
+    DEFAULT_GPT_LLM,
+)
 from aie_estimator.settings import Environment, Settings, get_settings
 
 
@@ -168,11 +174,11 @@ def test_configure_logging_renderer_selection(
 @pytest.mark.parametrize(
     ("model_name", "expected_provider"),
     [
-        ("gpt-4o-mini", "openai"),
-        ("gpt-5-nano", "openai"),
-        ("claude-haiku-4-5-20251001", "anthropic"),
+        (DEFAULT_GPT_LLM, "openai"),
+        (DEFAULT_FAST_PROFILE, "litellm"),
+        (DEFAULT_CLAUDE_LLM, "anthropic"),
     ],
-    ids=["gpt4o_mini_openai", "gpt_5_nano_openai", "claude_haiku_anthropic"],
+    ids=["gpt6_luna_openai", "reasoner_fast_litellm", "claude_haiku_anthropic"],
 )
 def test_settings_llm_provider_derived_from_model(model_name: str, expected_provider: str) -> None:
     """
@@ -270,3 +276,79 @@ def test_settings_cache_configuration_overrides(
     assert settings.redis_host == custom_host
     assert settings.redis_port == custom_port
     assert settings.cache_ttl == custom_ttl
+
+
+@pytest.mark.parametrize(
+    ("key_attribute", "env_variable", "test_value"),
+    [
+        ("mistral_api_key", "MISTRAL_API_KEY", "test-mistral-key"),
+        ("scaleway_api_key", "SCALEWAY_API_KEY", "test-scaleway-key"),
+        ("nebius_api_key", "NEBIUS_API_KEY", "test-nebius-key"),
+    ],
+    ids=["mistral_key", "scaleway_key", "nebius_key"],
+)
+def test_settings_additional_api_keys_initialization(
+    key_attribute: str,
+    env_variable: str,
+    test_value: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    GIVEN an environment variable for a multi-provider LLM API key
+    WHEN Settings is initialized
+    THEN the key is loaded as a SecretStr with the corresponding secret value.
+
+    :param key_attribute: Attribute name on Settings instance.
+    :param env_variable: Environment variable name.
+    :param test_value: Raw secret string value.
+    :param monkeypatch: Pytest monkeypatch fixture.
+    """
+    monkeypatch.setenv(env_variable, test_value)
+    settings = Settings(app_env=Environment.TEST)
+    loaded_secret: SecretStr | None = getattr(settings, key_attribute)
+
+    assert loaded_secret is not None
+    assert isinstance(loaded_secret, SecretStr)
+    assert loaded_secret.get_secret_value() == test_value
+
+
+def test_mirror_secrets_to_environ_sets_missing_variables(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    GIVEN a Settings instance with configured secret keys and unset environment variables
+    WHEN mirror_secrets_to_environ is called
+    THEN the values are populated into os.environ.
+
+    :param monkeypatch: Pytest monkeypatch fixture.
+    """
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("MISTRAL_API_KEY", raising=False)
+
+    settings = Settings(
+        app_env=Environment.TEST,
+        openai_api_key=SecretStr("sk-test-openai"),
+        mistral_api_key=SecretStr("sk-test-mistral"),
+    )
+    settings.mirror_secrets_to_environ()
+
+    assert environ.get("OPENAI_API_KEY") == "sk-test-openai"
+    assert environ.get("MISTRAL_API_KEY") == "sk-test-mistral"
+
+
+def test_mirror_secrets_to_environ_does_not_overwrite_existing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    GIVEN an environment variable already present in os.environ
+    WHEN mirror_secrets_to_environ is called with a conflicting setting
+    THEN the existing os.environ value is preserved.
+
+    :param monkeypatch: Pytest monkeypatch fixture.
+    """
+    monkeypatch.setenv("MISTRAL_API_KEY", "existing-preset-key")
+
+    settings = Settings(
+        app_env=Environment.TEST,
+    )
+    settings.mistral_api_key = SecretStr("new-attempted-key")
+    settings.mirror_secrets_to_environ()
+
+    assert environ.get("MISTRAL_API_KEY") == "existing-preset-key"
+
