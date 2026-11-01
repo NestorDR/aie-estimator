@@ -8,8 +8,8 @@ The service is driven by configuration externalized in `src/aie_estimator/llm_pr
 
 | Engine | Routing Target | Dynamic Failover | Cost Tracking (`cost_usd`) | Telemetry Policy |
 |:-------|:---------------|:-----------------|:---------------------------|:-----------------|
-| **LiteLLM Router** (`engine="litellm"`) | Cost-based routing across OpenAI, Anthropic, Gemini, Mistral, Scaleway, and Nebius | Supported cross-provider and cross-tier | Calculated automatically from provider token pricing | Strict zero-telemetry (`litellm.telemetry=False`) |
-| **Native SDK** (`engine="native"`) | Direct vendor SDK calls to OpenAI or Anthropic | None (single provider) | Not reported (`None`) | Native vendor SDK defaults |
+| **LiteLLM Router** (`engine="litellm"`) | Cost-based routing across OpenAI, Anthropic, Gemini, Mistral, Scaleway, and Nebius | Supported cross-provider and cross-tier | Calculated automatically from provider token pricing (or estimated via fallback) | Strict zero-telemetry (`litellm.telemetry=False`) |
+| **Native SDK** (`engine="native"`) | Direct vendor SDK calls to OpenAI or Anthropic | None (single provider) | Estimated via fallback pricing (`services/pricing.py`) | Native vendor SDK defaults |
 
 ### Logical Routing Profiles
 
@@ -104,3 +104,11 @@ All service I/O boundaries operate as asynchronous coroutines to ensure FastAPI'
 - **Native Providers (`services/native_providers.py`)**: Implements client singletons using `AsyncOpenAI` and `AsyncAnthropic`. Transient retry logic (`call_with_retry`) uses `await asyncio.sleep(...)` with jitter, and all provider invocations (`call_openai`, `call_anthropic`) are asynchronous coroutines.
 - **Exact-Match Caching (`services/cache.py`)**: Utilizes `redis.asyncio.Redis` with asynchronous `get`, `set`, and `close` methods. Cache lookups and mutations are awaited within `generate_estimation`.
 - **Application Lifespan Integration (`server.py`)**: The application shutdown sequence triggers `await cache.close()` to cleanly terminate Redis client connections without dangling socket warnings.
+
+### 5. Cost Tracking and Fallback Pricing Engine
+`format_provider_response` (`src/aie_estimator/services/__init__.py`) handles cost resolution:
+- **Upstream Priority**: Dynamic costs returned by LiteLLM Router (`response._hidden_params["response_cost"]`) take precedence.
+- **Fallback Calculation**: When `cost_usd is None` (such as direct native SDK invocations or unmetered routes), the service delegates to `estimate_cost(model, input_tokens, output_tokens)` from `src/aie_estimator/services/pricing.py`.
+- **Model Identifier Resolution**: `estimate_cost` normalizes vendor-prefixed identifiers (e.g. "openai/gpt-6-luna") matching against `MODEL_COSTS` keys.
+- **Unconfigured Models**: If a model is not found in `MODEL_COSTS`, `estimate_cost` returns `None`. The resulting response omits `cost_usd`, and the Streamlit UI displays `Cost: N/A`.
+

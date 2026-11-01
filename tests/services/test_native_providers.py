@@ -123,6 +123,11 @@ async def test_call_openai_model_parameter_selection(
     assert result["finish_reason"] == "stop"
     assert result["usage"]["total_tokens"] == 400
 
+    if model == DEFAULT_GPT_LLM:
+        assert result["cost_usd"] == 0.0001
+    else:
+        assert "cost_usd" not in result
+
     call_kwargs = mock_client.responses.create.call_args.kwargs
     assert call_kwargs["model"] == model
     assert call_kwargs["input"] == sample_transcription
@@ -280,6 +285,7 @@ async def test_call_anthropic_thinking_and_temperature_exclusivity(
     assert result["estimation"] == "Anthropic estimation output."
     assert result["finish_reason"] == "end_turn"
     assert result["usage"]["total_tokens"] == 500
+    assert result["cost_usd"] == 0.000325
 
     call_kwargs = mock_client.messages.create.call_args.kwargs
     assert call_kwargs["max_tokens"] == 4000

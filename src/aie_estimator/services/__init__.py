@@ -3,6 +3,9 @@
 # --- Python Standard Library ---
 from typing import Any, Final
 
+# --- App modules ---
+from aie_estimator.services.pricing import estimate_cost
+
 DEFAULT_MAX_TOKENS: Final[int] = 4000
 
 
@@ -29,7 +32,7 @@ def format_provider_response(
     :param finish_reason: Upstream model completion finish reason.
     :param input_tokens: Ingress prompt token count.
     :param output_tokens: Egress completion token count.
-    :param cost_usd: Execution cost in USD reported by the routing engine.
+    :param cost_usd: Execution cost in USD reported by the routing engine, or None to calculate fallback.
 
     :return: Standardized response dictionary for downstream evaluation and cache storage.
     """
@@ -44,7 +47,12 @@ def format_provider_response(
             "total_tokens": input_tokens + output_tokens,
         },
     }
-    if cost_usd is not None:
-        response["cost_usd"] = cost_usd
+    resolved_cost = (
+        cost_usd
+        if cost_usd is not None
+        else estimate_cost(model=model, tokens_in=input_tokens, tokens_out=output_tokens)
+    )
+    if resolved_cost is not None:
+        response["cost_usd"] = resolved_cost
     return response
 

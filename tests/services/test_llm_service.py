@@ -254,3 +254,36 @@ async def test_generate_estimation_native_engine_rejects_unsupported_provider(
     opts = GenerationOptions(engine="native", model=DEFAULT_FAST_PROFILE)
     with pytest.raises(LLMServiceError, match=r"Unsupported provider"):
         await llm_service.generate_estimation(sample_transcription, opts)
+
+
+@pytest.mark.anyio
+async def test_generate_estimation_fallback_cost_usd_propagation(
+    sample_transcription: str,
+    make_estimation_result: Callable[..., dict[str, Any]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    GIVEN an upstream provider execution where cost_usd was populated by pricing fallback
+    WHEN generate_estimation is executed
+    THEN the fallback cost_usd is preserved in the returned result dictionary.
+
+    :param sample_transcription: Sample transcript fixture.
+    :param make_estimation_result: Estimation result factory fixture.
+    :param monkeypatch: Pytest monkeypatch fixture.
+    """
+    mock_openai = AsyncMock(
+        return_value=make_estimation_result(
+            estimation="Native OpenAI estimation.",
+            model=DEFAULT_GPT_LLM,
+            provider="openai",
+            cost_usd=0.0001,
+        )
+    )
+    monkeypatch.setattr("aie_estimator.services.llm_service.call_openai", mock_openai)
+
+    opts = GenerationOptions(engine="native", model=DEFAULT_GPT_LLM)
+    result = await llm_service.generate_estimation(sample_transcription, opts)
+
+    assert result["cost_usd"] == 0.0001
+    assert result["provider"] == "openai"
+
