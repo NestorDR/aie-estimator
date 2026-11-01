@@ -2,54 +2,44 @@
 
 ## Overview
 
-Testing architecture, shared fixtures, and execution conventions for the `aie-estimator` test suite.
+Guide for writing, organizing, and validating tests in `aie-estimator`. The main sections state the conventions new tests must follow. Measured figures and the cleanup backlog live in the dated [Appendix](#appendix-current-state-snapshot).
+
+When a convention changes, update the rule here first, then bring existing tests into line.
 
 ### Structure and Configuration
 
-- **Test Directory**: `tests/` (`conftest.py`, `test_settings.py`, `test_models_catalog.py`, `test_streamlit_app.py`, `routers/`, `services/`)
-- **Import Resolution**: `tool.pytest.ini_options.pythonpath = [".", "src"]` in `pyproject.toml`
-- **Execution Target**: `pytest tests/ --cache-clear --basetemp="%TEMP%\pytest_runner"`
+- **Configuration**: `[tool.pytest.ini_options]` in `pyproject.toml` (`testpaths = ["tests"]`, `python_files = ["test_*.py"]`, `pythonpath = [".", "src"]`). No editable install is required.
+- **Execution**: `rtk uv run pytest` with `APP_ENV=test` set (omit `rtk` if it is unavailable). See [Environment Isolation](#3-environment-isolation).
 
-### Global Fixtures (`tests/conftest.py`)
+### Test Layout
 
-| Fixture | Scope | Autouse | Description |
-| :--- | :--- | :--- | :--- |
-| `clean_settings_cache` | function | Yes | Clears `get_settings.cache_clear()` before and after each test for state isolation. |
-| `test_settings` | function | No | Returns an isolated `Settings` instance configured for `Environment.TEST`. |
-| `app` | function | No | Yields `Server().app` and resets `dependency_overrides.clear()` on teardown. |
-| `client` | function | No | Wraps `app` in `TestClient(app)` lifespan context manager for startup/shutdown events. |
-| `mock_openai_response` | function | No | Returns a `MagicMock` matching OpenAI Responses schema (`status`, `output_text`, `model`). |
-| `sample_transcription` | function | No | Multi-line transcript string for estimation tests. |
-| `sample_estimation_payload` | function | No | Dictionary matching `EstimationRequest` schema (`{"transcription": ...}`). |
+Test modules mirror the source tree, one test module per source module. For example, `src/aie_estimator/services/cache.py` → `tests/services/test_cache.py`, and `streamlit_app.py` → `tests/test_streamlit_app.py`.
+
+- A new source module ships with its test module in the same change.
+- Test each behavior at the lowest layer that owns it: exhaustive validation in schema tests, one representative case per error mapping in router tests.
+- Name tests after unit, condition, and outcome (e.g. `test_cache_get_miss_returns_none`).
+
+### Fixtures
+
+- **Placement**: fixtures shared by several test modules go in `tests/conftest.py`; otherwise keep them module-local or in a package-level `conftest.py`.
+- **No orphans**: every shared fixture must have at least one consumer.
+- **Factories over repetition**: when the same payload or mock shape repeats across tests, provide it through a factory fixture (see [Pattern 6](#6-factory-fixtures)) instead of inline dictionaries or module constants.
+- **Autouse only for isolation**: e.g. `clean_settings_cache` in `tests/conftest.py` clears application `lru_cache` singletons around each test, and `mock_default_cache` in `test_llm_service.py` keeps tests off Redis. Register every new `lru_cache` singleton in `_clear_all_caches()`.
+
+Core shared fixtures are `app` (FastAPI app with override teardown), `client` (`TestClient` running lifespan handlers), and `sample_transcription`. See `tests/conftest.py` for the full list.
 
 ---
 
 ## Usage Examples
 
-### 1. Parametric API Testing (`app`, `client`, `ids`)
+Excerpts from existing tests showing the reference style. Imports and docstrings are trimmed except where they illustrate the convention.
 
-Deduplicate symmetric test variants into a single parameterized function using explicit `ids`:
+### 1. Parametrization with Explicit `ids`
 
 ```python
-# tests/routers/test_health_router.py
-
-# --- Python Standard Library ---
-
-# --- Third Party Libraries ---
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-import pytest
-
-# --- App modules ---
-from aie_estimator.settings import Settings, get_settings
-
-
 @pytest.mark.parametrize(
     ("override_version", "expected_version"),
-    [
-        (None, None),
-        ("9.9.9-test", "9.9.9-test"),
-    ],
+    [(None, None), ("9.9.9-test", "9.9.9-test")],
     ids=["default_settings", "dependency_override"],
 )
 def test_get_health(
@@ -68,189 +58,122 @@ def test_get_health(
     :param override_version: Custom version string for dependency override, or None for default.
     :param expected_version: Expected version string in response body, or None to assert present.
     """
-    if override_version is not None:
-        custom_settings = Settings()
-        custom_settings.app_version = override_version
-        app.dependency_overrides[get_settings] = lambda: custom_settings
-
-    response = client.get("/health")
-    assert response.status_code == 200
-
-    data = response.json()
-    assert data["status"] == "healthy"
-    if expected_version is not None:
-        assert data["version"] == expected_version
-    else:
-        assert "version" in data
+    ...
 ```
 
-### 2. Concise Exception Assertions (`match=r'...'`)
-
-Target concise keywords rather than literal error messages with `pytest.raises`:
+### 2. Concise Exception Assertions
 
 ```python
-# tests/test_settings.py
-
-# --- Python Standard Library ---
-from typing import Any
-
-# --- Third Party Libraries ---
-from pydantic import ValidationError
-import pytest
-
-# --- App modules ---
-from aie_estimator.settings import Settings
-
-
-@pytest.mark.parametrize(
-    ("kwargs", "expected_exception", "match_pattern"),
-    [
-        ({"app_env": "invalid_environment_name"}, ValueError, r"is not a valid Environment"),
-        ({"server_port": "invalid_port"}, ValidationError, r"valid integer"),
-    ],
-    ids=["invalid_env_string", "invalid_port_type"],
-)
-def test_settings_initialization_validation_errors(
-    kwargs: dict[str, Any],
-    expected_exception: type[Exception],
-    match_pattern: str,
-) -> None:
-    """
-    GIVEN invalid configuration arguments
-    WHEN Settings is instantiated
-    THEN the expected exception is raised matching concise keywords.
-
-    :param kwargs: Keyword arguments to pass to Settings constructor.
-    :param expected_exception: Expected exception class.
-    :param match_pattern: Concise regex pattern targeting distinctive error keywords.
-    """
-    with pytest.raises(expected_exception, match=match_pattern):
-        Settings(**kwargs)
+with pytest.raises(ValidationError, match=r"valid integer"):
+    Settings(server_port="invalid_port")
 ```
 
-### 3. Isolated Environment Overrides
+### 3. Environment Overrides
 
-`clean_settings_cache` isolates `monkeypatch` modifications across test runs:
+Use `monkeypatch`, never direct `os.environ` assignment. `clean_settings_cache` guarantees the next `get_settings()` re-reads the environment:
 
 ```python
-# tests/test_settings.py
-
-# --- Python Standard Library ---
-
-# --- Third Party Libraries ---
-import pytest
-
-# --- App modules ---
-from aie_estimator.settings import Environment, get_settings
-
-
 def test_get_settings_cache_clear(monkeypatch: pytest.MonkeyPatch) -> None:
-    """
-    GIVEN an environment variable override for APP_ENV
-    WHEN get_settings.cache_clear() is executed and get_settings is called
-    THEN a reloaded Settings instance reflecting the new environment is returned.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    """
     monkeypatch.setenv("APP_ENV", "test")
     get_settings.cache_clear()
 
-    reloaded_settings = get_settings()
-    assert reloaded_settings.app_env == Environment.TEST
+    assert get_settings().app_env == Environment.TEST
 ```
 
-### 4. Mocking External LLM Invocations
+### 4. Mocking at the Boundary
 
-Mock LLM provider calls using `mock_openai_response` and `sample_estimation_payload`:
+Replace collaborators with `AsyncMock` and patch the name where it is looked up, not where it is defined:
 
 ```python
-# tests/routers/test_estimations_router.py
-
-# --- Python Standard Library ---
-from typing import Any
-from unittest.mock import MagicMock, patch
-
-# --- Third Party Libraries ---
-from fastapi.testclient import TestClient
-
-# --- App modules ---
-
-
-def test_create_estimation(
-    client: TestClient,
-    sample_estimation_payload: dict[str, Any],
-    mock_openai_response: MagicMock,
-) -> None:
-    """
-    GIVEN an active client and mocked OpenAI completion response
-    WHEN a POST request is sent to /api/v1/estimate with a transcription payload
-    THEN a 200 OK status is returned containing estimation data.
-
-    :param client: Shared TestClient fixture.
-    :param sample_estimation_payload: Request payload dictionary matching schema.
-    :param mock_openai_response: Preconfigured MagicMock simulating LLM response.
-    """
-    with patch("aie_estimator.services.llm_service._call_openai", return_value=mock_openai_response):
-        response = client.post("/api/v1/estimate", json=sample_estimation_payload)
-        assert response.status_code == 200
-        assert "estimation" in response.json()
+monkeypatch.setattr(
+    "aie_estimator.routers.estimations_router.llm_service.generate_estimation",
+    AsyncMock(return_value=result),
+)
+response = client.post("/api/v1/estimate", json={"transcription": sample_transcription, "evaluate": False})
+assert response.status_code == 200
 ```
 
-### 5. Mocking File Logging Handlers
+### 5. Async Tests
 
-When validating logging configurations with file logging enabled, patch `RotatingFileHandler` with `autospec=True` and `pathlib.Path.mkdir` to prevent disk writes:
+Write coroutine tests as `async def` with `@pytest.mark.anyio` (asyncio backend, hence `[asyncio]` in test ids). Avoid `asyncio.run(...)` inside sync tests.
 
 ```python
-# tests/test_settings.py
+@pytest.mark.anyio
+async def test_cache_get_miss_returns_none() -> None:
+    mock_redis = AsyncMock()
+    mock_redis.get.return_value = None
 
-# --- Python Standard Library ---
-import logging
-import logging.handlers
-from unittest.mock import patch
-
-# --- Third Party Libraries ---
-import structlog
-
-# --- App modules ---
-from aie_estimator.settings import Environment, Settings
-
-
-def test_file_handler_mocking() -> None:
-    """
-    GIVEN Settings with enable_file_logging=True
-    WHEN configure_logging is executed under mocked handlers
-    THEN RotatingFileHandler is instantiated with valid parameters without writing to disk.
-    """
-    with (
-        patch("logging.handlers.RotatingFileHandler", autospec=True) as mock_file_handler_cls,
-        patch("pathlib.Path.mkdir"),
-    ):
-        mock_file_handler = mock_file_handler_cls.return_value
-        mock_file_handler.level = logging.NOTSET
-
-        try:
-            settings = Settings(app_env=Environment.DEV, enable_file_logging=True)
-            settings.configure_logging()
-
-            mock_file_handler_cls.assert_called()
-            assert mock_file_handler_cls.call_args.kwargs["filename"].name == "dev.log"
-        finally:
-            logging.getLogger().handlers.clear()
+    assert await EstimationCache(mock_redis).get("estimation:missing") is None
 ```
 
-### 6. CLI Execution Patterns
+### 6. Factory Fixtures
 
-```bash
-# Run entire test suite
-pytest --cache-clear --basetemp="%TEMP%\pytest_runner"
+Target pattern for repeated payloads: defaults plus keyword overrides, so each test states only the fields it asserts on.
 
-# Run single test module
-pytest tests/routers/test_health_router.py
+```python
+@pytest.fixture
+def make_estimation_result() -> Callable[..., dict[str, Any]]:
+    def _factory(**overrides: Any) -> dict[str, Any]:
+        return {"estimation": "Total: 40h", "model": DEFAULT_GPT_LLM, "provider": "openai", **overrides}
 
-# Target specific parameterized case by id
-pytest -k "dependency_override"
-pytest tests/routers/test_health_router.py::test_get_health[dependency_override]
+    return _factory
 ```
+
+### 7. Logging Without File Writes
+
+Tests that enable file logging patch the file handler and directory creation, and clear root handlers afterwards:
+
+```python
+with (
+    patch("logging.handlers.RotatingFileHandler", autospec=True),
+    patch("pathlib.Path.mkdir"),
+):
+    try:
+        Settings(app_env=Environment.DEV, enable_file_logging=True).configure_logging()
+        ...
+    finally:
+        logging.getLogger().handlers.clear()
+```
+
+### 8. CLI Execution
+
+```powershell
+$env:APP_ENV = "test"; rtk uv run pytest --cache-clear --basetemp="$env:TEMP\pytest_runner"
+rtk uv run pytest tests/routers/test_health_router.py
+rtk uv run pytest -k "dependency_override"
+rtk uv run --with pytest-cov pytest --cov=aie_estimator --cov=streamlit_app --cov-branch --cov-report=term-missing
+```
+
+`auto\test.cmd` wraps the suite run and cleans up test artifacts (manual use only).
+
+Prefix supported terminal commands with `rtk`; if it is unavailable, run the base command. Use the context-mode MCP tools or Antigravity native search for codebase discovery, not `grep` or `Select-String`.
+
+---
+
+## Coverage
+
+- **Target**: 85% combined line + branch coverage for `aie_estimator` and `streamlit_app`. Always measure with `--cov-branch`.
+- **No regressions**: a change must not lower total coverage; new modules ship with tests for their public functions and error branches.
+- **Bug fixes** include a regression test that fails before the fix.
+- **Exclusions** (`# pragma: no cover`) are limited to entry-point glue and carry a reason comment.
+- **Priorities**: business logic first, then error branches and exception handlers, then UI code (extract testable functions rather than testing Streamlit rendering).
+- **Enforcement** (`pytest-cov` as a dev dependency and `--cov-fail-under=85`) is planned once the baseline reaches the target.
+
+---
+
+## Quality Gates
+
+| Gate | Status |
+| :--- | :--- |
+| Ruff lint (`E,F,B,R,S,N`) on tests | Active |
+| Ruff test-oriented rules (`PT`, `ANN`, `ARG`, `SIM`, `I`, `UP`) | Planned |
+| `APP_ENV=test` pinned for the suite (`pytest-env` or autouse fixture) plus a `.env.test` | Active |
+| Coverage threshold (`--cov-fail-under=85`) | Active |
+| Random test order (`pytest-randomly`) to expose state leaks | Planned |
+| Property-based tests (Hypothesis) for functions with invariants, e.g. cache-key determinism | Planned |
+| Mutation testing pilot (Cosmic Ray on Windows; mutmut needs WSL) | Planned |
+
+Update the status when a gate is adopted and add any resulting rule to the sections above. Keep the pre-commit ruff `rev` aligned with the ruff version in `uv.lock`.
 
 ---
 
@@ -260,19 +183,43 @@ pytest tests/routers/test_health_router.py::test_get_health[dependency_override]
 
 - **GIVEN-WHEN-THEN**: Every test function docstring must explicitly follow GIVEN (preconditions), WHEN (action), THEN (assertions) followed by Sphinx `:param` definitions.
 - **Parametric Deduplication**: Consolidate symmetric branches with `@pytest.mark.parametrize`. Always specify `ids` to prevent unreadable `[None-None]` auto-generated identifiers, enable `-k` filtering, and clarify CI failure diagnostics.
-- **Concise Exception Regexes**: Assert exceptions with `pytest.raises(Exc, match=r'...')` using minimal distinctive keywords (e.g., `match=r'valid integer'`) to prevent brittleness against minor formatting revisions.
-- **Type Annotations**: All fixtures, test parameters, and return types require explicit type hints (`client: TestClient`, `-> None`).
+- **Concise Exception Regexes**: Assert exceptions with `pytest.raises(Exc, match=r'...')` using minimal distinctive keywords to prevent brittleness against minor formatting revisions.
+- **Type Annotations**: All fixtures, test parameters, and return types require explicit type hints.
+- **One Behavior per Test**: split tests whose THEN clause joins unrelated outcomes.
+- **No Real I/O**: tests never call real LLM providers, Redis, or the network.
 
 ### 2. Runtime Isolation Mechanics
 
-- **Lifespan Execution**: The `client` fixture uses `with TestClient(app)` to ensure FastAPI async startup/shutdown lifespan context handlers execute.
-- **Cache Isolation**: The autouse `clean_settings_cache` fixture clears `@lru_cache` on `get_settings` before and after each test, preventing cross-test settings contamination.
-- **Override Teardown**: The `app` fixture invokes `app.dependency_overrides.clear()` on fixture teardown, eliminating manual `finally` cleanup in individual tests.
-- **Path Resolution**: `pyproject.toml` configures `pythonpath = ["src"]`, enabling standard absolute imports without requiring editable package installs.
+- **Lifespan Execution**: the `client` fixture uses `with TestClient(app)` so startup/shutdown handlers run.
+- **Cache Isolation**: `clean_settings_cache` clears application `lru_cache` singletons before and after each test.
+- **Override Teardown**: the `app` fixture clears `dependency_overrides` on teardown.
 
-### 3. Filesystem Isolation and Zero File Writes
+### 3. Environment Isolation
 
-- **Zero Disk Writes**: Unit tests executed by `pytest` must never create files or directories within the workspace (`logs/`, etc.). Any file handler initialization must be intercepted with `unittest.mock.patch(..., autospec=True)`.
-- **Runtime File Logging**: Generating `logs/dev.log` for debugging and inspecting full stack error traces is an application runtime feature, activated via `ENABLE_FILE_LOGGING=true` in `../src/aie_estimator/.env.dev`, never by test fixtures.
-- **Handler Cleanup**: Tests adding mocked handlers to standard library loggers must clear `logging.getLogger().handlers.clear()` in a `finally` block to prevent mock leaks into subsequent test cases.
+`Settings` resolves the environment from its `app_env` argument, then `APP_ENV`, then defaults to `dev`. It loads `src/aie_estimator/.env.<env>`, configures logging, and mirrors API keys into `os.environ`. Without `APP_ENV=test`, tests therefore pick up the developer's `.env.dev`: real keys enter the test process and file logging, if enabled there, writes to `logs/dev.log`.
 
+- Run the suite with `APP_ENV=test` until the pinning gate is active.
+- Tests that construct `Settings` for `dev` or `prod` disable or patch file logging (Pattern 7).
+- Use `tmp_path` for any file the code under test creates.
+- Tests must never produce `logs/dev.log`.
+
+---
+
+## Appendix: Current State Snapshot
+
+Measured on 2026-11-01 with `APP_ENV=test`. Refresh when figures change; remove backlog items once resolved.
+
+- **Suite**: 126 tests across 11 test modules, about 2.5 seconds.
+- **Coverage**: 87% line + branch (target 85% achieved). Largest gaps: `__main__.py` (0%), `streamlit_app.py` (58%).
+
+Backlog of deviations from this guide:
+
+- [x] `test_llm_service.py` covers three service modules and a server handler; split per source module (`test_native_providers.py`, `test_litellm_provider.py`, `test_llm_service.py`, `test_server.py`).
+- [x] `schemas/models.py` tests live in `tests/test_models_catalog.py` instead of `tests/schemas/` (resolved: relocated to `tests/schemas/test_models.py`).
+- [x] Unused shared fixtures (`test_settings`, `mock_openai_response`, `sample_estimation_payload`): removed from `tests/conftest.py`.
+- [x] Repeated inline result dictionaries and `_SAMPLE_*` constants in services: replaced with factory fixture `make_estimation_result` and `sample_transcription`.
+- [x] Invalid-model rejection tested exhaustively at both schema and router level (resolved: router reduced to 1 representative case).
+- [x] `asyncio.run(...)` style in `test_llm_service.py`: converted to `@pytest.mark.anyio`.
+- [x] No `.env.test`; one `env_dev` settings test still writes to `logs/dev.log` under `APP_ENV=test` (resolved: pinned in `pyproject.toml`, zero files written).
+- [x] No direct tests for `services/evaluation.py`; no router test with `"evaluate": True` (resolved: added `tests/services/test_evaluation.py` and router evaluation test).
+- [x] Pre-commit ruff `rev` aligned with `uv.lock` (`v0.17.3`).

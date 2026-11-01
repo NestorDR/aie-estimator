@@ -22,10 +22,14 @@ if /i not "%CURRENT_DIR%"=="%PROJECT_ROOT%" (
 :: e.g. to separate environment: set VIRTUAL_ENV=C:\Development\VirtualEnvs\radar-3.14.8-uv-env
 set VIRTUAL_ENV=.venv
 
-:: Run pytest with --cache-clear and route temporary fixture files to system TEMP.
+:: Run pytest with cache clearing, temporary basetemp, and branch coverage reporting:
+:: %*: Forwards all optional script arguments (target test file, -k filter, etc.).
 :: --locked: Require uv.lock to match pyproject.toml; do not update the lockfile.
 :: --active: Use the active virtual environment, set above as .venv.
-uv run --locked --active pytest %1 --cache-clear --basetemp="%TEMP%\pytest_runner"
+:: --cache-clear: Clear pytest internal cache prior to running tests.
+:: --basetemp: Route temporary fixture directories to the system TEMP folder.
+:: --cov=streamlit_app: Measure line and branch coverage across the Streamlit UI module.
+uv run --locked --active pytest %* --cache-clear --basetemp="%TEMP%\pytest_runner" --cov=streamlit_app
 set _EXIT_CODE=%ERRORLEVEL%
 
 :: Post-test cleanup of project root artifacts

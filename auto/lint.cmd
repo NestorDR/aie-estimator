@@ -1,6 +1,6 @@
 :: auto/lint.cmd
 :: Purpose: Linter and autoformat.
-:: :: Usage: auto\lint.cmd (run from the project root directory)
+:: Usage: auto\lint.cmd (run from the project root directory)
 
 :: UVX: In most cases, executing a tool with `uvx` is more appropriate than installing the tool (https://docs.astral.sh/uv/concepts/tools/#execution-vs-installation)
 

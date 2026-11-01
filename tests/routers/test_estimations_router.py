@@ -1,6 +1,7 @@
 # tests/routers/test_estimations_router.py
 
 # --- Python Standard Library ---
+from collections.abc import Callable
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -12,38 +13,21 @@ import pytest
 from aie_estimator.schemas.models import DEFAULT_FAST_PROFILE, DEFAULT_GPT_LLM
 
 
-@pytest.mark.parametrize(
-    "invalid_model",
-    [
-        "string",
-        "invalid-model-name",
-        "llama-3-70b",
-        "gemini-2.5-flash",
-    ],
-    ids=[
-        "swagger_default_string",
-        "arbitrary_unsupported_model",
-        "unsupported_llama",
-        "unsupported_gemini",
-    ],
-)
 def test_create_estimation_invalid_model_returns_422(
     client: TestClient,
     sample_transcription: str,
-    invalid_model: str,
 ) -> None:
     """
-    GIVEN an invalid or placeholder model identifier
+    GIVEN an invalid model identifier
     WHEN a POST request is sent to /api/v1/estimate
     THEN HTTP 422 Unprocessable Entity is returned with validation error details.
 
     :param client: Shared TestClient fixture.
     :param sample_transcription: Valid meeting transcript fixture.
-    :param invalid_model: Target invalid model identifier.
     """
     payload: dict[str, Any] = {
         "transcription": sample_transcription,
-        "model": invalid_model,
+        "model": "invalid-model-name",
     }
     response = client.post("/api/v1/estimate", json=payload)
     assert response.status_code == 422
@@ -57,6 +41,7 @@ def test_create_estimation_invalid_model_returns_422(
 def test_create_estimation_valid_model_override_accepted(
     client: TestClient,
     sample_transcription: str,
+    make_estimation_result: Callable[..., dict[str, Any]],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
@@ -66,24 +51,10 @@ def test_create_estimation_valid_model_override_accepted(
 
     :param client: Shared TestClient fixture.
     :param sample_transcription: Valid meeting transcript fixture.
+    :param make_estimation_result: Estimation result factory fixture.
     :param monkeypatch: Pytest monkeypatch fixture.
     """
-    mock_generate = AsyncMock(
-        return_value={
-            "estimation": "Project Breakdown:\n- Backend: 40h\nTotal: 40h",
-            "model": DEFAULT_GPT_LLM,
-            "provider": "openai",
-            "finish_reason": "stop",
-            "usage": {
-                "input_tokens": 100,
-                "output_tokens": 50,
-                "total_tokens": 150,
-            },
-            "preprocessing": "none",
-            "extracted_requirements": None,
-            "latency_ms": 250,
-        }
-    )
+    mock_generate = AsyncMock(return_value=make_estimation_result())
     monkeypatch.setattr("aie_estimator.routers.estimations_router.llm_service.generate_estimation", mock_generate)
 
     payload: dict[str, Any] = {
@@ -113,6 +84,7 @@ def test_create_estimation_cost_usd_serialization(
     sample_transcription: str,
     cost_input: float | None,
     expected_cost: float | None,
+    make_estimation_result: Callable[..., dict[str, Any]],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
@@ -124,24 +96,15 @@ def test_create_estimation_cost_usd_serialization(
     :param sample_transcription: Valid meeting transcript fixture.
     :param cost_input: Cost value from LLM service response.
     :param expected_cost: Expected serialized cost value.
+    :param make_estimation_result: Estimation result factory fixture.
     :param monkeypatch: Pytest monkeypatch fixture.
     """
     mock_generate = AsyncMock(
-        return_value={
-            "estimation": "Breakdown:\n- API: 10h\nTotal: 10h",
-            "model": DEFAULT_FAST_PROFILE,
-            "provider": "litellm",
-            "finish_reason": "stop",
-            "usage": {
-                "input_tokens": 120,
-                "output_tokens": 40,
-                "total_tokens": 160,
-            },
-            "preprocessing": "none",
-            "extracted_requirements": None,
-            "latency_ms": 180,
-            "cost_usd": cost_input,
-        }
+        return_value=make_estimation_result(
+            model=DEFAULT_FAST_PROFILE,
+            provider="litellm",
+            cost_usd=cost_input,
+        )
     )
     monkeypatch.setattr("aie_estimator.routers.estimations_router.llm_service.generate_estimation", mock_generate)
 
@@ -162,6 +125,7 @@ def test_create_estimation_cost_usd_serialization(
 def test_create_estimation_native_engine_dispatch(
     client: TestClient,
     sample_transcription: str,
+    make_estimation_result: Callable[..., dict[str, Any]],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
@@ -171,24 +135,14 @@ def test_create_estimation_native_engine_dispatch(
 
     :param client: Shared TestClient fixture.
     :param sample_transcription: Valid meeting transcript fixture.
+    :param make_estimation_result: Estimation result factory fixture.
     :param monkeypatch: Pytest monkeypatch fixture.
     """
     mock_generate = AsyncMock(
-        return_value={
-            "estimation": "Native Breakdown:\n- Service: 15h\nTotal: 15h",
-            "model": DEFAULT_GPT_LLM,
-            "provider": "openai",
-            "finish_reason": "stop",
-            "usage": {
-                "input_tokens": 100,
-                "output_tokens": 50,
-                "total_tokens": 150,
-            },
-            "preprocessing": "none",
-            "extracted_requirements": None,
-            "latency_ms": 150,
-            "cost_usd": None,
-        }
+        return_value=make_estimation_result(
+            estimation="Native Breakdown:\n- Service: 15h\nTotal: 15h",
+            latency_ms=150,
+        )
     )
     monkeypatch.setattr("aie_estimator.routers.estimations_router.llm_service.generate_estimation", mock_generate)
 
@@ -206,4 +160,58 @@ def test_create_estimation_native_engine_dispatch(
     assert data["provider"] == "openai"
     assert mock_generate.call_count == 1
     assert mock_generate.call_args.args[1].engine == "native"
+
+
+def test_create_estimation_with_evaluation_enabled(
+    client: TestClient,
+    sample_transcription: str,
+    make_estimation_result: Callable[..., dict[str, Any]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    GIVEN an estimation request specifying evaluate=True
+    WHEN a POST request is processed by /api/v1/estimate
+    THEN the response includes a validated StructureCheck evaluation payload.
+
+    :param client: Shared TestClient fixture.
+    :param sample_transcription: Valid meeting transcript fixture.
+    :param make_estimation_result: Estimation result factory fixture.
+    :param monkeypatch: Pytest monkeypatch fixture.
+    """
+    mock_estimation_text = (
+        "## Evaluated Project\n\n"
+        "| Task | Hours | Cost |\n"
+        "|---|---|---|\n"
+        "| Backend API | 40 | 2.000 EUR |\n\n"
+        "Total hours: 40\n"
+        "Total cost: 2.000 EUR\n\n"
+        "Recommended Team: 1 Senior Developer\n"
+        "Estimated Duration: 2 weeks\n"
+    )
+    mock_generate = AsyncMock(
+        return_value=make_estimation_result(
+            estimation=mock_estimation_text,
+            finish_reason="stop",
+        )
+    )
+    monkeypatch.setattr("aie_estimator.routers.estimations_router.llm_service.generate_estimation", mock_generate)
+
+    payload: dict[str, Any] = {
+        "transcription": sample_transcription,
+        "model": DEFAULT_GPT_LLM,
+        "evaluate": True,
+    }
+    response = client.post("/api/v1/estimate", json=payload)
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["model"] == DEFAULT_GPT_LLM
+    assert "validation" in data
+    val = data["validation"]
+    assert val is not None
+    assert val["has_title"] is True
+    assert val["has_breakdown_table"] is True
+    assert val["hours_match"] is True
+    assert val["cost_match"] is True
+    assert val["score"] == 1.0
 

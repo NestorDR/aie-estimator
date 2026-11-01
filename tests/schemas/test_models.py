@@ -1,4 +1,4 @@
-# tests/test_models_catalog.py
+# tests/schemas/test_models.py
 
 # --- Python Standard Library ---
 from pathlib import Path

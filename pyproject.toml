@@ -23,7 +23,13 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pre-commit>=4.7.0", "pytest>=9.1.1", "ruff>=0.17.1"]
+dev = [
+    "pre-commit>=4.7.0",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "pytest-env>=1.8.4",
+    "ruff>=0.17.3",
+]
 
 [project.scripts]
 aie-estimator = "aie_estimator.__main__:main"
@@ -74,7 +80,15 @@ ignore = [ # Ignored rules
 ]
 
 [tool.pytest.ini_options]
-pythonpath = [".", "src"]                       # Add root and src to pythonpath for imports
-testpaths = ["tests"]                           # Specify test directory
+# --cov=aie_estimator: Measure line and branch coverage across the core backend package.
+# --cov=streamlit_app: Measure line and branch coverage across the Streamlit UI module.
+# --cov-branch: Measure branch coverage evaluating both True and False conditional branches.
+# --cov-report=term-missing: Print terminal summary table showing line numbers of unexecuted code.
+# --cov-fail-under=85: Fail the test run if coverage is less than 85%.
+addopts = "--cov=aie_estimator --cov-branch --cov-report=term-missing --cov-fail-under=85"
+pythonpath = [".", "src"]                                                                  # Add root and src to pythonpath for imports
+testpaths = ["tests"]                                                                      # Specify test directory
 python_files = ["test_*.py"]
 
+[tool.pytest_env]
+APP_ENV = "test"

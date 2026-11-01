@@ -1,14 +1,12 @@
 # tests/conftest.py
 
 # --- Python Standard Library ---
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from typing import Any
-from unittest.mock import MagicMock
 
 # --- Third Party Libraries ---
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from pydantic import SecretStr
 import pytest
 
 # --- App modules ---
@@ -17,7 +15,7 @@ from aie_estimator.server import Server
 from aie_estimator.services.cache import get_estimation_cache
 from aie_estimator.services.litellm_provider import get_litellm_router
 from aie_estimator.services.native_providers import get_anthropic_client, get_openai_client
-from aie_estimator.settings import Environment, Settings, get_settings
+from aie_estimator.settings import get_settings
 
 
 def _clear_all_caches() -> None:
@@ -41,20 +39,6 @@ def clean_settings_cache() -> Generator[None, None, None]:
     _clear_all_caches()
     yield
     _clear_all_caches()
-
-
-@pytest.fixture
-def test_settings() -> Settings:
-    """
-    Provide an isolated Settings instance configured for the test environment.
-
-    :return: Test-configured Settings instance.
-    """
-    return Settings(
-        app_env=Environment.TEST,
-        openai_api_key=SecretStr("sk-test-mock-key-12345"),
-        llm_model=DEFAULT_GPT_LLM,
-    )
 
 
 @pytest.fixture
@@ -83,20 +67,6 @@ def client(app: FastAPI) -> Generator[TestClient, None, None]:
 
 
 @pytest.fixture
-def mock_openai_response() -> MagicMock:
-    """
-    Generate a mock response conforming to the OpenAI Responses API structure.
-
-    :return: Configured MagicMock representing an OpenAI response object.
-    """
-    mock_resp = MagicMock()
-    mock_resp.status = "completed"
-    mock_resp.output_text = "Estimated project duration: 3 weeks. Total effort: 120 hours."
-    mock_resp.model = DEFAULT_GPT_LLM
-    return mock_resp
-
-
-@pytest.fixture
 def sample_transcription() -> str:
     """
     Provide a representative meeting transcript for estimation testing.
@@ -111,12 +81,29 @@ def sample_transcription() -> str:
 
 
 @pytest.fixture
-def sample_estimation_payload(sample_transcription: str) -> dict[str, Any]:
+def make_estimation_result() -> Callable[..., dict[str, Any]]:
     """
-    Provide a valid request body for POST /api/v1/estimate.
+    Provide a factory fixture generating valid LLM estimation result dictionaries with overrides.
 
-    :param sample_transcription: Sample transcript fixture.
-
-    :return: Payload dictionary matching EstimationRequest schema.
+    :return: Factory function returning an estimation result dictionary.
     """
-    return {"transcription": sample_transcription}
+
+    def _factory(**overrides: Any) -> dict[str, Any]:
+        return {
+            "estimation": "Project Breakdown:\n- Backend: 40h\nTotal: 40h",
+            "model": DEFAULT_GPT_LLM,
+            "provider": "openai",
+            "finish_reason": "stop",
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": 50,
+                "total_tokens": 150,
+            },
+            "preprocessing": "none",
+            "extracted_requirements": None,
+            "latency_ms": 250,
+            "cost_usd": None,
+            **overrides,
+        }
+
+    return _factory

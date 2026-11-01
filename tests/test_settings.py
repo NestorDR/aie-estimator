@@ -62,12 +62,12 @@ def test_settings_initialization_valid_env_strings(env_str: str, expected_env: E
     """
     GIVEN valid environment string representations
     WHEN Settings is instantiated with app_env
-    THEN Settings is successfully initialized with the corresponding Environment enum member.
+    THEN Settings is successfully initialized with the corresponding Environment enum member without writing files.
 
     :param env_str: String representation of the target environment.
     :param expected_env: Expected Environment enum member.
     """
-    settings = Settings(app_env=env_str)
+    settings = Settings(app_env=env_str, enable_file_logging=False)
     assert settings.app_env == expected_env
 
 
