@@ -18,7 +18,7 @@ The project enforces strict separation of concerns across dedicated application 
 
 - **Schemas (`src/aie_estimator/schemas`)**: Defines domain data schemas and Pydantic models (`EstimationRequest`, `EstimationResponse`) for request payload validation and response contracts.
 - **Routers (`src/aie_estimator/routers/`)**: Defines HTTP routes, endpoint documentation, status codes, and request/response handling.
-- **Services (`src/aie_estimator/services/`)**: Encapsulates core business logic, CAG prompt assembly, multi-provider LLM dispatch, and response caching.
+- **Services (`src/aie_estimator/services/`)**: Encapsulates core business logic, CAG prompt assembly, multi-provider LLM dispatch, fallback token cost estimation, and response caching.
 - **Context (`src/aie_estimator/context/`)**: Stores static reference datasets and few-shot estimation examples injected into model prompts.
 - **Settings (`src/aie_estimator/settings.py`)**: Environment-aware configuration and settings management powered by `pydantic-settings`, supporting structured JSON logging, credential isolation via `SecretStr`, and secret synchronization to `os.environ`.
 - **Server (`src/aie_estimator/server.py`)**: Centralizes FastAPI application initialization, lifespan event handlers, router registration, and global exception mapping.
@@ -89,7 +89,8 @@ aie-estimator/
 │           ├── evaluation.py           # Output evaluation and scoring
 │           ├── litellm_provider.py     # LiteLLM router profiles, reasoning dispatch, and cost tracking
 │           ├── llm_service.py          # CAG prompt assembly and multi-engine coordination
-│           └── native_providers.py     # Native OpenAI and Anthropic SDK integrations
+│           ├── native_providers.py     # Native OpenAI and Anthropic SDK integrations
+│           └── pricing.py              # Fallback token execution cost estimation
 ├── tests/                              # Unit and integration test suites
 ├── .dockerignore
 ├── .gitignore
@@ -106,7 +107,7 @@ aie-estimator/
 - Python >= 3.14
 - [`uv`](https://docs.astral.sh/uv/) package manager
 - Docker Desktop / Docker Compose (for Redis exact-match cache and containerized deployments)
-- OpenAI API key (`OPENAI_API_KEY`) and/or Anthropic API key (`ANTHROPIC_API_KEY`)
+- OpenAI API key (`OPENAI_API_KEY`), Anthropic API key (`ANTHROPIC_API_KEY`), or Gemini API key (`GEMINI_API_KEY`)
 
 ## Installation & Setup
 
@@ -174,7 +175,7 @@ Or directly via `uv`:
 
 ```bash
 uv run aie-estimator
-# or with auto-reload:
+# or
 uv run uvicorn aie_estimator.server:server.app --reload --host localhost --port 8000
 ```
 
@@ -226,8 +227,8 @@ Analyzes meeting transcript text and returns an effort estimation breakdown.
   "model": "reasoner-fast",
   "engine": "litellm",
   "reasoning_effort": "low",
-  "preprocessing": "none",
-  "max_tokens": 4096
+  "preprocessing": "inline_cleaning",
+  "max_tokens": 4000
 }
 ```
 
@@ -247,7 +248,7 @@ Analyzes meeting transcript text and returns an effort estimation breakdown.
     "preprocessing_output_tokens": 0
   },
   "finish_reason": "stop",
-  "preprocessing": "none",
+  "preprocessing": "inline_cleaning",
   "extracted_requirements": null,
   "latency_ms": 1250,
   "validation": {
@@ -306,7 +307,7 @@ Verify local setup against the baseline project criteria:
 - [x] `GET /health` returns HTTP 200 with `status: healthy`
 - [x] `POST /api/v1/estimate` processes transcriptions and returns structured estimations
 - [x] Prompts include historical few-shot reference examples from `src/aie_estimator/context/examples.py`
-- [x] Streamlit conversational UI accessible at `http://localhost:8501` via `streamlit run streamlit_app.py`
+- [x] Streamlit conversational UI accessible at `http://localhost:8501` via `uv run streamlit run streamlit_app.py`
 - [x] Redis exact-match cache short-circuits repeated estimation requests with offline fallback
 - [x] Swagger documentation is accessible at `/docs`
 - [x] `.env*` files are excluded in `.gitignore`
