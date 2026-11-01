@@ -53,19 +53,41 @@ Streamlit automatically opens the application at `http://localhost:8501`.
 3. The assistant generates and streams the software effort breakdown word-by-word into the chat view.
 4. The conversation remains visible across successive turns, backed by `st.session_state.messages`.
 
-### 3. Inspecting CAG Context and Metrics
+### 3. Generation Parameter Configuration
 
-Open the Streamlit sidebar on the left:
+Open the Streamlit sidebar to customize generation parameters prior to submitting a transcript:
+
+- **Model and Engine (`st.container(border=True)`)**:
+  - **Target model**: Dropdown menu dynamically listing models and profiles from `get_supported_models()`, preselecting the application default (`settings.llm_model`).
+  - **Execution engine**: Segmented control switching between `litellm` (multi-provider routing) and `native` (legacy direct SDK dispatch).
+  - **Reasoning effort**: Segmented control selecting the qualitative reasoning tier (`None`, `low`, `medium`, `high`) for reasoning models.
+- **Context and Preprocessing (`st.container(border=True)`)**:
+  - **Preprocessing strategy**: Segmented control selecting `inline_cleaning` (appends transcript cleaning instructions to prompt), `two_phase` (executes Phase-1 requirement extraction before estimation), or `none` (raw transcript passed as-is).
+  - **Include canonical examples**: Toggle switch enabling or disabling the injection of reference estimations.
+  - **Example format**: Segmented control selecting CAG serialization (`markdown`, `json`, or `narrative`), disabled when examples are toggled off.
+  - **Example count**: Numeric slider configuring the number of reference examples (0 to 5) injected into the prompt context.
+- **Output and Validation (`st.container(border=True)`)**:
+  - **Max output tokens**: Slider configuring output generation boundaries (500 to 16,000, step 500).
+  - **Run structural evaluation**: Toggle switch enabling Level-1 validation on generated estimation tables, hour totals, costs, team composition, and project duration.
+
+### 4. Inspecting CAG Context and Metrics
+
+The sidebar provides real-time visibility into active prompt context and execution outcomes:
+
 - **Service Status**: Displays the connected backend endpoint URL (`ESTIMATOR_API_BASE_URL`).
-- **Last Call Metrics**: Displays model identifier, provider name, response latency in milliseconds, token breakdown, and cache hit status (`Hit` vs `Miss`).
-- **Active CAG Context**: An expandable panel rendering the complete system prompt instructions, consultant role definition, hourly rates, and historical reference examples.
-- **Clear Chat History**: Resets session messages and execution metrics.
+- **Active CAG Context**: Expandable panel rendering the live system prompt assembled by `build_system_prompt()`. It dynamically reflects the active `example_format`, `num_examples`, `use_examples`, and `inline_cleaning` settings.
+- **Turn-Anchored Execution Details & Evaluation**: Each assistant message in the chat feed retains its full `EstimationResponse` payload, displaying an expandable card containing:
+  - Model identifier, upstream provider, response latency, exact-match cache status (`Hit` vs `Miss`), monetary execution cost in USD (`cost_usd`), and provider finish reason.
+  - Complete token consumption (`input_tokens`, `output_tokens`, `total_tokens`), including two-phase preprocessing tokens (`preprocessing_input_tokens`, `preprocessing_output_tokens`) when active.
+  - Extracted requirements preview when `two_phase` preprocessing was executed.
+  - Structural evaluation summary conforming to `StructureCheck`: overall score percentage and status badge, declared vs table-summed hours and cost verification (`hours_match`, `cost_match`), and detected issues list.
+- **Clear Chat History**: Resets conversation messages and execution metrics in session state.
 
-### 4. Cache Hit Verification
+### 5. Cache Hit Verification
 
 When an identical transcription is submitted again with the same parameters:
 - The backend serves the response directly from Redis.
-- The sidebar displays `Cache: Hit` with a response latency under 5 ms and zero additional upstream tokens consumed.
+- The assistant's execution card displays `Cache: Hit` with a response latency under 5 ms and zero additional upstream tokens consumed.
 
 ---
 
