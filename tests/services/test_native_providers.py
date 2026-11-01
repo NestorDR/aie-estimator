@@ -18,6 +18,7 @@ from aie_estimator.services.native_providers import (
     get_openai_client,
 )
 from aie_estimator.settings import Environment, Settings
+from tests.conftest import REASONING_EFFORT_TEST_CASES
 
 
 def test_client_caching_and_lifecycle(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -228,12 +229,7 @@ async def test_call_openai_retry_exhaustion(
 @pytest.mark.anyio
 @pytest.mark.parametrize(
     ("reasoning_effort", "expected_effort"),
-    [
-        (None, None),
-        ("low", "low"),
-        ("medium", "medium"),
-        ("high", "high"),
-    ],
+    REASONING_EFFORT_TEST_CASES,
     ids=[
         "thinking_disabled",
         "effort_low",

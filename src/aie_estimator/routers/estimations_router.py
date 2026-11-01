@@ -1,7 +1,6 @@
 # src/aie_estimator/routers/estimations_router.py
 
 # --- Python Standard Library ---
-import logging
 from typing import Final
 
 # --- Third Party Libraries ---
@@ -12,7 +11,7 @@ import structlog
 from aie_estimator.schemas.estimations import EstimationRequest, EstimationResponse
 from aie_estimator.services import evaluation, llm_service
 
-log: Final[logging.Logger] = structlog.get_logger()
+log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
 
 router = APIRouter(
     prefix="/api/v1",

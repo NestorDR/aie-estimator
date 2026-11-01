@@ -13,7 +13,7 @@ import yaml
 
 # --- App modules ---
 from aie_estimator.schemas.models import DEFAULT_FAST_PROFILE, get_model_catalog, get_profiles_config_path
-from aie_estimator.services import LLMServiceError
+from aie_estimator.services import LLMServiceError, format_provider_response
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
 
@@ -157,9 +157,6 @@ async def call_litellm_router(
     usage = getattr(response, "usage", None)
     input_tokens = getattr(usage, "prompt_tokens", 0) if usage else 0
     output_tokens = getattr(usage, "completion_tokens", 0) if usage else 0
-    total_tokens = getattr(usage, "total_tokens", input_tokens + output_tokens) if usage else (
-        input_tokens + output_tokens
-    )
 
     hidden_params = getattr(response, "_hidden_params", {}) or {}
     raw_cost = hidden_params.get("response_cost")
@@ -184,15 +181,12 @@ async def call_litellm_router(
         output_tokens=output_tokens,
     )
 
-    return {
-        "estimation": estimation_text,
-        "model": actual_model,
-        "provider": provider,
-        "finish_reason": finish_reason,
-        "usage": {
-            "input_tokens": input_tokens,
-            "output_tokens": output_tokens,
-            "total_tokens": total_tokens,
-        },
-        "cost_usd": cost_usd,
-    }
+    return format_provider_response(
+        estimation=estimation_text,
+        model=actual_model,
+        provider=provider,
+        finish_reason=finish_reason,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cost_usd=cost_usd,
+    )

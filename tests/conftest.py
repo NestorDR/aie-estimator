@@ -2,7 +2,7 @@
 
 # --- Python Standard Library ---
 from collections.abc import Callable, Generator
-from typing import Any
+from typing import Any, Final, get_args
 
 # --- Third Party Libraries ---
 from fastapi import FastAPI
@@ -10,12 +10,18 @@ from fastapi.testclient import TestClient
 import pytest
 
 # --- App modules ---
+from aie_estimator.schemas.estimations import ReasoningEffort
 from aie_estimator.schemas.models import DEFAULT_GPT_LLM, get_model_catalog, get_supported_models
 from aie_estimator.server import Server
 from aie_estimator.services.cache import get_estimation_cache
 from aie_estimator.services.litellm_provider import get_litellm_router
 from aie_estimator.services.native_providers import get_anthropic_client, get_openai_client
 from aie_estimator.settings import get_settings
+
+REASONING_EFFORT_TEST_CASES: Final[tuple[tuple[str | None, str | None], ...]] = (
+    (None, None),
+    *((effort, effort) for effort in get_args(ReasoningEffort)),
+)
 
 
 def _clear_all_caches() -> None:

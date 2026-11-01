@@ -16,7 +16,6 @@ from aie_estimator.settings import get_settings
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
 
-DEFAULT_CACHE_TTL: Final[int] = 86400
 DEFAULT_CACHE_TIMEOUT: Final[float] = 1.0
 CACHE_KEY_PREFIX: Final[str] = "estimation"
 

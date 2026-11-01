@@ -101,7 +101,7 @@ class Server:
 
         # Root endpoint
         @app.get("/", tags=["Root"])
-        async def read_root():
+        async def read_root() -> dict[str, str]:
             """
             Provides a simple status check endpoint.
 
@@ -120,7 +120,7 @@ class Server:
         """
 
         @app.exception_handler(RequestValidationError)
-        async def validation_exception_handler(request: Request, e: RequestValidationError):
+        async def validation_exception_handler(request: Request, e: RequestValidationError) -> JSONResponse:
             """
             Handle request validation errors and return structured HTTP 422 responses.
 
@@ -136,7 +136,7 @@ class Server:
             )
 
         @app.exception_handler(ConnectionError)
-        async def db_connection_exception_handler(request: Request, e: ConnectionError):
+        async def db_connection_exception_handler(request: Request, e: ConnectionError) -> JSONResponse:
             """
             Handle database connection failures and return structured HTTP 503 responses.
 
@@ -160,7 +160,7 @@ class Server:
         #     )
 
         @app.exception_handler(LLMServiceError)
-        async def llm_service_exception_handler(request: Request, e: LLMServiceError):
+        async def llm_service_exception_handler(request: Request, e: LLMServiceError) -> JSONResponse:
             """
             Handle upstream LLM service errors and return sanitized HTTP 500 responses.
 
@@ -176,7 +176,7 @@ class Server:
             )
 
         @app.exception_handler(Exception)
-        async def general_exception_handler(request: Request, e: Exception):
+        async def general_exception_handler(request: Request, e: Exception) -> JSONResponse:
             """
             General exception handler for unhandled exceptions.
             Ensures sensitive error details are not exposed in production.

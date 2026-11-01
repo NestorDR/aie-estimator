@@ -11,6 +11,7 @@ import pytest
 from aie_estimator.schemas.models import DEFAULT_FAST_PROFILE, DEFAULT_GPT_LLM
 from aie_estimator.services import LLMServiceError
 from aie_estimator.services.litellm_provider import call_litellm_router, get_litellm_router
+from tests.conftest import REASONING_EFFORT_TEST_CASES
 
 
 def test_get_litellm_router_credential_filtering(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -126,12 +127,7 @@ async def test_call_router_cost_extraction_and_response_structure(
 @pytest.mark.anyio
 @pytest.mark.parametrize(
     ("reasoning_effort", "expected_effort"),
-    [
-        (None, None),
-        ("low", "low"),
-        ("medium", "medium"),
-        ("high", "high"),
-    ],
+    REASONING_EFFORT_TEST_CASES,
     ids=[
         "router_reasoning_disabled",
         "router_low",

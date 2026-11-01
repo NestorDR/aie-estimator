@@ -46,9 +46,6 @@ Always apply good software engineering practices: **KISS, YAGNI, DRY, SOLID, ACI
   - Synchronize all existing documentation files affected by the change.
 
 ## 5. Developer Workflows and CLI Commands
-- **CI/CD Constraints**: 
-  - Do not edit `.github/workflows/ci-cd-pipeline.yml` or attempt to activate the SSH VPS deployment (`if: false`) unless explicitly instructed.
-  - Be aware that Linux unit tests in CI require TA-Lib C headers (configured via `auto/ci_test_install_talib.sh`).
 - **Forbidden Commands**: 
   - Never execute `.cmd` or `.ps1` scripts inside the `auto/` directory. These are reserved for manual developer execution.
 - **Context & Tool Optimization**:

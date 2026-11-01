@@ -2,20 +2,21 @@
 
 # --- Python Standard Library ---
 import re
+from typing import Final
 
 # --- App modules ---
 from aie_estimator.schemas.estimations import StructureCheck
 
-_OK_FINISH_REASONS = {"stop", "end_turn"}
+_OK_FINISH_REASONS: Final[set[str]] = {"stop", "end_turn"}
 
-_TABLE_ROW_RE = re.compile(
+_TABLE_ROW_RE: Final[re.Pattern[str]] = re.compile(
     r"^\|\s*(?P<task>[^|]+?)\s*\|\s*(?P<hours>[\d.,]+)\s*\|\s*(?P<cost>[\d.,\sEURer]+)\s*\|\s*$",
     re.MULTILINE,
 )
-_HEADER_ROW_RE = re.compile(r"\|\s*Task\s*\|\s*Hours\s*\|\s*Cost", re.IGNORECASE)
-_SEPARATOR_ROW_RE = re.compile(r"^\|\s*[-: ]+\|", re.MULTILINE)
-_TOTAL_HOURS_RE = re.compile(r"Total\s+hours[:\*\s]*([\d.,]+)", re.IGNORECASE)
-_TOTAL_COST_RE = re.compile(r"Total\s+cost[:\*\s]*([\d.,]+)", re.IGNORECASE)
+_HEADER_ROW_RE: Final[re.Pattern[str]] = re.compile(r"\|\s*Task\s*\|\s*Hours\s*\|\s*Cost", re.IGNORECASE)
+_SEPARATOR_ROW_RE: Final[re.Pattern[str]] = re.compile(r"^\|\s*[-: ]+\|", re.MULTILINE)
+_TOTAL_HOURS_RE: Final[re.Pattern[str]] = re.compile(r"Total\s+hours[:\*\s]*([\d.,]+)", re.IGNORECASE)
+_TOTAL_COST_RE: Final[re.Pattern[str]] = re.compile(r"Total\s+cost[:\*\s]*([\d.,]+)", re.IGNORECASE)
 
 
 def _to_int(raw: str) -> int | None:

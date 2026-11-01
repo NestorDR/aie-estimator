@@ -239,16 +239,34 @@ Analyzes meeting transcript text and returns an effort estimation breakdown.
   "model": "openai/gpt-6-luna",
   "provider": "litellm",
   "cost_usd": 0.00342,
-  "tokens": {
-    "prompt_tokens": 1420,
-    "completion_tokens": 380,
-    "total_tokens": 1800
+  "usage": {
+    "input_tokens": 1420,
+    "output_tokens": 380,
+    "total_tokens": 1800,
+    "preprocessing_input_tokens": 0,
+    "preprocessing_output_tokens": 0
   },
-  "evaluation": {
-    "total_score": 100,
-    "passed": true,
-    "feedback": "All Level-1 structural requirements satisfied."
-  }
+  "finish_reason": "stop",
+  "preprocessing": "none",
+  "extracted_requirements": null,
+  "latency_ms": 1250,
+  "validation": {
+    "has_title": true,
+    "has_breakdown_table": true,
+    "has_totals_section": true,
+    "has_team_section": true,
+    "has_duration_section": true,
+    "declared_total_hours": 125,
+    "sum_row_hours": 125,
+    "hours_match": true,
+    "declared_total_cost": null,
+    "sum_row_cost": null,
+    "cost_match": null,
+    "finish_reason_ok": true,
+    "score": 1.0,
+    "issues": []
+  },
+  "cache_hit": false
 }
 ```
 

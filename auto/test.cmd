@@ -19,7 +19,7 @@ if /i not "%CURRENT_DIR%"=="%PROJECT_ROOT%" (
 )
 
 :: Set the virtual environment for this test run.
-:: e.g. to separate environment: set VIRTUAL_ENV=C:\Development\VirtualEnvs\radar-3.14.8-uv-env
+:: e.g. to separate environment: set VIRTUAL_ENV=C:\Development\VirtualEnvs\aie-estimator-3.14.8-uv-env
 set VIRTUAL_ENV=.venv
 
 :: Run pytest with cache clearing, temporary basetemp, and branch coverage reporting:
@@ -42,9 +42,6 @@ if exist "%PROJECT_ROOT%\.pytest_cache" rmdir /s /q "%PROJECT_ROOT%\.pytest_cach
 if exist "%PROJECT_ROOT%\.coverage" del /f /q "%PROJECT_ROOT%\.coverage"
 if exist "%PROJECT_ROOT%\htmlcov" rmdir /s /q "%PROJECT_ROOT%\htmlcov"
 if exist "%PROJECT_ROOT%\.coverage.*" del /f /q "%PROJECT_ROOT%\.coverage.*"
-
-:: Remove test price cache directories if left behind
-if exist "%PROJECT_ROOT%\tests\cache" rmdir /s /q "%PROJECT_ROOT%\tests\cache"
 
 :end
 :: Restore the original VIRTUAL_ENV and exit with the original pytest exit code

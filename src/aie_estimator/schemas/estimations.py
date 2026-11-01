@@ -25,9 +25,8 @@ class EstimationRequest(BaseModel):
         description="Meeting transcript text containing client requirements and project scope.",
         examples=["In the meeting with the marketing team, the client explained that they need a landing page with a contact form..."],
     )
-    # region Added in live session
     preprocessing: PreprocessingMode = Field(
-        default="none",
+        default="inline_cleaning",
         description="Input preprocessing strategy: none | inline_cleaning | two_phase",
     )
     example_format: ExampleFormat = Field(
@@ -70,7 +69,6 @@ class EstimationRequest(BaseModel):
         default="litellm",
         description="Execution engine: 'litellm' for dynamic multi-provider routing, or 'native' for legacy direct SDK calls.",
     )
-    # endregion Added in live session
 
     @field_validator("model", mode="after")
     @classmethod

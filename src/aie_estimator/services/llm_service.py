@@ -64,7 +64,7 @@ Generate the estimation with this exact structure:
 """
 
 # Switch: change the right-hand side to PROMPT_OUTPUT_STRUCTURED
-ACTIVE_OUTPUT_PROMPT: Final[str] = PROMPT_OUTPUT_BASIC
+ACTIVE_OUTPUT_PROMPT: Final[str] = PROMPT_OUTPUT_STRUCTURED
 
 INLINE_CLEANING_BLOCK: Final[str] = """
 The transcription you receive is from a real meeting and may contain:

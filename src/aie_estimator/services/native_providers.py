@@ -19,7 +19,7 @@ import structlog
 
 # --- App modules ---
 from aie_estimator.schemas.models import DEFAULT_GPT_LLM, get_model_catalog
-from aie_estimator.services import DEFAULT_MAX_TOKENS, LLMServiceError
+from aie_estimator.services import DEFAULT_MAX_TOKENS, LLMServiceError, format_provider_response
 from aie_estimator.settings import get_settings
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
@@ -149,8 +149,6 @@ async def call_openai(
     usage = getattr(response, "usage", None)
     input_tokens = getattr(usage, "input_tokens", 0) if usage else 0
     output_tokens = getattr(usage, "output_tokens", 0) if usage else 0
-    raw_total = getattr(usage, "total_tokens", None)
-    total_tokens = raw_total if isinstance(raw_total, int) else (input_tokens + output_tokens)
 
     log.info(
         "llm_response_received",
@@ -161,17 +159,14 @@ async def call_openai(
         output_tokens=output_tokens,
     )
 
-    return {
-        "estimation": getattr(response, "output_text", ""),
-        "model": getattr(response, "model", model),
-        "provider": "openai",
-        "finish_reason": finish_reason,
-        "usage": {
-            "input_tokens": input_tokens,
-            "output_tokens": output_tokens,
-            "total_tokens": total_tokens,
-        },
-    }
+    return format_provider_response(
+        estimation=getattr(response, "output_text", ""),
+        model=getattr(response, "model", model),
+        provider="openai",
+        finish_reason=finish_reason,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+    )
 
 
 async def call_anthropic(
@@ -239,8 +234,6 @@ async def call_anthropic(
     usage = getattr(response, "usage", None)
     input_tokens = getattr(usage, "input_tokens", 0) if usage else 0
     output_tokens = getattr(usage, "output_tokens", 0) if usage else 0
-    raw_total = getattr(usage, "total_tokens", None)
-    total_tokens = raw_total if isinstance(raw_total, int) else (input_tokens + output_tokens)
 
     log.info(
         "llm_response_received",
@@ -251,14 +244,11 @@ async def call_anthropic(
         output_tokens=output_tokens,
     )
 
-    return {
-        "estimation": estimation_text,
-        "model": getattr(response, "model", model),
-        "provider": "anthropic",
-        "finish_reason": finish_reason,
-        "usage": {
-            "input_tokens": input_tokens,
-            "output_tokens": output_tokens,
-            "total_tokens": total_tokens,
-        },
-    }
+    return format_provider_response(
+        estimation=estimation_text,
+        model=getattr(response, "model", model),
+        provider="anthropic",
+        finish_reason=finish_reason,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+    )

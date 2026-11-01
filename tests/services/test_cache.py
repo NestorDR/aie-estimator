@@ -1,8 +1,9 @@
 # tests/services/test_cache.py
 
 # --- Python Standard Library ---
+from collections.abc import Callable
 import json
-from typing import Any, Final
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 # --- Third Party Libraries ---
@@ -13,26 +14,10 @@ from redis.exceptions import ConnectionError as RedisConnectionError, TimeoutErr
 from aie_estimator.schemas.models import DEFAULT_CLAUDE_LLM, DEFAULT_GPT_LLM
 from aie_estimator.services.cache import (
     CACHE_KEY_PREFIX,
-    DEFAULT_CACHE_TTL,
     EstimationCache,
     get_estimation_cache,
 )
 from aie_estimator.settings import Environment, Settings, get_settings
-
-_SAMPLE_ESTIMATION_PAYLOAD: Final[dict[str, Any]] = {
-    "estimation": "## Project Summary\nEstimation details...",
-    "model": DEFAULT_GPT_LLM,
-    "provider": "openai",
-    "finish_reason": "stop",
-    "usage": {
-        "input_tokens": 100,
-        "output_tokens": 50,
-        "total_tokens": 150,
-        "preprocessing_input_tokens": 0,
-        "preprocessing_output_tokens": 0,
-    },
-    "cost_usd": 0.0001,
-}
 
 
 def test_make_key_deterministic_output() -> None:
@@ -110,19 +95,24 @@ def test_make_key_differentiates_on_parameter_changes(
 
 
 @pytest.mark.anyio
-async def test_cache_get_hit_deserializes_payload() -> None:
+async def test_cache_get_hit_deserializes_payload(
+    make_estimation_result: Callable[..., dict[str, Any]],
+) -> None:
     """
     GIVEN a key present in Redis storing valid JSON
     WHEN cache.get is invoked
     THEN the stored dictionary is deserialized and returned.
+
+    :param make_estimation_result: Shared factory fixture generating valid estimation dictionaries.
     """
+    sample_payload = make_estimation_result(cost_usd=0.0001)
     mock_redis = AsyncMock()
-    mock_redis.get.return_value = json.dumps(_SAMPLE_ESTIMATION_PAYLOAD)
+    mock_redis.get.return_value = json.dumps(sample_payload)
 
     cache = EstimationCache(mock_redis, ttl=3600)
     result = await cache.get("estimation:test-key")
 
-    assert result == _SAMPLE_ESTIMATION_PAYLOAD
+    assert result == sample_payload
     mock_redis.get.assert_called_once_with("estimation:test-key")
 
 
@@ -152,24 +142,28 @@ def test_cache_default_ttl_resolved_from_settings() -> None:
     mock_redis = AsyncMock()
     cache = EstimationCache(mock_redis)
     assert cache.ttl == get_settings().cache_ttl
-    assert DEFAULT_CACHE_TTL == get_settings().cache_ttl
 
 
 @pytest.mark.anyio
-async def test_cache_set_stores_serialized_payload_with_ttl() -> None:
+async def test_cache_set_stores_serialized_payload_with_ttl(
+    make_estimation_result: Callable[..., dict[str, Any]],
+) -> None:
     """
     GIVEN an estimation payload and optional custom TTL
     WHEN cache.set is invoked
     THEN redis.set is called with the serialized payload and TTL expiration parameter.
-    """
-    mock_redis = AsyncMock()
-    cache = EstimationCache(mock_redis, ttl=DEFAULT_CACHE_TTL)
 
-    await cache.set("estimation:test-key", _SAMPLE_ESTIMATION_PAYLOAD, ttl=1800)
+    :param make_estimation_result: Shared factory fixture generating valid estimation dictionaries.
+    """
+    sample_payload = make_estimation_result(cost_usd=0.0001)
+    mock_redis = AsyncMock()
+    cache = EstimationCache(mock_redis)
+
+    await cache.set("estimation:test-key", sample_payload, ttl=1800)
 
     mock_redis.set.assert_called_once_with(
         "estimation:test-key",
-        json.dumps(_SAMPLE_ESTIMATION_PAYLOAD),
+        json.dumps(sample_payload),
         ex=1800,
     )
 
