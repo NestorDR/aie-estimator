@@ -57,7 +57,7 @@ async def send_estimation_request(
     *,
     model: str | None = None,
     engine: str = "litellm",
-    preprocessing: str = "inline_cleaning",
+    preprocessing: str = "none",
     reasoning_effort: str | None = None,
     example_format: str = "markdown",
     use_examples: bool = True,
@@ -230,10 +230,10 @@ with st.sidebar:
             st.segmented_control(
                 "Preprocessing strategy",
                 options=["inline_cleaning", "two_phase", "none"],
-                default="inline_cleaning",
+                default="none",
                 help="Transcription preparation strategy prior to effort estimation.",
             )
-            or "inline_cleaning"
+            or "none"
         )
         selected_use_examples: bool = st.toggle(
             "Include canonical examples",

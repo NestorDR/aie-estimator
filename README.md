@@ -227,7 +227,7 @@ Analyzes meeting transcript text and returns an effort estimation breakdown.
   "model": "reasoner-fast",
   "engine": "litellm",
   "reasoning_effort": "low",
-  "preprocessing": "inline_cleaning",
+  "preprocessing": "none",
   "max_tokens": 4000
 }
 ```
@@ -248,7 +248,7 @@ Analyzes meeting transcript text and returns an effort estimation breakdown.
     "preprocessing_output_tokens": 0
   },
   "finish_reason": "stop",
-  "preprocessing": "inline_cleaning",
+  "preprocessing": "none",
   "extracted_requirements": null,
   "latency_ms": 1250,
   "validation": {

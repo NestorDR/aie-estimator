@@ -26,7 +26,7 @@ class EstimationRequest(BaseModel):
         examples=["In the meeting with the marketing team, the client explained that they need a landing page with a contact form..."],
     )
     preprocessing: PreprocessingMode = Field(
-        default="inline_cleaning",
+        default="none",
         description="Input preprocessing strategy: none | inline_cleaning | two_phase",
     )
     example_format: ExampleFormat = Field(

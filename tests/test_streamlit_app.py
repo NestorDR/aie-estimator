@@ -86,7 +86,7 @@ async def test_send_estimation_request_dispatches_expected_payload(
     assert call_kwargs["json"] == {
         "transcription": "Transcribed meeting discussion text about infrastructure.",
         "engine": "litellm",
-        "preprocessing": "inline_cleaning",
+        "preprocessing": "none",
         "example_format": "markdown",
         "use_examples": True,
         "num_examples": 3,
