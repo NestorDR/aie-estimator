@@ -21,7 +21,7 @@ from aie_estimator.settings import get_settings
 load_dotenv()
 
 DEFAULT_API_BASE_URL: Final[str] = "http://localhost:8000"
-STREAM_WORD_DELAY: Final[float] = 0.01
+STREAM_WORD_DELAY: Final[float] = 0.01  # Delay in seconds between streamed word chunks to simulate progressive output
 PAGE_TITLE: Final[str] = "Software Estimator"
 PAGE_ICON: Final[str] = "📊"
 MIN_TRANSCRIPTION_LENGTH: Final[int] = 50
@@ -312,7 +312,7 @@ for message in st.session_state.messages:
             render_estimation_metadata(message["metadata"])
 
 # Process user input
-if prompt := st.chat_input("Paste meeting transcription text (min 50 characters)..."):
+if prompt := st.chat_input(f"Paste meeting transcription text (min {MIN_TRANSCRIPTION_LENGTH} characters)..."):
     if len(prompt.strip()) < MIN_TRANSCRIPTION_LENGTH:
         st.warning(f"Meeting transcription must contain at least {MIN_TRANSCRIPTION_LENGTH} characters.")
     else:
