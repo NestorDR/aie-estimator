@@ -1,9 +1,8 @@
 # tests/schemas/test_models.py
 
 # --- Python Standard Library ---
-from pathlib import Path
+from dataclasses import FrozenInstanceError
 from typing import Any
-from unittest.mock import patch
 
 # --- Third Party Libraries ---
 from pydantic import ValidationError
@@ -12,82 +11,53 @@ import pytest
 # --- App modules ---
 from aie_estimator.schemas.estimations import EstimationRequest
 from aie_estimator.schemas.models import (
-    DEFAULT_CLAUDE_LLM,
     DEFAULT_DEEP_PROFILE,
     DEFAULT_FAST_PROFILE,
     DEFAULT_GPT_LLM,
-    PROVIDER_PREFIXES,
-    UNKNOWN_PROVIDER,
     ModelSpec,
-    get_model_catalog,
-    get_supported_models,
-    resolve_provider,
 )
+import aie_estimator.schemas.models as models_module
 from aie_estimator.settings import get_settings
 
 
-def test_model_catalog_keys_match_supported_models_tuple() -> None:
+def test_model_spec_dataclass_attributes_and_defaults() -> None:
     """
-    GIVEN the get_supported_models() tuple and get_model_catalog()
-    WHEN comparing their member keys
-    THEN all tuple elements match the keys in the catalog exactly.
+    GIVEN the ModelSpec dataclass
+    WHEN instantiated with default or explicit parameters
+    THEN fields reflect the expected values and default boolean flags are False.
     """
-    assert set(get_supported_models()) == set(get_model_catalog().keys())
+    spec_default = ModelSpec(provider="openai")
+    assert spec_default.provider == "openai"
+    assert spec_default.is_reasoning is False
+    assert spec_default.is_profile is False
+
+    spec_custom = ModelSpec(provider="litellm", is_reasoning=True, is_profile=True)
+    assert spec_custom.provider == "litellm"
+    assert spec_custom.is_reasoning is True
+    assert spec_custom.is_profile is True
 
 
-@pytest.mark.parametrize(
-    ("model_name", "expected_provider", "expected_reasoning"),
-    [
-        (DEFAULT_GPT_LLM, "openai", True),
-        (DEFAULT_CLAUDE_LLM, "anthropic", True),
-    ],
-    ids=[
-        "gpt6_luna_openai_reasoning",
-        "claude_haiku_anthropic_reasoning",
-    ],
-)
-def test_model_catalog_specs(
-    model_name: str,
-    expected_provider: str,
-    expected_reasoning: bool,
-) -> None:
+def test_model_spec_is_frozen_immutable() -> None:
     """
-    GIVEN a model registered in get_model_catalog()
-    WHEN its ModelSpec attributes are inspected
-    THEN the provider and reasoning capability flags match expected specifications.
-
-    :param model_name: Target model identifier.
-    :param expected_provider: Expected provider identifier ('openai' or 'anthropic').
-    :param expected_reasoning: Expected boolean indicating reasoning/thinking support.
+    GIVEN an instantiated ModelSpec
+    WHEN attempting to modify an attribute
+    THEN a FrozenInstanceError is raised.
     """
-    spec: ModelSpec = get_model_catalog()[model_name]
-    assert spec.provider == expected_provider
-    assert spec.is_reasoning is expected_reasoning
+    spec = ModelSpec(provider="openai")
+    with pytest.raises(FrozenInstanceError):
+        spec.provider = "anthropic"  # type: ignore[misc]
 
 
-@pytest.mark.parametrize(
-    ("litellm_params", "expected_provider"),
-    [
-        ({"api_key": "os.environ/SCALEWAY_API_KEY", "model": "openai/deepseek-ai/DeepSeek-V4-Flash"}, "scaleway"),
-        ({"api_key": "os.environ/NEBIUS_API_KEY", "model": "openai/deepseek-ai/DeepSeek-R2"}, "nebius"),
-        ({"model": "gemini/gemini-3.5-flash-lite"}, "gemini"),
-        ({"model": "mistral/mistral-small-3.2"}, "mistral"),
-        ({"model": DEFAULT_CLAUDE_LLM}, "anthropic"),
-        ({"model": "unknown-custom-model"}, UNKNOWN_PROVIDER),
-    ],
-    ids=["scaleway_by_env", "nebius_by_env", "gemini_by_prefix", "mistral_by_prefix", "anthropic_by_prefix", "unknown_provider"],
-)
-def test_resolve_provider_via_provider_prefixes(litellm_params: dict[str, Any], expected_provider: str) -> None:
+def test_schemas_models_contains_no_io_or_loader_methods() -> None:
     """
-    GIVEN LiteLLM model parameters
-    WHEN resolve_provider is called
-    THEN it resolves the provider from PROVIDER_PREFIXES via api_key or model prefix, or returns UNKNOWN_PROVIDER.
-
-    :param litellm_params: Model parameter dictionary.
-    :param expected_provider: Expected resolved provider string.
+    GIVEN the schemas.models module
+    WHEN checking its exported attributes
+    THEN no file I/O or catalog loading functions are present in the module namespace.
     """
-    assert expected_provider in PROVIDER_PREFIXES or expected_provider == UNKNOWN_PROVIDER
-    assert resolve_provider(litellm_params) == expected_provider
+    assert not hasattr(models_module, "get_model_catalog")
+    assert not hasattr(models_module, "resolve_provider")
+    assert not hasattr(models_module, "get_profiles_config_path")
+    assert not hasattr(models_module, "get_supported_models")
 
 
 @pytest.mark.parametrize(
@@ -143,85 +113,6 @@ def test_estimation_request_none_model_defaults_to_settings_llm_model() -> None:
     expected_model = get_settings().llm_model
     assert req_omitted.model == expected_model
     assert req_none.model == expected_model
-
-
-@pytest.mark.parametrize(
-    "profile_name",
-    [
-        DEFAULT_FAST_PROFILE,
-        DEFAULT_DEEP_PROFILE,
-    ],
-    ids=["profile_reasoner_fast", "profile_reasoner_deep"],
-)
-def test_logical_profiles_registered_in_catalog(profile_name: str) -> None:
-    """
-    GIVEN a defined logical profile name
-    WHEN the catalog is inspected
-    THEN the profile is present, marked as is_profile=True, and has provider='litellm'.
-
-    :param profile_name: Logical profile identifier.
-    """
-    catalog = get_model_catalog()
-    assert profile_name in catalog
-    spec = catalog[profile_name]
-    assert spec.is_profile is True
-    assert spec.provider == "litellm"
-    assert spec.is_reasoning is True
-
-
-def test_dynamic_model_catalog_fallback_on_missing_file(tmp_path: Path) -> None:
-    """
-    GIVEN a non-existent configuration file path
-    WHEN get_model_catalog is called
-    THEN the fallback default catalog is returned safely without raising exceptions, excluding removed models.
-
-    :param tmp_path: Pytest temporary directory fixture.
-    """
-    non_existent = tmp_path / "missing_profiles.yml"
-    with patch("aie_estimator.schemas.models.get_profiles_config_path", return_value=non_existent):
-        get_model_catalog.cache_clear()
-        catalog = get_model_catalog()
-        assert DEFAULT_GPT_LLM in catalog
-        assert DEFAULT_FAST_PROFILE in catalog
-        assert "gpt-4o-mini" not in catalog
-        assert "gpt-5-nano" not in catalog
-    get_model_catalog.cache_clear()
-
-
-def test_dynamic_model_catalog_fallback_on_corrupted_yaml_and_empty_list(tmp_path: Path) -> None:
-    """
-    GIVEN a corrupted YAML file or a YAML file with an empty model_list
-    WHEN get_model_catalog is called
-    THEN the exception or empty list is logged and the fallback default catalog is returned.
-
-    :param tmp_path: Pytest temporary directory fixture.
-    """
-    corrupted_yaml = tmp_path / "corrupted_profiles.yml"
-    corrupted_yaml.write_text("::: invalid_yaml: [unclosed", encoding="utf-8")
-    with patch("aie_estimator.schemas.models.get_profiles_config_path", return_value=corrupted_yaml):
-        get_model_catalog.cache_clear()
-        catalog = get_model_catalog()
-        assert DEFAULT_GPT_LLM in catalog
-        assert DEFAULT_CLAUDE_LLM in catalog
-
-    empty_yaml = tmp_path / "empty_profiles.yml"
-    empty_yaml.write_text("model_list: []\n", encoding="utf-8")
-    with patch("aie_estimator.schemas.models.get_profiles_config_path", return_value=empty_yaml):
-        get_model_catalog.cache_clear()
-        catalog = get_model_catalog()
-        assert DEFAULT_GPT_LLM in catalog
-        assert DEFAULT_CLAUDE_LLM in catalog
-
-    unknown_yaml = tmp_path / "unknown_provider_profiles.yml"
-    unknown_yaml.write_text(
-        "model_list:\n  - model_name: 'custom-unrecognized'\n    litellm_params:\n      model: 'unrecognized/model-1'\n",
-        encoding="utf-8",
-    )
-    with patch("aie_estimator.schemas.models.get_profiles_config_path", return_value=unknown_yaml):
-        get_model_catalog.cache_clear()
-        catalog = get_model_catalog()
-        assert "custom-unrecognized" not in catalog
-    get_model_catalog.cache_clear()
 
 
 @pytest.mark.parametrize(

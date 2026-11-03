@@ -1,7 +1,8 @@
 # tests/services/test_litellm_provider.py
 
 # --- Python Standard Library ---
-from unittest.mock import AsyncMock, MagicMock
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # --- Third Party Libraries ---
 import litellm
@@ -184,4 +185,42 @@ async def test_call_router_dispatches_reasoning_effort(
         assert call_kwargs.get("reasoning_effort") == expected_effort
     else:
         assert "reasoning_effort" not in call_kwargs
+
+
+def test_get_litellm_router_reloads_on_cache_clear(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    GIVEN an updated configuration file
+    WHEN get_litellm_router.cache_clear() is called
+    THEN a new Router instance is returned reflecting the updated configuration.
+
+    :param tmp_path: Temporary directory fixture.
+    :param monkeypatch: Pytest monkeypatch fixture.
+    """
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-openai-key")
+    config_file = tmp_path / "llm_profiles.yml"
+    config_file.write_text(
+        "general_settings:\n  disable_telemetry: true\nmodel_list:\n  - model_name: 'alpha'\n    litellm_params:\n      model: 'openai/gpt-6-luna'\n      api_key: 'os.environ/OPENAI_API_KEY'\n",
+        encoding="utf-8",
+    )
+
+    with patch("aie_estimator.services.litellm_provider.get_profiles_config_path", return_value=config_file):
+        get_litellm_router.cache_clear()
+        router_v1 = get_litellm_router()
+        models_v1 = [m["model_name"] for m in router_v1.model_list]
+        assert "alpha" in models_v1
+        assert "beta" not in models_v1
+
+        config_file.write_text(
+            "general_settings:\n  disable_telemetry: true\nmodel_list:\n  - model_name: 'alpha'\n    litellm_params:\n      model: 'openai/gpt-6-luna'\n      api_key: 'os.environ/OPENAI_API_KEY'\n  - model_name: 'beta'\n    litellm_params:\n      model: 'openai/gpt-6-luna'\n      api_key: 'os.environ/OPENAI_API_KEY'\n",
+            encoding="utf-8",
+        )
+
+        get_litellm_router.cache_clear()
+        router_v2 = get_litellm_router()
+        models_v2 = [m["model_name"] for m in router_v2.model_list]
+        assert "beta" in models_v2
+    get_litellm_router.cache_clear()
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The `aie-estimator` service utilizes an externalized, dynamic model catalog defined in `src/aie_estimator/llm_profiles.yml` and accessed via `src/aie_estimator/schemas/models.py`.
+The `aie-estimator` service utilizes an externalized, dynamic model catalog defined in `src/aie_estimator/llm_profiles.yml` and managed via `src/aie_estimator/services/model_catalog.py`, while `src/aie_estimator/schemas/models.py` defines pure data structures (`ModelSpec`).
 
 The catalog serves four primary architectural purposes:
 1. **Request Boundary Validation**: Validates client request payloads against `get_supported_models()`, accepting both logical routing profiles (`reasoner-fast`, `reasoner-deep`) and direct physical models (`gpt-6-luna`, `claude-haiku-5-5`), rejecting invalid or placeholder inputs with HTTP 422 Unprocessable Entity.
@@ -66,10 +66,11 @@ The endpoint immediately returns HTTP 422:
 ### 2. Inspecting Catalog Programmatically
 
 ```python
-from aie_estimator.schemas.models import (
-    DEFAULT_FAST_PROFILE,
+from aie_estimator.schemas.models import DEFAULT_FAST_PROFILE, ModelSpec
+from aie_estimator.services.model_catalog import (
     PROVIDER_PREFIXES,
     get_model_catalog,
+    get_model_provider,
     get_supported_models,
 )
 
@@ -81,14 +82,22 @@ spec = catalog[DEFAULT_FAST_PROFILE]
 print(spec.is_profile)   # True
 print(spec.provider)     # "litellm"
 print(spec.is_reasoning) # True
+
+provider = get_model_provider("gpt-6-luna")
+print(provider)          # "openai"
 ```
 
 ---
 
 ## Technical Considerations
 
-### Boundary Validation
-Model validation is dynamic, executed by `@field_validator("model", mode="after")` using `get_supported_models()`. OpenAPI documentation exposes the allowed options via `json_schema_extra={"enum": list(get_supported_models())}` so interactive Swagger UI dropdown menus stay synchronized with `llm_profiles.yml`.
+### Separation of Concerns
+Data structures live strictly in `src/aie_estimator/schemas/models.py`. File reading, YAML parsing, caching, and provider mapping reside in `src/aie_estimator/services/model_catalog.py`, eliminating I/O side effects from schema definitions.
+
+### Singleton Caching
+- **Model Catalog**: `get_model_catalog()` and `get_supported_models()` are decorated with `@lru_cache(maxsize=1)` to avoid repeated filesystem and YAML parsing overhead during request processing.
+- **LiteLLM Router**: `get_litellm_router()` in `src/aie_estimator/services/litellm_provider.py` caches the initialized `Router` instance with `@lru_cache(maxsize=1)`.
+- **Application Settings**: `get_settings()` in `src/aie_estimator/settings.py` caches the loaded `Settings` instance with `@lru_cache`.
 
 ### Configuration Fallback
 If `src/aie_estimator/llm_profiles.yml` is missing or temporarily unreadable, `get_model_catalog()` gracefully returns `_DEFAULT_CATALOG` to prevent startup panics or cascading service crashes.

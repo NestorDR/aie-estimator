@@ -7,7 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 # --- App modules ---
-from aie_estimator.schemas.models import get_supported_models
+from aie_estimator.services.model_catalog import get_supported_models
 from aie_estimator.settings import get_settings
 
 PreprocessingMode = Literal["none", "inline_cleaning", "two_phase"]

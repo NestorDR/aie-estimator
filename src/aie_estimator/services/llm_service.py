@@ -16,7 +16,7 @@ from aie_estimator.schemas.estimations import (
     PreprocessingMode,
     ReasoningEffort,
 )
-from aie_estimator.schemas.models import get_model_catalog
+from aie_estimator.services.model_catalog import get_model_provider
 from aie_estimator.services import DEFAULT_MAX_TOKENS, LLMServiceError
 from aie_estimator.services.cache import EstimationCache, get_estimation_cache
 from aie_estimator.services.litellm_provider import call_litellm_router
@@ -116,8 +116,7 @@ class GenerationOptions:
 
         :return: Provider identifier string.
         """
-        spec = get_model_catalog().get(self.effective_model)
-        return spec.provider if spec is not None else get_settings().llm_provider
+        return get_model_provider(self.effective_model)
 
 
 async def _dispatch_llm_call(

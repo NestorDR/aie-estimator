@@ -17,7 +17,8 @@ import structlog
 from structlog.processors import CallsiteParameter, CallsiteParameterAdder
 
 # --- App modules ---
-from aie_estimator.schemas.models import DEFAULT_GPT_LLM, PROVIDER_PREFIXES, UNKNOWN_PROVIDER, get_model_catalog
+from aie_estimator.schemas.models import DEFAULT_GPT_LLM
+from aie_estimator.services.model_catalog import PROVIDER_PREFIXES, get_model_provider
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
 
@@ -65,12 +66,11 @@ class Settings(BaseSettings):
     @property
     def llm_provider(self) -> str:
         """
-        Derive the default provider from llm_model via the model catalog.
+        Derive the default provider from llm_model via the model catalog service.
 
         :return: Provider identifier ('openai', 'anthropic', 'litellm', etc.), or UNKNOWN_PROVIDER if not found.
         """
-        spec = get_model_catalog().get(self.llm_model)
-        return spec.provider if spec is not None else UNKNOWN_PROVIDER
+        return get_model_provider(self.llm_model)
 
     # Configure env file handling
     model_config = SettingsConfigDict(
@@ -235,7 +235,7 @@ class Settings(BaseSettings):
         logging.getLogger("uvicorn.access").setLevel(log_level)
 
 
-@lru_cache
+@lru_cache(maxsize=1)
 def get_settings() -> Settings:
     """
     Return cached application settings (singleton).

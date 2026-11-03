@@ -11,7 +11,8 @@ import pytest
 
 # --- App modules ---
 from aie_estimator.schemas.estimations import ReasoningEffort
-from aie_estimator.schemas.models import DEFAULT_GPT_LLM, get_model_catalog, get_supported_models
+from aie_estimator.schemas.models import DEFAULT_GPT_LLM
+from aie_estimator.services.model_catalog import get_model_catalog, get_supported_models
 from aie_estimator.server import Server
 from aie_estimator.services.cache import get_estimation_cache
 from aie_estimator.services.litellm_provider import get_litellm_router

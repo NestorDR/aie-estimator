@@ -12,8 +12,9 @@ import structlog
 import yaml
 
 # --- App modules ---
-from aie_estimator.schemas.models import DEFAULT_FAST_PROFILE, get_model_catalog, get_profiles_config_path
+from aie_estimator.schemas.models import DEFAULT_FAST_PROFILE
 from aie_estimator.services import LLMServiceError, format_provider_response
+from aie_estimator.services.model_catalog import get_model_catalog, get_profiles_config_path
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
 
@@ -151,6 +152,15 @@ async def call_litellm_router(
         raise LLMServiceError(f"LiteLLM router call failed: {e}") from e
 
     choice = response.choices[0]
+
+    # For a `Chat Completions` response, the documented `finish_reason` values are:
+    #     - stop          : the model finished naturally or reached a stop sequence.
+    #     - length        : the token limit was reached.
+    #     - tool_calls    : the model requested a tool call.
+    #     - content_filter: content was omitted due to content filtering.
+    #     - function_call : a legacy value for a function call; deprecated.
+    #
+    # Visit [OpenAI Chat Completions API reference](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create), which documents `finish_reason` and its values. [[1]](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)
     finish_reason = getattr(choice, "finish_reason", "stop") or "stop"
     estimation_text = getattr(choice.message, "content", "") or ""
 

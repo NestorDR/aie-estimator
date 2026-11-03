@@ -14,7 +14,7 @@ import streamlit as st
 
 # --- App modules ---
 from aie_estimator.schemas.estimations import ExampleFormat
-from aie_estimator.schemas.models import get_supported_models
+from aie_estimator.services.model_catalog import get_supported_models
 from aie_estimator.services.llm_service import build_system_prompt
 from aie_estimator.settings import get_settings
 

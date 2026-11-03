@@ -18,8 +18,9 @@ from openai import (
 import structlog
 
 # --- App modules ---
-from aie_estimator.schemas.models import DEFAULT_GPT_LLM, get_model_catalog
+from aie_estimator.schemas.models import DEFAULT_GPT_LLM
 from aie_estimator.services import DEFAULT_MAX_TOKENS, LLMServiceError, format_provider_response
+from aie_estimator.services.model_catalog import get_model_catalog
 from aie_estimator.settings import get_settings
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
