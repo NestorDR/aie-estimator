@@ -1,6 +1,7 @@
 # src/aie_estimator/schemas/estimations.py
 
 # --- Python Standard Library ---
+from enum import Enum
 from typing import Literal
 
 # --- Third Party Libraries ---
@@ -16,6 +17,45 @@ ExecutionEngine = Literal["litellm", "native"]
 ReasoningEffort = Literal["low", "medium", "high"]
 
 
+class ProjectType(str, Enum):
+    """Project domain categories with a basic profile."""
+
+    MOBILE_APP = "mobile_app"
+    WEB_SAAS = "web_saas"
+    INTERNAL_TOOL = "internal_tool"
+    DATA_PIPELINE = "data_pipeline"
+
+
+class DetailLevel(str, Enum):
+    """Level of detail for the breakdown of the estimate."""
+
+    SUMMARY = "summary"
+    MEDIUM = "medium"
+    DETAILED = "detailed"
+
+
+class OutputFormat(str, Enum):
+    """Target presentation layout for the estimation request."""
+
+    PHASES_TABLE = "phases_table"
+    LINE_ITEMS = "line_items"
+    NARRATIVE = "narrative"
+
+
+class PromptEstimationRequest(BaseModel):
+    """Typed estimation parameters passed to the Jinja2 prompt template engine."""
+
+    description: str = Field(
+        ...,
+        min_length=20,
+        max_length=80000,
+        description="Free-text description or transcription of the project to estimate.",
+    )
+    project_type: ProjectType = Field(description="Project domain categories with a basic profile.")
+    detail_level: DetailLevel = Field(description="How deep the estimation should go.")
+    output_format: OutputFormat = Field(description="Shape of the rendered estimation.")
+
+
 class EstimationRequest(BaseModel):
     """Payload schema for software project estimation requests."""
 
@@ -23,7 +63,8 @@ class EstimationRequest(BaseModel):
         ...,
         min_length=50,
         description="Meeting transcript text containing client requirements and project scope.",
-        examples=["In the meeting with the marketing team, the client explained that they need a landing page with a contact form..."],
+        examples=[
+            "In the meeting with the marketing team, the client explained that they need a landing page with a contact form..."],
     )
     preprocessing: PreprocessingMode = Field(
         default="none",

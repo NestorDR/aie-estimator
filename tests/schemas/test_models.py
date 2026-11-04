@@ -9,7 +9,13 @@ from pydantic import ValidationError
 import pytest
 
 # --- App modules ---
-from aie_estimator.schemas.estimations import EstimationRequest
+from aie_estimator.schemas.estimations import (
+    DetailLevel,
+    EstimationRequest,
+    OutputFormat,
+    ProjectType,
+    PromptEstimationRequest,
+)
 from aie_estimator.schemas.models import (
     DEFAULT_DEEP_PROFILE,
     DEFAULT_FAST_PROFILE,
@@ -172,3 +178,37 @@ def test_estimation_request_invalid_engine_raises_validation_error() -> None:
     valid_transcript = "Client: We need a scalable notification service supporting email and SMS. Team: We can implement webhooks."
     with pytest.raises(ValidationError, match=r"Input should be"):
         EstimationRequest(transcription=valid_transcript, engine="unknown_engine")  # type: ignore[arg-type]
+
+
+def test_prompt_estimation_request_valid() -> None:
+    """
+    GIVEN valid prompt estimation parameters
+    WHEN PromptEstimationRequest is instantiated
+    THEN attributes match the inputs.
+    """
+    req = PromptEstimationRequest(
+        description="Mobile application for iOS and Android with authentication and push notifications.",
+        project_type=ProjectType.MOBILE_APP,
+        detail_level=DetailLevel.DETAILED,
+        output_format=OutputFormat.PHASES_TABLE,
+    )
+    assert req.project_type == ProjectType.MOBILE_APP
+    assert req.detail_level == DetailLevel.DETAILED
+    assert req.output_format == OutputFormat.PHASES_TABLE
+    assert "Mobile application" in req.description
+
+
+def test_prompt_estimation_request_short_description_raises_validation_error() -> None:
+    """
+    GIVEN a description shorter than 20 characters
+    WHEN PromptEstimationRequest is instantiated
+    THEN a pydantic ValidationError is raised.
+    """
+    with pytest.raises(ValidationError, match=r"at least 20 characters"):
+        PromptEstimationRequest(
+            description="Too short",
+            project_type=ProjectType.WEB_SAAS,
+            detail_level=DetailLevel.SUMMARY,
+            output_format=OutputFormat.NARRATIVE,
+        )
+

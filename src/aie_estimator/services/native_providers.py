@@ -59,13 +59,13 @@ def get_anthropic_client() -> AsyncAnthropic:
 
 
 async def call_openai(
-    messages: str | list[dict[str, Any]],
-    system_prompt: str | None,
-    model: str = DEFAULT_GPT_LLM,
-    max_tokens: int = DEFAULT_MAX_TOKENS,
-    temperature: float = 0.3,
-    effort: str = "medium",
-    max_retries: int = 3,
+        messages: str | list[dict[str, Any]],
+        system_prompt: str | None,
+        model: str = DEFAULT_GPT_LLM,
+        max_tokens: int = DEFAULT_MAX_TOKENS,
+        temperature: float = 0.3,
+        effort: str = "medium",
+        max_retries: int = 3,
 ) -> dict[str, Any]:
     """
     Send an estimation request to the OpenAI Responses API with retries and exponential backoff.
@@ -117,7 +117,7 @@ async def call_openai(
                 raise LLMServiceError(f"OpenAI call failed: {e}") from e
 
             jitter: float = secure_rng.uniform(0, 1)
-            wait: float = (2**attempt) + jitter
+            wait: float = (2 ** attempt) + jitter
             log.warning(
                 "openai_transient_error_retrying",
                 model=model,
@@ -128,7 +128,10 @@ async def call_openai(
             )
             await asyncio.sleep(wait)
         except Exception as e:
-            log.exception("openai_unexpected_error", model=model, error=repr(e))
+            log.exception("llm_provider_call_failed",
+                          provider="openai",
+                          model=model,
+                          error=repr(e))
             raise LLMServiceError(f"OpenAI call failed: {e}") from e
 
     if response is None:
@@ -171,12 +174,12 @@ async def call_openai(
 
 
 async def call_anthropic(
-    messages: str | list[dict[str, Any]],
-    system_prompt: str | None,
-    model: str,
-    max_tokens: int,
-    temperature: float = 0.3,
-    reasoning_effort: str | None = None,
+        messages: str | list[dict[str, Any]],
+        system_prompt: str | None,
+        model: str,
+        max_tokens: int,
+        temperature: float = 0.3,
+        reasoning_effort: str | None = None,
 ) -> dict[str, Any]:
     """
     Send an estimation request to the Anthropic Messages API with structured logging and asynchronous capability.
@@ -217,7 +220,6 @@ async def call_anthropic(
             "llm_provider_call_failed",
             provider="anthropic",
             model=model,
-            error_type=type(e).__name__,
             error=repr(e),
         )
         raise LLMServiceError(f"Anthropic call failed: {e}") from e

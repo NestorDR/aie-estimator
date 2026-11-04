@@ -308,8 +308,12 @@ async def generate_estimation(
         raise
 
     except Exception as e:
-        log.exception("llm_call_failed", error=repr(e), provider=provider, engine=opts.engine)
-        raise LLMServiceError(f"LLM call failed: {e!r}") from e
+        log.exception("llm_call_failed",
+                      provider=provider,
+                      model=model,
+                      error=repr(e),
+                      engine=opts.engine)
+        raise LLMServiceError(f"LLM call failed: {e}") from e
 
     result.setdefault("cost_usd", None)
     result["usage"]["preprocessing_input_tokens"] = prep_usage["input"]
