@@ -15,8 +15,8 @@ import yaml
 from aie_estimator.services.exceptions import LLMProviderError
 from aie_estimator.services.providers.formatting import format_provider_response
 from aie_estimator.services.providers.generation_options import GenerationOptions
+from aie_estimator.utils.model_constants import DEFAULT_FAST_PROFILE
 from aie_estimator.services.providers.model_catalog import (
-    DEFAULT_FAST_PROFILE,
     get_model_catalog,
     get_profiles_config_path,
 )

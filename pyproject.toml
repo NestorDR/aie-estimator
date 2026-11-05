@@ -88,8 +88,10 @@ ignore = [ # Ignored rules
 # --cov-report=term-missing: Print terminal summary table showing line numbers of unexecuted code.
 # --cov-fail-under=85: Fail the test run if coverage is less than 85%.
 addopts = "--cov=aie_estimator --cov-branch --cov-report=term-missing --cov-fail-under=85"
-pythonpath = [".", "src"]                                                                  # Add root and src to pythonpath for imports
-testpaths = ["tests"]                                                                      # Specify test directory
+# Add root and src to pythonpath for imports
+pythonpath = [".", "src"]
+# Specify test directory and files
+testpaths = ["tests"]
 python_files = ["test_*.py"]
 
 [tool.pytest_env]

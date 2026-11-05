@@ -17,7 +17,7 @@ import structlog
 from structlog.processors import CallsiteParameter, CallsiteParameterAdder
 
 # --- App modules ---
-from aie_estimator.services.providers.model_catalog import DEFAULT_GPT_LLM, PROVIDER_PREFIXES
+from aie_estimator.utils.model_constants import DEFAULT_GPT_LLM, PROVIDER_PREFIXES
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
 
