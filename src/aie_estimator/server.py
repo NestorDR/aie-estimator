@@ -17,6 +17,7 @@ from aie_estimator.routers import estimations_router, health_router
 from aie_estimator.services.cache import get_estimation_cache
 from aie_estimator.services import LLMProviderError
 from aie_estimator.settings import Settings, get_settings
+from aie_estimator.telemetry import instrument_fastapi_app, setup_telemetry
 
 
 class Server:
@@ -44,6 +45,7 @@ class Server:
         self._register_routers(app)
         self._register_exception_handlers(app)
         self._register_cors_middleware(app)
+        instrument_fastapi_app(app, self.settings)
 
         return app
 
@@ -57,6 +59,7 @@ class Server:
         """
         db_pool = None
         try:
+            setup_telemetry(self.settings)
             self.log.info("api_startup_initiated", app_version=self.settings.app_version)
 
             # Create a DB connection pool on startup
@@ -68,12 +71,12 @@ class Server:
             app.state.settings = self.settings
             # app.state.db_pool = db_pool
 
-            # self.log.info("database_pool_and_app_state_created_successfully.")
+            # self.log.info("database_pool_initialized")
 
             yield  # Application runs here
 
         except ConnectionError as e:
-            self.log.critical("database_connection_pool_failed", error=repr(e), exc_info=e)
+            self.log.critical("database_pool_failed", error=repr(e), exc_info=e)
             raise RuntimeError("Application startup failed to establish database connection pool.") from e
 
         except Exception as e:
@@ -85,7 +88,7 @@ class Server:
             self.log.info("application_shutdown_initiated")
             if db_pool:
                 await db_pool.close()
-                self.log.info("database_connection_pool_closed")
+                self.log.info("database_pool_closed")
             cache = get_estimation_cache()
             await cache.close()
             self.log.info("api_shutdown_completed")
@@ -145,7 +148,7 @@ class Server:
 
             :return: JSONResponse indicating database service unavailability.
             """
-            self.log.exception("database_connection_error", error=repr(e), exc_info=e)
+            self.log.exception("database_connection_failed", error=repr(e), exc_info=e)
             return JSONResponse(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 content={"detail": f"Database service unavailable: {e!r}"},
@@ -153,7 +156,7 @@ class Server:
 
         # @app.exception_handler(psycopg.Error)
         # async def psycopg_exception_handler(request: Request, e: psycopg.Error):
-        #     self.log.exception("unhandled_psycopg_database_error", error=f"{e!r} (SQLSTATE: {e.sqlstate})", exc_info=e)
+        #     self.log.exception("database_error_unhandled", error=f"{e!r} (SQLSTATE: {e.sqlstate})", exc_info=e)
         #     return JSONResponse(
         #         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         #         content={"detail": f"A database error: {e!r}"},
@@ -169,7 +172,7 @@ class Server:
 
             :return: JSONResponse containing a generic user-facing error message.
             """
-            self.log.exception("llm_provider_error_encountered", error=repr(e), exc_info=e)
+            self.log.exception("provider_call_failed", error=repr(e), exc_info=e)
             return JSONResponse(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 content={"detail": "An error occurred while generating the estimation. Please try again later."},

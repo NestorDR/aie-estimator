@@ -26,6 +26,19 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"   # Maps host.docker.internal to the host IP
 
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    container_name: estimator-phoenix
+    restart: unless-stopped
+    ports:
+      - "6006:6006"                           # Phoenix UI dashboard: http://localhost:6006
+      - "4317:4317"                           # OTLP gRPC collector port
+      - "4318:4318"                           # OTLP HTTP collector port
+    volumes:
+      - ./volumes/phoenix_data:/root/.phoenix # Embedded DuckDB persistence
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
 # Network configuration for service communication
 networks:
   # Define the shared bridge network for inter-service communication.

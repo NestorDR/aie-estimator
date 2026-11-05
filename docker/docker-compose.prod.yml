@@ -25,6 +25,21 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"   # Maps host.docker.internal to the host IP
 
+  # --- Phoenix Observability Service ---
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    container_name: estimator-phoenix-prod
+    restart: unless-stopped
+    ports:
+      # Bound to localhost only to prevent unauthorized public access on VPS
+      - "127.0.0.1:6006:6006"
+    volumes:
+      - ./volumes/phoenix_data:/root/.phoenix # Embedded DuckDB persistence
+    environment:
+      - PHOENIX_PORT=6006
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
   # --- Exact-match cache service ---
   redis:
     image: redis:8.10                         # 2026-10-29: redis:8.10.3 is the latest stable patch listed on Docker Hub

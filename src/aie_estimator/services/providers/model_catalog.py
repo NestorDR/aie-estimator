@@ -94,26 +94,26 @@ def get_model_catalog() -> dict[str, ModelSpec]:
     """
     config_path = get_profiles_config_path()
     if not config_path.is_file():
-        log.warning("llm_profiles_file_not_found", config_path=str(config_path))
+        log.warning("model_catalog_file_not_found", config_path=str(config_path))
         return dict(_DEFAULT_CATALOG)
 
     try:
         with config_path.open("r", encoding="utf-8") as file:
             data = yaml.safe_load(file) or {}
     except Exception as e:
-        log.exception("llm_profiles_error_reading_file", config_path=str(config_path), error=repr(e))
+        log.exception("model_catalog_read_failed", config_path=str(config_path), error=repr(e))
         return dict(_DEFAULT_CATALOG)
 
     model_list: list[dict[str, Any]] = data.get("model_list", [])
     if not model_list:
-        log.warning("llm_profiles_empty_model_list", config_path=str(config_path))
+        log.warning("model_catalog_empty_list", config_path=str(config_path))
         return dict(_DEFAULT_CATALOG)
 
     catalog: dict[str, ModelSpec] = dict(_DEFAULT_CATALOG)
     for entry in model_list:
         model_name: str | None = entry.get("model_name")
         if not model_name:
-            log.warning("llm_profiles_unnamed_model", config_path=str(config_path))
+            log.warning("model_catalog_model_unnamed", config_path=str(config_path))
             continue
 
         if model_name in _LOGICAL_PROFILE_NAMES:
@@ -123,7 +123,7 @@ def get_model_catalog() -> dict[str, ModelSpec]:
         litellm_params: dict[str, Any] = entry.get("litellm_params", {})
         provider = resolve_provider(litellm_params)
         if provider == UNKNOWN_PROVIDER:
-            log.warning("llm_profiles_unknown_provider", config_path=str(config_path), litellm_params=litellm_params)
+            log.warning("model_catalog_unknown_provider", config_path=str(config_path), litellm_params=litellm_params)
             continue
 
         is_reasoning = bool(

@@ -17,6 +17,7 @@ import structlog
 from structlog.processors import CallsiteParameter, CallsiteParameterAdder
 
 # --- App modules ---
+from aie_estimator.telemetry import inject_opentelemetry_context
 from aie_estimator.utils.model_constants import DEFAULT_GPT_LLM, PROVIDER_PREFIXES
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
@@ -39,10 +40,12 @@ class Settings(BaseSettings):
     app_env: Environment = Environment.DEV
     app_version: str = "0.0.0"  # It will be updated with the version from the installed package metadata
 
-    # Logging settings
+    # Logging and observability settings
     log_level: str = "INFO"
     json_logging: bool = False
     enable_file_logging: bool = False
+    enable_otel_tracing: bool = False
+    otel_exporter_otlp_endpoint: str = "http://localhost:4317"
 
     # Server settings
     server_host: str = "localhost"
@@ -57,6 +60,7 @@ class Settings(BaseSettings):
     nebius_api_key: SecretStr | None = None
     llm_model: str = DEFAULT_GPT_LLM
     active_prompt_version: str = "v1"
+    litellm_local_model_cost_map: bool = False
 
     # Cache settings
     redis_host: str = "localhost"
@@ -106,13 +110,17 @@ class Settings(BaseSettings):
 
         if env_path.exists():
             kwargs["_env_file"] = str(env_path)  # Update kwargs with correct env_file
-            log.info("loading_environment_file", env_path=str(env_path))
+            log.info("environment_file_loaded", env_path=str(env_path))
         else:
             log.warning("environment_file_not_found", env_path=str(env_path))
 
         try:
             # Initialize the base class with the identified environment
             super().__init__(**kwargs)
+
+            # Guarantee local cost map fallback when executing under test environment
+            if self.app_env == Environment.TEST:
+                self.litellm_local_model_cost_map = True
 
             # Configure structlog immediately after base settings initialization
             self.configure_logging()
@@ -149,6 +157,9 @@ class Settings(BaseSettings):
             if secret_val is not None and not environ.get(env_var):
                 environ[env_var] = secret_val.get_secret_value()
 
+        if self.litellm_local_model_cost_map and not environ.get("LITELLM_LOCAL_MODEL_COST_MAP"):
+            environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
+
     def configure_logging(self) -> None:
         """
         Configure unified structlog and standard library logging handlers.
@@ -161,6 +172,7 @@ class Settings(BaseSettings):
 
         shared_processors: list[structlog.types.Processor] = [
             structlog.contextvars.merge_contextvars,
+            inject_opentelemetry_context,
             structlog.stdlib.add_log_level,
             structlog.stdlib.add_logger_name,
             CallsiteParameterAdder(
@@ -221,6 +233,7 @@ class Settings(BaseSettings):
         # Suppress verbose noisy namespaces
         logging.getLogger("asyncio").setLevel(logging.WARNING)
         logging.getLogger("psycopg").setLevel(logging.WARNING)
+        logging.getLogger("uvicorn.error").setLevel(logging.WARNING)
         logging.getLogger("uvicorn.access").setLevel(log_level)
 
 

@@ -52,6 +52,7 @@ Always apply good software engineering practices: **KISS, YAGNI, DRY, SOLID, ACI
 - **Context & Tool Optimization**:
   - **Think in Code**: During exploratory tasks (such as `/opsx-explore`), do not read multiple files into context sequentially. Prefer writing and executing targeted scripts via `ctx_execute` to parse files locally and output only distilled summaries.
   - **Terminal Output**: Adhere to the RTK guidelines for CLI commands to keep context usage minimal during test and build runs.
+- **LiteLLM Cost Map Policy**: LiteLLM is permanently configured to use its bundled local cost map via `Settings` and `[tool.pytest_env]`. Never execute ad-hoc scripts that fetch remote pricing or inject import-time `os.environ` hacks. Always run test suites via `rtk uv run pytest`.
 
 ## 6. User Interaction Rules
 - **Tone**: Professional, direct, objective, and critical. Avoid flattery, sycophancy, or celebratory language. Write plainly using short, declarative sentences.

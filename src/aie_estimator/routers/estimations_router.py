@@ -36,7 +36,7 @@ async def create_estimation(request: EstimationRequest) -> EstimationResponse:
     :return: Generated estimation text with prompt version and telemetry metadata.
     """
     prompt_version = resolve_prompt_version()
-    log.info("create_estimation_requested", prompt_version=prompt_version, model=request.model)
+    log.info("estimation_request_received", prompt_version=prompt_version, model=request.model)
 
     system_prompt, user_prompt = render_estimation_prompt(request, version=prompt_version)
     opts = estimations_service.GenerationOptions(model=request.model, engine=request.engine)

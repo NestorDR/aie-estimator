@@ -12,6 +12,11 @@ dependencies = [
     "jinja2>=3.1.6",
     "litellm>=1.83.0",
     "openai>=3.35.1",
+    "openinference-instrumentation-litellm>=0.1.20",
+    "opentelemetry-api>=1.30.0",
+    "opentelemetry-exporter-otlp>=1.30.0",
+    "opentelemetry-instrumentation-fastapi>=0.51b0",
+    "opentelemetry-sdk>=1.30.0",
     "pydantic-settings>=2.16.0",
     "python-dotenv>=1.2.4",
     "pyyaml>=6.0.3",
@@ -87,7 +92,7 @@ ignore = [ # Ignored rules
 # --cov-branch: Measure branch coverage evaluating both True and False conditional branches.
 # --cov-report=term-missing: Print terminal summary table showing line numbers of unexecuted code.
 # --cov-fail-under=85: Fail the test run if coverage is less than 85%.
-addopts = "--cov=aie_estimator --cov-branch --cov-report=term-missing --cov-fail-under=85"
+addopts = "--cov=aie_estimator --cov-branch --cov-report=term-missing --cov-fail-under=85 --basetemp=.pytest_tmp"
 # Add root and src to pythonpath for imports
 pythonpath = [".", "src"]
 # Specify test directory and files

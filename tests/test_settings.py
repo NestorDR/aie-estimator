@@ -343,3 +343,74 @@ def test_settings_active_prompt_version_configuration(monkeypatch: pytest.Monkey
     monkeypatch.setenv("ACTIVE_PROMPT_VERSION", "v3")
     env_settings = Settings(app_env=Environment.TEST)
     assert env_settings.active_prompt_version == "v3"
+
+
+@pytest.mark.parametrize(
+    ("env_val", "expected_bool"),
+    [
+        ("true", True),
+        ("True", True),
+        ("1", True),
+        ("false", False),
+        ("False", False),
+        ("0", False),
+    ],
+    ids=["true_lower", "true_capital", "true_num", "false_lower", "false_capital", "false_num"],
+)
+def test_settings_otel_tracing_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+    env_val: str,
+    expected_bool: bool,
+) -> None:
+    """
+    GIVEN an environment variable override for ENABLE_OTEL_TRACING
+    WHEN Settings is initialized
+    THEN enable_otel_tracing is parsed correctly into a boolean.
+
+    :param monkeypatch: Pytest monkeypatch fixture.
+    :param env_val: String representation of the boolean value.
+    :param expected_bool: Expected boolean outcome in Settings.
+    """
+    monkeypatch.setenv("ENABLE_OTEL_TRACING", env_val)
+    settings = Settings(app_env=Environment.TEST)
+    assert settings.enable_otel_tracing is expected_bool
+
+
+def test_settings_otel_tracing_defaults() -> None:
+    """
+    GIVEN default configuration in test environment
+    WHEN Settings is initialized without overrides
+    THEN enable_otel_tracing defaults to False and otel_exporter_otlp_endpoint to localhost.
+    """
+    settings = Settings(app_env=Environment.TEST)
+    assert settings.enable_otel_tracing is False
+    assert settings.otel_exporter_otlp_endpoint == "http://localhost:4317"
+
+
+def test_settings_litellm_local_model_cost_map_test_env() -> None:
+    """
+    GIVEN an instantiation of Settings with app_env=Environment.TEST
+    WHEN the instance initializes
+    THEN litellm_local_model_cost_map is automatically forced to True.
+    """
+    settings = Settings(app_env=Environment.TEST)
+    assert settings.litellm_local_model_cost_map is True
+
+
+def test_settings_litellm_local_model_cost_map_dev_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    GIVEN an instantiation of Settings with app_env=Environment.DEV
+    WHEN LITELLM_LOCAL_MODEL_COST_MAP environment variable is altered
+    THEN Settings parses the boolean override as expected.
+
+    :param monkeypatch: Pytest monkeypatch fixture.
+    """
+    monkeypatch.setenv("LITELLM_LOCAL_MODEL_COST_MAP", "false")
+    settings = Settings(app_env=Environment.DEV)
+    assert settings.litellm_local_model_cost_map is False
+
+    monkeypatch.setenv("LITELLM_LOCAL_MODEL_COST_MAP", "true")
+    settings_override = Settings(app_env=Environment.DEV)
+    assert settings_override.litellm_local_model_cost_map is True
+
+

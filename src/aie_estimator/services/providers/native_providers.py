@@ -38,7 +38,7 @@ def get_openai_client() -> AsyncOpenAI:
     settings = get_settings()
     api_key = settings.openai_api_key.get_secret_value() if settings.openai_api_key else None
     if not api_key:
-        log.error("openai_api_key_missing")
+        log.error("provider_api_key_missing", provider="openai")
         raise LLMProviderError("OpenAI API key is not configured in the application environment.")
     return AsyncOpenAI(api_key=api_key)
 
@@ -54,7 +54,7 @@ def get_anthropic_client() -> AsyncAnthropic:
     settings = get_settings()
     api_key = settings.anthropic_api_key.get_secret_value() if settings.anthropic_api_key else None
     if not api_key:
-        log.error("anthropic_api_key_missing")
+        log.error("provider_api_key_missing", provider="anthropic")
         raise LLMProviderError("Anthropic API key is not configured in the application environment.")
     return AsyncAnthropic(api_key=api_key, max_retries=2)
 
@@ -107,13 +107,14 @@ async def call_openai(
                 log.warning("openai_temperature_stripped_on_bad_request", model=model, error=repr(e))
 
             if attempt >= opts.max_retries - 1:
-                log.exception("openai_provider_call_failed", model=model, attempt=attempt + 1, error=repr(e))
+                log.exception("provider_call_failed", provider="openai", model=model, attempt=attempt + 1, error=repr(e))
                 raise LLMProviderError(f"OpenAI call failed: {e}") from e
 
             jitter: float = secure_rng.uniform(0, 1)
             wait: float = (2**attempt) + jitter
             log.warning(
-                "openai_transient_error_retrying",
+                "provider_retry_scheduled",
+                provider="openai",
                 model=model,
                 attempt=attempt + 1,
                 max_retries=opts.max_retries,
@@ -123,7 +124,7 @@ async def call_openai(
             await asyncio.sleep(wait)
         except Exception as e:
             log.exception(
-                "llm_provider_call_failed",
+                "provider_call_failed",
                 provider="openai",
                 model=model,
                 error=repr(e),
@@ -131,7 +132,7 @@ async def call_openai(
             raise LLMProviderError(f"OpenAI call failed: {e}") from e
 
     if response is None:
-        log.error("llm_provider_call_exhausted", provider="openai", model=model)
+        log.error("provider_retries_exhausted", provider="openai", model=model)
         raise LLMProviderError("OpenAI call failed: request exhausted after retry attempts.")
 
     status = getattr(response, "status", "completed")
@@ -142,7 +143,7 @@ async def call_openai(
             detail = f"OpenAI request failed: {getattr(response, 'error', None)}"
         else:
             detail = f"OpenAI response status not completed: {status}"
-        log.error("llm_response_not_completed", provider="openai", model=model, status=status, detail=detail)
+        log.error("provider_response_incomplete", provider="openai", model=model, status=status, detail=detail)
         raise LLMProviderError(detail)
 
     finish_reason = "stop"
@@ -208,7 +209,7 @@ async def call_anthropic(
         response = await client.messages.create(**kwargs)
     except Exception as e:
         log.exception(
-            "llm_provider_call_failed",
+            "provider_call_failed",
             provider="anthropic",
             model=model,
             error=repr(e),
@@ -217,7 +218,7 @@ async def call_anthropic(
 
     finish_reason = getattr(response, "stop_reason", "end_turn") or "end_turn"
     if finish_reason == "max_tokens":
-        log.warning("llm_response_truncated", provider="anthropic", model=model, stop_reason=finish_reason)
+        log.warning("provider_response_truncated", provider="anthropic", model=model, stop_reason=finish_reason)
 
     text_block = next(
         (block for block in response.content if getattr(block, "type", None) == "text"),
@@ -230,7 +231,7 @@ async def call_anthropic(
     output_tokens = getattr(usage, "output_tokens", 0) if usage else 0
 
     log.info(
-        "llm_response_received",
+        "provider_response_received",
         provider="anthropic",
         model=getattr(response, "model", model),
         finish_reason=finish_reason,

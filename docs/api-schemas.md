@@ -112,7 +112,7 @@ Corresponding HTTP 200 response payload:
 {
   "text": "## Notification Service Implementation\n\n### Task breakdown\n| Task | Hours | Cost (EUR) |\n| Webhook API & Handlers | 30 | 1875.00 |\n| AWS SNS/SES Integration | 25 | 1562.50 |\n| Notification Templates | 15 | 937.50 |\n| Automated Testing & CI | 20 | 1250.00 |\n\n### Totals\n- Total hours: 90\n- Total cost: 5625 EUR\n- Recommended team: 1 Backend Engineer, 1 DevOps Engineer\n- Estimated duration: 2-3 weeks\n\n### Risks and assumptions\n- AWS account and SES production sending quotas are approved prior to kickoff.",
   "prompt_version": "v1",
-  "model": "openai/gpt-5-mini",
+  "model": "openai/gpt-6-luna",
   "provider": "litellm",
   "cost_usd": 0.00034,
   "usage": {

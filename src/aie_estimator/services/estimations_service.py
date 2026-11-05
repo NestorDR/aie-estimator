@@ -56,11 +56,11 @@ async def generate_estimation(
     if cached_result is not None:
         cached_result["latency_ms"] = int((time.perf_counter() - t0) * 1000)
         cached_result["cache_hit"] = True
-        log.info("estimation_served_from_cache", model=model, latency_ms=cached_result["latency_ms"])
+        log.info("estimation_cache_hit", model=model, latency_ms=cached_result["latency_ms"])
         return cached_result
 
     log.info(
-        "generating_estimation",
+        "estimation_generation_started",
         engine=opts.engine,
         provider=provider,
         model=model,
@@ -80,7 +80,7 @@ async def generate_estimation(
 
     except Exception as e:
         log.exception(
-            "llm_call_failed",
+            "estimation_generation_failed",
             provider=provider,
             model=model,
             error=repr(e),
@@ -95,6 +95,16 @@ async def generate_estimation(
     result["latency_ms"] = int((time.perf_counter() - t0) * 1000)
     result["cache_hit"] = False
     result["text"] = result.get("estimation", "")
+
+    log.info(
+        "estimation_generation_completed",
+        engine=opts.engine,
+        provider=provider,
+        model=model,
+        latency_ms=result["latency_ms"],
+        cost_usd=result.get("cost_usd"),
+        usage=result.get("usage"),
+    )
 
     await cache.set(cache_key, result)
 

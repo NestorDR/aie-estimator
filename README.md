@@ -329,6 +329,6 @@ Detailed architecture guides and technical documentation are maintained in the [
 - [Model Catalog & Request Validation](docs/model-catalog.md): Centralized model catalog, supported OpenAI/Anthropic models, reasoning metadata, and boundary validation.
 - [Reasoning Profiles & Dynamic Routing](docs/reasoning-profiles.md): LiteLLM router profiles, qualitative reasoning effort tiers, cost-optimized dynamic fallback, and credential filtering.
 - [Structured Product UI & Exact-Match Cache](docs/streamlit-conversational-ui.md): Streamlit product form interface, instant static Markdown rendering, execution telemetry container, deterministic Redis exact-match caching, and graceful degradation.
-- [Logging Architecture & Structlog](docs/logging.md): Configuration, formatting sinks, processor pipeline, and context variables binding.
+- [Observability, Logging & Distributed Tracing](docs/observability.md): Unified structlog pipeline, standardized event taxonomy, OpenTelemetry context injection, Arize Phoenix container setup, and DuckDB storage mechanics.
 - [Testing Guidelines](docs/testing.md): Test suite organization, pytest fixtures, and coverage expectations.
 

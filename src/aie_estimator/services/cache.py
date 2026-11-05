@@ -110,20 +110,20 @@ class EstimationCache:
         try:
             cached = await self.redis.get(key)
         except RedisError as e:
-            log.warning("cache_get_failed", error=repr(e))
+            log.warning("cache_operation_failed", operation="get", error=repr(e))
             return None
 
         if cached and isinstance(cached, (str, bytes, bytearray)):
             try:
                 data = json.loads(cached)
                 if isinstance(data, dict):
-                    log.info("cache_hit", key_prefix=key[:24])
+                    log.info("cache_entry_retrieved", key_prefix=key[:24])
                     return data
             except json.JSONDecodeError as e:
-                log.warning("cache_deserialize_failed", error=repr(e))
+                log.warning("cache_deserialization_failed", error=repr(e))
                 return None
 
-        log.info("cache_miss", key_prefix=key[:24])
+        log.info("cache_entry_missed", key_prefix=key[:24])
         return None
 
     async def set(self, key: str, response: dict[str, Any], ttl: int | None = None) -> None:
@@ -137,9 +137,9 @@ class EstimationCache:
         effective_ttl = ttl if ttl is not None else self.ttl
         try:
             await self.redis.set(key, json.dumps(response), ex=effective_ttl)
-            log.info("cache_stored", key_prefix=key[:24], ttl=effective_ttl)
+            log.info("cache_entry_stored", key_prefix=key[:24], ttl=effective_ttl)
         except RedisError as e:
-            log.warning("cache_set_failed", error=repr(e))
+            log.warning("cache_operation_failed", operation="set", error=repr(e))
 
     async def close(self) -> None:
         """
@@ -149,7 +149,7 @@ class EstimationCache:
             await self.redis.aclose()
             log.info("cache_client_closed")
         except RedisError as e:
-            log.warning("cache_close_failed", error=repr(e))
+            log.warning("cache_operation_failed", operation="close", error=repr(e))
 
 
 @lru_cache(maxsize=1)
