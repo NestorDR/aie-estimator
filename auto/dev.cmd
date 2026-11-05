@@ -5,3 +5,4 @@
 uv run aie-estimator
 
 :: Alternatively: uv run uvicorn aie_estimator.server:server.app --reload
+::                uv run fastapi dev src/aie_estimator/server.py (install "fastapi[standard]" required)

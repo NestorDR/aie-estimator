@@ -26,6 +26,22 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"   # Maps host.docker.internal to the host IP
 
+  redisinsight:
+    image: redis/redisinsight:latest
+    container_name: estimator-redisinsight
+    restart: unless-stopped
+    ports:
+      - "5540:5540"                           # Redis Insight UI: http://localhost:5540
+    environment:
+      - RI_REDIS_HOST=redis                   # Preconfigured connection to the redis service on estimator-network
+      - RI_REDIS_PORT=6379
+      - RI_REDIS_ALIAS=estimator-redis
+    volumes:
+      - ./volumes/redisinsight_data:/data     # Persist Redis Insight settings
+    depends_on:
+      redis:
+        condition: service_healthy
+
   phoenix:
     image: arizephoenix/phoenix:latest
     container_name: estimator-phoenix

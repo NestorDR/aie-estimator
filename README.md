@@ -66,6 +66,7 @@ aie-estimator/
 │       ├── __main__.py                 # Application CLI entry point
 │       ├── settings.py                 # Pydantic BaseSettings configuration
 │       ├── server.py                   # FastAPI server setup and lifespan handling
+│       ├── telemetry.py                # OpenTelemetry TracerProvider and structlog context injection
 │       ├── llm_profiles.yml            # LiteLLM router profiles, tiers, and telemetry config
 │       ├── .env.example                # Example environment configuration
 │       ├── prompts/                    # Jinja2 prompt templates and loader
@@ -111,7 +112,7 @@ aie-estimator/
 
 - Python >= 3.14
 - [`uv`](https://docs.astral.sh/uv/) package manager
-- Docker Desktop / Docker Compose (for Redis exact-match cache and containerized deployments)
+- Docker Desktop / Docker Compose (for Redis cache, Arize Phoenix observability, and containerized deployments)
 - OpenAI API key (`OPENAI_API_KEY`), Anthropic API key (`ANTHROPIC_API_KEY`), or Gemini API key (`GEMINI_API_KEY`)
 
 ## Installation & Setup
@@ -139,6 +140,9 @@ aie-estimator/
    LOG_LEVEL=INFO
    JSON_LOGGING=false
    ENABLE_FILE_LOGGING=false
+   ENABLE_OTEL_TRACING=false
+   OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+   LITELLM_LOCAL_MODEL_COST_MAP=false
    SERVER_HOST=localhost
    SERVER_PORT=8000
    OPENAI_API_KEY=your_openai_api_key_here
@@ -155,13 +159,20 @@ aie-estimator/
 
 Start the detached Docker Compose services from the project root using `auto\dc.cmd <dev|prod>`:
 
-- **Development (Redis Cache Service Only)**:
-  Builds and launches the Redis cache on the development environment using `docker/docker-compose.dev.yml` and `src/aie_estimator/.env.dev`:
+- **Development (Redis Cache, Redis Insight & Arize Phoenix Observability Stack)**:
+  Builds and launches Redis (`localhost:6379`), Redis Insight (UI on `http://localhost:5540`) and Arize Phoenix (UI on `http://localhost:6006`, OTLP on `4317/4318`) using `docker/docker-compose.dev.yml` and `src/aie_estimator/.env.dev`:
   ```cmd
   auto\dc.cmd dev
   ```
-- **Production (Containerized FastAPI + Redis Stack)**:
-  Builds the multi-stage production image (`docker/Dockerfile`) and launches it along with the Redis cache on the production environment using `docker/docker-compose.prod.yml` and `src/aie_estimator/.env.prod`:
+  Browse cached estimations (keys `estimation:<sha256>`) in [Redis Insight](https://redis.io/insight/) at `http://localhost:5540`, or via CLI:
+  ```cmd
+  docker exec -it estimator-redis redis-cli
+  KEYS estimation:*
+  GET <key>
+  TTL <key>
+  ```
+- **Production (Containerized FastAPI + Redis + Arize Phoenix Stack)**:
+  Builds the multi-stage production image (`docker/Dockerfile`) and launches it along with Redis and Arize Phoenix on the production environment using `docker/docker-compose.prod.yml` and `src/aie_estimator/.env.prod`:
   ```cmd
   auto\dc.cmd prod
   ```
@@ -182,8 +193,6 @@ Or directly via `uv`:
 uv run aie-estimator
 # or
 uv run uvicorn aie_estimator.server:server.app --reload --host localhost --port 8000
-# or
-uv run fastapi dev src/aie_estimator/server.py
 ```
 
 The API service starts on `http://localhost:8000`.
@@ -300,6 +309,8 @@ Verify local setup against the baseline project criteria:
 - [x] Prompts include historical few-shot reference examples from `src/aie_estimator/prompts/estimation/v1/examples.j2`
 - [x] Streamlit product form interface accessible at `http://localhost:8501` via `uv run streamlit run streamlit_app.py`
 - [x] Redis exact-match cache short-circuits repeated estimation requests with offline fallback
+- [x] Redis Insight UI accessible at `http://localhost:5540` showing `estimation:*` cache keys
+- [x] Arize Phoenix observability UI accessible at `http://localhost:6006`
 - [x] Swagger documentation is accessible at `/docs`
 - [x] `.env*` files are excluded in `.gitignore`
 
