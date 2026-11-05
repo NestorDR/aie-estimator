@@ -1,6 +1,6 @@
 # AIE Estimator
 
-FastAPI backend service for automated software engineering effort estimation using Context-Augmented Generation (CAG) queryable via a conversational user interface based on Streamlit.
+FastAPI backend service for automated software engineering effort estimation using Context-Augmented Generation (CAG) queryable via a structured product form interface based on Streamlit.
 
 ## About
 
@@ -8,7 +8,7 @@ This is my personal repository where I am coding the project while following the
 
 ## Overview
 
-AIE Estimator processes client meeting transcripts and generates structured project estimates—including task breakdowns, estimated hours, team compositions, and delivery timelines.
+AIE Estimator processes software project descriptions and domain parameters to generate structured project estimates—including task breakdowns, estimated hours, team compositions, and delivery timelines.
 
 Rather than relying on retrieval-augmented generation (RAG) with vector databases, the service uses a Context-Augmented Generation (CAG) architecture. Historical reference estimations are directly injected into the LLM system prompt as few-shot context, grounding model output in established project patterns with minimal operational complexity.
 
@@ -19,7 +19,7 @@ The project enforces strict separation of concerns across dedicated application 
 - **Schemas (`src/aie_estimator/schemas`)**: Defines domain data schemas and Pydantic models (`EstimationRequest`, `EstimationResponse`) for request payload validation and response contracts.
 - **Routers (`src/aie_estimator/routers/`)**: Defines HTTP routes, endpoint documentation, status codes, and request/response handling.
 - **Services (`src/aie_estimator/services/`)**: Encapsulates core business logic, CAG prompt assembly, multi-provider LLM dispatch, fallback token cost estimation, and response caching.
-- **Prompts (`src/aie_estimator/prompts/`)**: Stores versioned Jinja2 prompt templates (`system.j2`, `user.j2`) and loader for estimation prompt rendering.
+- **Prompts (`src/aie_estimator/prompts/`)**: Stores versioned Jinja2 prompt templates (`system.j2`, `user.j2`, `examples.j2`) and loader for estimation prompt rendering.
 - **Settings (`src/aie_estimator/settings.py`)**: Environment-aware configuration and settings management powered by `pydantic-settings`, supporting structured JSON logging, credential isolation via `SecretStr`, and secret synchronization to `os.environ`.
 - **Server (`src/aie_estimator/server.py`)**: Centralizes FastAPI application initialization, lifespan event handlers, router registration, and global exception mapping.
 
@@ -28,33 +28,29 @@ The project enforces strict separation of concerns across dedicated application 
 ```mermaid
 flowchart TD
     subgraph ClientLayer ["Client Interface / Caller"]
-        Client(["Streamlit Conversational UI"])
+        Client(["Streamlit Product Form UI / API Client"])
     end
 
-    Client -->|"1. POST /api/v1/estimate\n(EstimationRequest)"| Router["Router: EstimationsRouter\n(Pydantic Ingress Validation)"]
-    Router -->|"2. Transcription payload"| Preprocessing
+    Client -->|"1. POST /api/v1/estimate\n(EstimationRequest)"| Router["Router: EstimationsRouter\n(Pydantic Validation & Version Resolution)"]
+    Router -->|"2. Render prompts\n(render_estimation_prompt)"| TemplateEngine["Jinja2 Prompt Engine\n(prompts/loader.py)"]
 
     subgraph ServiceLayer ["LLM Service Layer"]
-        Preprocessing["Preprocessing\n(Optional: extract_requirements)"]
-        Preprocessing --> PromptBuilder["CAG Prompt Assembly"]
+        TemplateEngine -->|"System & User Prompts"| Service["EstimationsService\n(generate_estimation)"]
+        Service -->|"3. Query cache key\n(SHA-256 digest)"| CacheCheck{"Exact-Match Cache\n(Redis)"}
 
-        Context[("CAG Context\n(Role + Canonical Examples)")] --> PromptBuilder
+        CacheCheck -->|"Cache Hit"| ServiceOutput["Result Dictionary\n(cost_usd, usage, text)"]
+        CacheCheck -->|"Cache Miss"| Dispatcher["Execution Engine Dispatcher\n(call_llm)"]
 
-        PromptBuilder -->|"3. Query cache key"| CacheCheck{"Exact-Match Cache\n(Redis SHA-256)"}
-
-        CacheCheck -->|"Cache Hit"| ServiceOutput["Result Dictionary"]
-        CacheCheck -->|"Cache Miss"| Dispatcher["Execution Engine Dispatcher\n(LiteLLM Router / Native)"]
-
-        Dispatcher -->|"litellm engine"| LiteLLMRouting["LiteLLM Router\n(Profiles, Cost-Routing & Backoff)"]
-        Dispatcher -->|"native engine"| NativeProviders["Native Providers\n(OpenAI & Anthropic SDKs)"]
-        LiteLLMRouting -->|"Store output"| CacheStore[("Redis Cache Store")]
-        NativeProviders -->|"Store output"| CacheStore
+        Dispatcher -->|"engine='litellm'"| LiteLLMRouting["LiteLLM Router\n(Profiles, Cost-Routing & Dynamic Backoff)"]
+        Dispatcher -->|"engine='native'"| NativeProviders["Native Providers\n(OpenAI & Anthropic SDKs)"]
+        LiteLLMRouting -->|"Store response"| CacheStore[("Redis Cache Store")]
+        NativeProviders -->|"Store response"| CacheStore
         CacheStore -.->|"Populates for subsequent requests"| CacheCheck
         CacheStore --> ServiceOutput
     end
 
-    ServiceOutput -->|"4. Assembly result"| Evaluator["Router Evaluation\n(StructureCheck Level-1)"]
-    Evaluator -->|"5. HTTP 200: EstimationResponse\n(Iterative refinement in chat)"| Client
+    ServiceOutput -->|"4. Construct response"| ResponseMapper["Response Mapping\n(EstimationResponse)"]
+    ResponseMapper -->|"5. HTTP 200: EstimationResponse\n(Rendered estimation & telemetry)"| Client
 ```
 
 ## Project Structure
@@ -83,13 +79,23 @@ aie-estimator/
 │       │   ├── __init__.py
 │       │   ├── estimations_router.py   # POST /api/v1/estimate endpoint
 │       │   └── health_router.py        # GET /health status endpoint
-│       └── services/
+│       ├── services/
+│       │   ├── __init__.py
+│       │   ├── cache.py                # Deterministic exact-match Redis cache
+│       │   ├── estimations_service.py  # Estimation orchestration and multi-engine coordination
+│       │   ├── evaluation.py           # Output evaluation and scoring
+│       │   ├── exceptions.py           # Service and provider exception hierarchy
+│       │   └── providers/              # Isolated provider integrations and dispatch
+│       │       ├── __init__.py         # Unified call_llm dispatch function
+│       │       ├── formatting.py       # Response normalization across engines
+│       │       ├── generation_options.py # GenerationOptions, ProviderMode, ReasoningEffort
+│       │       ├── litellm_provider.py # LiteLLM Router integration and model routing
+│       │       ├── model_catalog.py    # Dynamic model catalog resolution and ModelSpec
+│       │       ├── native_providers.py # Direct SDK dispatch for OpenAI and Anthropic
+│       │       └── pricing.py          # Offline pricing table and token cost estimation
+│       └── utils/
 │           ├── __init__.py
-│           ├── cache.py                # Deterministic exact-match Redis cache
-│           ├── estimations_service.py  # Estimation orchestration and multi-engine coordination
-│           ├── evaluation.py           # Output evaluation and scoring
-│           ├── exceptions.py           # Service and provider exception hierarchy
-│           └── providers/              # Isolated provider integrations and dispatch
+│           └── model_constants.py      # Canonical default model and profile constants
 ├── tests/                              # Unit and integration test suites
 ├── .dockerignore
 ├── .gitignore
@@ -97,7 +103,7 @@ aie-estimator/
 ├── .pre-commit-config.yaml
 ├── pyproject.toml                      # Project metadata, dependencies, and tools config
 ├── README.md                           # Project documentation
-├── streamlit_app.py                    # Streamlit conversational chat interface
+├── streamlit_app.py                    # Streamlit structured product estimation interface
 └── uv.lock                             # Locked dependency graph
 ```
 
@@ -176,13 +182,15 @@ Or directly via `uv`:
 uv run aie-estimator
 # or
 uv run uvicorn aie_estimator.server:server.app --reload --host localhost --port 8000
+# or
+uv run fastapi dev src/aie_estimator/server.py
 ```
 
 The API service starts on `http://localhost:8000`.
 
-#### Streamlit Conversational Interface
+#### Streamlit Product Estimation Interface
 
-With the FastAPI service running, launch the interactive chat interface in a separate terminal:
+With the FastAPI service running, launch the structured product estimation form in a separate terminal:
 
 ```cmd
 auto\stl.cmd
@@ -194,9 +202,10 @@ Or directly via `uv`:
 uv run streamlit run streamlit_app.py
 ```
 
-The conversational interface opens in your browser at `http://localhost:8501`:
+The product estimation interface opens in your browser at `http://localhost:8501`:
 
-![Streamlit Conversational UI](docs/assets/session03_streamlit_ui.png)
+![Streamlit Product Estimation Form](docs/assets/session04_streamlit_ui_1_of_2.png)
+![Streamlit Product Estimation Telemetry and Output](docs/assets/session04_streamlit_ui_2_of_2.png)
 
 ## API Documentation & Endpoints
 
@@ -210,24 +219,24 @@ Interactive documentation is available at:
 | :--- | :--- | :--- |
 | `GET` | `/` | Root service status and version information |
 | `GET` | `/health` | Health check endpoint returning API operational status |
-| `POST` | `/api/v1/estimate` | Generates a project effort estimation from a meeting transcript |
+| `POST` | `/api/v1/estimate` | Generates a structured software project effort estimation from project parameters |
 
 ---
 
 ### `POST /api/v1/estimate`
 
-Analyzes meeting transcript text and returns an effort estimation breakdown.
+Analyzes project requirements and parameters, returning a structured effort estimation breakdown.
 
 #### Request Schema
 
 ```json
 {
-  "transcription": "Client requires a web platform for customer feedback collection with sentiment analysis and Slack notifications. Target release is 4 weeks.",
+  "description": "Client requires a web platform for customer feedback collection with sentiment analysis and Slack notifications. Target release is 4 weeks.",
+  "project_type": "web_saas",
+  "detail_level": "medium",
+  "output_format": "phases_table",
   "model": "reasoner-fast",
-  "engine": "litellm",
-  "reasoning_effort": "low",
-  "preprocessing": "none",
-  "max_tokens": 4000
+  "engine": "litellm"
 }
 ```
 
@@ -235,7 +244,8 @@ Analyzes meeting transcript text and returns an effort estimation breakdown.
 
 ```json
 {
-  "estimation": "## Estimation: Customer Feedback Platform\n\n### Task Breakdown:\n1. Backend API & Webhook Ingestion: 30 hours\n2. Sentiment Analysis Pipeline: 25 hours\n3. Slack Notification Integration: 15 hours\n4. Frontend Dashboard: 35 hours\n5. Testing & Deployment: 20 hours\n\n**Total Estimated Hours:** 125 hours\n**Recommended Team:** 2 Full-Stack Developers\n**Estimated Duration:** 3-4 weeks",
+  "text": "## Customer Feedback Platform Estimation\n\n### Task breakdown\n| Task | Hours | Cost (EUR) |\n| Webhook API & Handlers | 30 | 1875.00 |\n| Sentiment Analysis Pipeline | 25 | 1562.50 |\n| Slack Notification Integration | 15 | 937.50 |\n| Frontend Dashboard | 35 | 2187.50 |\n| Testing & Deployment | 20 | 1250.00 |\n\n### Totals\n- Total hours: 125\n- Total cost: 7812.50 EUR\n\n### Team\n- 2 Full-Stack Developers\n\n### Duration\n- 3-4 weeks",
+  "prompt_version": "v1",
   "model": "openai/gpt-6-luna",
   "provider": "litellm",
   "cost_usd": 0.00342,
@@ -245,28 +255,7 @@ Analyzes meeting transcript text and returns an effort estimation breakdown.
     "total_tokens": 1800,
     "preprocessing_input_tokens": 0,
     "preprocessing_output_tokens": 0
-  },
-  "finish_reason": "stop",
-  "preprocessing": "none",
-  "extracted_requirements": null,
-  "latency_ms": 1250,
-  "validation": {
-    "has_title": true,
-    "has_breakdown_table": true,
-    "has_totals_section": true,
-    "has_team_section": true,
-    "has_duration_section": true,
-    "declared_total_hours": 125,
-    "sum_row_hours": 125,
-    "hours_match": true,
-    "declared_total_cost": null,
-    "sum_row_cost": null,
-    "cost_match": null,
-    "finish_reason_ok": true,
-    "score": 1.0,
-    "issues": []
-  },
-  "cache_hit": false
+  }
 }
 ```
 
@@ -276,9 +265,12 @@ Analyzes meeting transcript text and returns an effort estimation breakdown.
 curl -X POST http://localhost:8000/api/v1/estimate \
   -H "Content-Type: application/json" \
   -d '{
-    "transcription": "In the meeting with the marketing team, the client explained that they need a landing page with a contact form, integration with their existing CRM (HubSpot), and a blog section with a WYSIWYG editor. The target timeline is 4 weeks. Designs already exist in Figma.",
+    "description": "In the meeting with the marketing team, the client explained that they need a landing page with a contact form, integration with their existing CRM (HubSpot), and a blog section with a WYSIWYG editor. The target timeline is 4 weeks. Designs already exist in Figma.",
+    "project_type": "web_saas",
+    "detail_level": "medium",
+    "output_format": "phases_table",
     "model": "reasoner-fast",
-    "reasoning_effort": "low"
+    "engine": "litellm"
   }'
 ```
 
@@ -304,9 +296,9 @@ Verify local setup against the baseline project criteria:
 - [x] Application initializes with `uv run aie-estimator` or `uv run uvicorn aie_estimator.server:server.app --reload`
 - [x] API keys and secrets load from `.env.<environment>` via `pydantic-settings` without hardcoded fallbacks
 - [x] `GET /health` returns HTTP 200 with `status: healthy`
-- [x] `POST /api/v1/estimate` processes transcriptions and returns structured estimations
+- [x] `POST /api/v1/estimate` processes project descriptions and parameters to return structured estimations
 - [x] Prompts include historical few-shot reference examples from `src/aie_estimator/prompts/estimation/v1/examples.j2`
-- [x] Streamlit conversational UI accessible at `http://localhost:8501` via `uv run streamlit run streamlit_app.py`
+- [x] Streamlit product form interface accessible at `http://localhost:8501` via `uv run streamlit run streamlit_app.py`
 - [x] Redis exact-match cache short-circuits repeated estimation requests with offline fallback
 - [x] Swagger documentation is accessible at `/docs`
 - [x] `.env*` files are excluded in `.gitignore`
@@ -332,10 +324,11 @@ Verify local setup against the baseline project criteria:
 Detailed architecture guides and technical documentation are maintained in the [`docs/`](docs/) directory:
 
 - [API Schemas & Data Contracts](docs/api-schemas.md): Request and response payload schemas, field validation rules, token accounting, and Level-1 structural evaluation scoring.
+- [Prompt Template Engine](docs/prompt-engine.md): Modular Jinja2 prompt composition, system/user template layouts, few-shot examples injection, and decoupled versioning.
 - [Estimations Service Architecture & Provider Subpackage](docs/estimations-service.md): Deep dive into estimations orchestration, provider isolation, LiteLLM Router, native SDKs, retry backoff, and exception handling.
 - [Model Catalog & Request Validation](docs/model-catalog.md): Centralized model catalog, supported OpenAI/Anthropic models, reasoning metadata, and boundary validation.
 - [Reasoning Profiles & Dynamic Routing](docs/reasoning-profiles.md): LiteLLM router profiles, qualitative reasoning effort tiers, cost-optimized dynamic fallback, and credential filtering.
-- [Conversational UI & Exact-Match Cache](docs/streamlit-conversational-ui.md): Streamlit chat interface, simulated progressive streaming, deterministic Redis exact-match caching, and graceful degradation.
+- [Structured Product UI & Exact-Match Cache](docs/streamlit-conversational-ui.md): Streamlit product form interface, instant static Markdown rendering, execution telemetry container, deterministic Redis exact-match caching, and graceful degradation.
 - [Logging Architecture & Structlog](docs/logging.md): Configuration, formatting sinks, processor pipeline, and context variables binding.
 - [Testing Guidelines](docs/testing.md): Test suite organization, pytest fixtures, and coverage expectations.
 

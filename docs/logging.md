@@ -45,7 +45,7 @@ log.info(
     "dispatching_estimation_request",
     provider="openai",
     model=settings.llm_model,
-    transcript_length=len(transcription),
+    description_length=len(request.description),
 )
 
 # Warning event
@@ -54,7 +54,7 @@ if finish_reason == "max_tokens":
 
 # Exception logging with traceback
 try:
-    result = llm_service.generate_estimation(transcription)
+    result = await estimations_service.generate_estimation(system_prompt, user_prompt, opts)
 except Exception as e:
     log.exception("estimation_generation_failed", error=str(e), exc_info=e)
     raise

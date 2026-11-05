@@ -56,6 +56,9 @@ Streamlit automatically opens the application at `http://localhost:8501`.
    - The estimation body text renders instantly as Markdown in the main viewport.
    - The active prompt template version is displayed prominently above the estimation text (`Prompt version: v1`).
 
+![Streamlit Product Estimation Form](assets/session04_streamlit_ui_1_of_2.png)
+![Streamlit Product Estimation Telemetry and Output](assets/session04_streamlit_ui_2_of_2.png)
+
 ### 3. Client-Side Input Validation
 
 The interface validates the project description bounds client-side prior to network dispatch:
@@ -161,7 +164,7 @@ Redis operations in `EstimationCache` are non-blocking asynchronous coroutines i
 
 ### 7. Environment Configuration & Settings
 
-The interface and cache layer read settings from `.env.<environment>` via [src/aie_estimator/settings.py](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/settings.py):
+The interface and cache layer read settings from `.env.<environment>` via [src/aie_estimator/settings.py](../src/aie_estimator/settings.py):
 - `ESTIMATOR_API_BASE_URL`: Streamlit backend target address (default: `http://localhost:8000`).
 - `REDIS_HOST`: Redis server host (`localhost` for host development, `redis` inside Docker Compose).
 - `REDIS_PORT`: Redis server port (default: `6379`).

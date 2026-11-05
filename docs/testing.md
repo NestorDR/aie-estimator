@@ -86,10 +86,16 @@ Replace collaborators with `AsyncMock` and patch the name where it is looked up,
 
 ```python
 monkeypatch.setattr(
-    "aie_estimator.routers.estimations_router.llm_service.generate_estimation",
+    "aie_estimator.routers.estimations_router.estimations_service.generate_estimation",
     AsyncMock(return_value=result),
 )
-response = client.post("/api/v1/estimate", json={"transcription": sample_transcription, "evaluate": False})
+payload = {
+    "description": "Comprehensive description of inventory management SaaS system.",
+    "project_type": "web_saas",
+    "detail_level": "medium",
+    "output_format": "phases_table",
+}
+response = client.post("/api/v1/estimate", json=payload)
 assert response.status_code == 200
 ```
 

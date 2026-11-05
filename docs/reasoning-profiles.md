@@ -18,21 +18,24 @@ The reasoning parameter normalization subsystem in `aie-estimator` provides a un
 
 ### 1. Request with Qualitative Reasoning Effort
 
-Clients specify the desired reasoning tier directly in `POST /api/v1/estimate`:
+Clients specify the desired logical profile (such as `reasoner-fast` or `reasoner-deep`) in `POST /api/v1/estimate`:
 
 ```json
 {
-  "transcription": "Client: We need a scalable notification service supporting email and SMS. Launch target is within 3 weeks.",
-  "model": "reasoner-fast",
-  "engine": "litellm",
-  "reasoning_effort": "medium"
+  "description": "We need a scalable notification service supporting email and SMS. Launch target is within 3 weeks.",
+  "project_type": "web_saas",
+  "detail_level": "medium",
+  "output_format": "phases_table",
+  "model": "reasoner-deep",
+  "engine": "litellm"
 }
 ```
 
 ### 2. Programmatic Generation with GenerationOptions
 
 ```python
-from aie_estimator.services.llm_service import GenerationOptions, generate_estimation
+from aie_estimator.services.estimations_service import generate_estimation
+from aie_estimator.services.providers.generation_options import GenerationOptions
 
 # Explicit reasoning effort
 opts = GenerationOptions(
@@ -40,7 +43,11 @@ opts = GenerationOptions(
     engine="litellm",
     reasoning_effort="high",
 )
-result = await generate_estimation("Transcript content...", opts=opts)
+result = await generate_estimation(
+    system_prompt="System instructions with reference examples...",
+    user_prompt="<project_description>Project details...</project_description>",
+    opts=opts,
+)
 ```
 
 ---
@@ -71,11 +78,10 @@ result = await generate_estimation("Transcript content...", opts=opts)
 ```python
 cache_key = EstimationCache.make_key(
     system_prompt=system_prompt,
-    user_message=user_input,
+    user_message=user_prompt,
     model=model,
     max_tokens=opts.max_tokens,
     reasoning_effort=opts.reasoning_effort,
-    preprocessing=opts.preprocessing,
     engine=opts.engine,
 )
 ```

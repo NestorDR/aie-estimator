@@ -31,7 +31,10 @@ Clients can pass either a logical profile or a physical model identifier in `POS
 
 ```json
 {
-  "transcription": "Client: We need a scalable notification service supporting email and SMS. Launch target is within 3 weeks.",
+  "description": "We need a scalable notification service supporting email and SMS. Launch target is within 3 weeks.",
+  "project_type": "web_saas",
+  "detail_level": "medium",
+  "output_format": "phases_table",
   "model": "reasoner-fast",
   "engine": "litellm"
 }
@@ -43,7 +46,10 @@ If an unsupported model string is provided:
 
 ```json
 {
-  "transcription": "Valid transcription text...",
+  "description": "We need a scalable notification service supporting email and SMS. Launch target is within 3 weeks.",
+  "project_type": "web_saas",
+  "detail_level": "medium",
+  "output_format": "phases_table",
   "model": "unsupported-model-name"
 }
 ```
@@ -66,13 +72,14 @@ The endpoint immediately returns HTTP 422:
 ### 2. Inspecting Catalog Programmatically
 
 ```python
-from aie_estimator.schemas.models import DEFAULT_FAST_PROFILE, ModelSpec
 from aie_estimator.services.providers.model_catalog import (
     PROVIDER_PREFIXES,
+    ModelSpec,
     get_model_catalog,
     get_model_provider,
     get_supported_models,
 )
+from aie_estimator.utils.model_constants import DEFAULT_FAST_PROFILE
 
 # Dynamic accessor functions
 catalog = get_model_catalog()
@@ -92,7 +99,7 @@ print(provider)  # "openai"
 ## Technical Considerations
 
 ### Separation of Concerns
-Data structures live strictly in `src/aie_estimator/schemas/models.py`. File reading, YAML parsing, caching, and provider mapping reside in `src/aie_estimator/services/providers/model_catalog.py`, eliminating I/O side effects from schema definitions.
+Model constants and default profiles live in `src/aie_estimator/utils/model_constants.py`. Catalog definitions (`ModelSpec`), YAML profile parsing, singleton caching, and provider mapping reside in `src/aie_estimator/services/providers/model_catalog.py`, eliminating circular dependencies between utilities, configuration, and schemas.
 
 ### Singleton Caching
 - **Model Catalog**: `get_model_catalog()` and `get_supported_models()` are decorated with `@lru_cache(maxsize=1)` to avoid repeated filesystem and YAML parsing overhead during request processing.
