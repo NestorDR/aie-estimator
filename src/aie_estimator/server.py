@@ -15,7 +15,7 @@ import structlog
 # --- App modules ---
 from aie_estimator.routers import estimations_router, health_router
 from aie_estimator.services.cache import get_estimation_cache
-from aie_estimator.services.llm_service import LLMServiceError
+from aie_estimator.services import LLMProviderError
 from aie_estimator.settings import Settings, get_settings
 
 
@@ -159,17 +159,17 @@ class Server:
         #         content={"detail": f"A database error: {e!r}"},
         #     )
 
-        @app.exception_handler(LLMServiceError)
-        async def llm_service_exception_handler(request: Request, e: LLMServiceError) -> JSONResponse:
+        @app.exception_handler(LLMProviderError)
+        async def llm_provider_exception_handler(request: Request, e: LLMProviderError) -> JSONResponse:
             """
-            Handle upstream LLM service errors and return sanitized HTTP 500 responses.
+            Handle upstream LLM provider errors and return sanitized HTTP 500 responses.
 
             :param request: Incoming HTTP request triggering the service failure.
-            :param e: Upstream LLM domain service exception.
+            :param e: Upstream LLM domain provider exception.
 
             :return: JSONResponse containing a generic user-facing error message.
             """
-            self.log.exception("llm_service_error_encountered", error=repr(e), exc_info=e)
+            self.log.exception("llm_provider_error_encountered", error=repr(e), exc_info=e)
             return JSONResponse(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 content={"detail": "An error occurred while generating the estimation. Please try again later."},

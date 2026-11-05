@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 # --- App modules ---
-from aie_estimator.services import LLMServiceError
+from aie_estimator.services import LLMProviderError
 
 
 def test_server_read_root_endpoint(client: TestClient) -> None:
@@ -27,7 +27,7 @@ def test_server_read_root_endpoint(client: TestClient) -> None:
     assert "Welcome to the Estimator Services" in data["message"]
 
 
-def test_server_llm_service_error_handler(
+def test_server_llm_provider_error_handler(
     app: FastAPI,
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -43,13 +43,18 @@ def test_server_llm_service_error_handler(
     """
 
     async def mock_failing_generation(*args: Any, **kwargs: Any) -> dict[str, Any]:
-        raise LLMServiceError("Upstream provider connection refused.")
+        raise LLMProviderError("Upstream provider connection refused.")
 
-    monkeypatch.setattr("aie_estimator.services.llm_service.generate_estimation", mock_failing_generation)
+    monkeypatch.setattr("aie_estimator.services.estimations_service.generate_estimation", mock_failing_generation)
 
     response = client.post(
         "/api/v1/estimate",
-        json={"transcription": "This transcript is long enough to satisfy schema validation constraints for testing."},
+        json={
+            "description": "This description is long enough to satisfy schema validation constraints for testing.",
+            "project_type": "web_saas",
+            "detail_level": "medium",
+            "output_format": "phases_table",
+        },
     )
 
     assert response.status_code == 500
@@ -76,11 +81,16 @@ def test_server_database_connection_error_handler(
     async def mock_connection_error(*args: Any, **kwargs: Any) -> dict[str, Any]:
         raise ConnectionError("PostgreSQL pool refused connection.")
 
-    monkeypatch.setattr("aie_estimator.services.llm_service.generate_estimation", mock_connection_error)
+    monkeypatch.setattr("aie_estimator.services.estimations_service.generate_estimation", mock_connection_error)
 
     response = client.post(
         "/api/v1/estimate",
-        json={"transcription": "Valid length meeting transcript for exception testing."},
+        json={
+            "description": "Valid length project description for database exception testing.",
+            "project_type": "web_saas",
+            "detail_level": "medium",
+            "output_format": "phases_table",
+        },
     )
 
     assert response.status_code == 503
@@ -104,12 +114,17 @@ def test_server_unhandled_exception_handler(
     async def mock_unexpected_error(*args: Any, **kwargs: Any) -> dict[str, Any]:
         raise RuntimeError("Fatal memory segmentation or hardware error.")
 
-    monkeypatch.setattr("aie_estimator.services.llm_service.generate_estimation", mock_unexpected_error)
+    monkeypatch.setattr("aie_estimator.services.estimations_service.generate_estimation", mock_unexpected_error)
 
     with TestClient(app, raise_server_exceptions=False) as no_raise_client:
         response = no_raise_client.post(
             "/api/v1/estimate",
-            json={"transcription": "Valid length meeting transcript for exception testing."},
+            json={
+                "description": "Valid length project description for runtime exception testing.",
+                "project_type": "web_saas",
+                "detail_level": "medium",
+                "output_format": "phases_table",
+            },
         )
 
     assert response.status_code == 500

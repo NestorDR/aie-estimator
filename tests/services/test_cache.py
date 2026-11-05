@@ -11,7 +11,7 @@ import pytest
 from redis.exceptions import ConnectionError as RedisConnectionError, TimeoutError as RedisTimeoutError
 
 # --- App modules ---
-from aie_estimator.schemas.models import DEFAULT_CLAUDE_LLM, DEFAULT_GPT_LLM
+from aie_estimator.services.providers.model_catalog import DEFAULT_CLAUDE_LLM, DEFAULT_GPT_LLM
 from aie_estimator.services.cache import (
     CACHE_KEY_PREFIX,
     EstimationCache,

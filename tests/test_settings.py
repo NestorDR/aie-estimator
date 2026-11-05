@@ -13,11 +13,6 @@ import pytest
 import structlog
 
 # --- App modules ---
-from aie_estimator.schemas.models import (
-    DEFAULT_CLAUDE_LLM,
-    DEFAULT_FAST_PROFILE,
-    DEFAULT_GPT_LLM,
-)
 from aie_estimator.settings import Environment, Settings, get_settings
 
 
@@ -169,28 +164,6 @@ def test_configure_logging_renderer_selection(
                 assert getattr(file_formatter.processors[-1], "_colors", None) is expected_file_colors
         finally:
             logging.getLogger().handlers.clear()
-
-
-@pytest.mark.parametrize(
-    ("model_name", "expected_provider"),
-    [
-        (DEFAULT_GPT_LLM, "openai"),
-        (DEFAULT_FAST_PROFILE, "litellm"),
-        (DEFAULT_CLAUDE_LLM, "anthropic"),
-    ],
-    ids=["gpt6_luna_openai", "reasoner_fast_litellm", "claude_haiku_anthropic"],
-)
-def test_settings_llm_provider_derived_from_model(model_name: str, expected_provider: str) -> None:
-    """
-    GIVEN a model configured in Settings.llm_model
-    WHEN the llm_provider property is accessed
-    THEN it resolves to the provider defined in MODEL_CATALOG.
-
-    :param model_name: Target model identifier.
-    :param expected_provider: Expected provider identifier ('openai' or 'anthropic').
-    """
-    settings = Settings(app_env=Environment.TEST, llm_model=model_name)
-    assert settings.llm_provider == expected_provider
 
 
 def test_configure_logging_captures_callsite_parameters(capsys: pytest.CaptureFixture[str]) -> None:
@@ -352,3 +325,21 @@ def test_mirror_secrets_to_environ_does_not_overwrite_existing(monkeypatch: pyte
 
     assert environ.get("MISTRAL_API_KEY") == "existing-preset-key"
 
+
+def test_settings_active_prompt_version_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    GIVEN default Settings and environment variable override
+    WHEN active_prompt_version is inspected
+    THEN it defaults to 'v1' and reflects ACTIVE_PROMPT_VERSION override.
+
+    :param monkeypatch: Pytest monkeypatch fixture.
+    """
+    default_settings = Settings(app_env=Environment.TEST)
+    assert default_settings.active_prompt_version == "v1"
+
+    custom_instance = Settings(app_env=Environment.TEST, active_prompt_version="v2")
+    assert custom_instance.active_prompt_version == "v2"
+
+    monkeypatch.setenv("ACTIVE_PROMPT_VERSION", "v3")
+    env_settings = Settings(app_env=Environment.TEST)
+    assert env_settings.active_prompt_version == "v3"

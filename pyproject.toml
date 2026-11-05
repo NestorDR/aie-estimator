@@ -45,6 +45,7 @@ reload = true
 [tool.ruff]
 line-length = 140
 target-version = "py314"
+extend-exclude = ["samples", "zero"]
 
 [tool.ruff.lint]
 exclude = [
@@ -57,6 +58,7 @@ exclude = [
     "dist",
     "*.egg-info",
     "docs",
+    "samples",
     "zero",
 ]
 # Linting rules.
@@ -86,9 +88,16 @@ ignore = [ # Ignored rules
 # --cov-report=term-missing: Print terminal summary table showing line numbers of unexecuted code.
 # --cov-fail-under=85: Fail the test run if coverage is less than 85%.
 addopts = "--cov=aie_estimator --cov-branch --cov-report=term-missing --cov-fail-under=85"
-pythonpath = [".", "src"]      # Add root and src to pythonpath for imports
-testpaths = ["tests"]          # Specify test directory
+pythonpath = [".", "src"]                                                                  # Add root and src to pythonpath for imports
+testpaths = ["tests"]                                                                      # Specify test directory
 python_files = ["test_*.py"]
 
 [tool.pytest_env]
 APP_ENV = "test"
+# When litellm is invoked, its internal pricing module (litellm.litellm_core_utils.get_model_cost_map) defaults to downloading the latest pricing dictionary over HTTP from:
+# https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json
+# In sandboxed test runners, offline CI/CD, or restricted networks:
+# - The network connection fails ([Errno 11001] getaddrinfo failed).
+# - LiteLLM initiates three retries with exponential backoff, causing a blocking ~15-second hang on test startup and emitting warning logs before falling back to its packaged copy.
+# - Setting LITELLM_LOCAL_MODEL_COST_MAP="True" instructs LiteLLM to bypass remote network requests and read its bundled model_prices_and_context_window_backup.json immediately.
+LITELLM_LOCAL_MODEL_COST_MAP = "True"

@@ -2,19 +2,14 @@
 
 # --- Python Standard Library ---
 from enum import Enum
-from typing import Literal
 
 # --- Third Party Libraries ---
 from pydantic import BaseModel, Field, field_validator
 
 # --- App modules ---
-from aie_estimator.services.model_catalog import get_supported_models
+from aie_estimator.services.providers.generation_options import ProviderMode
+from aie_estimator.services.providers.model_catalog import get_supported_models
 from aie_estimator.settings import get_settings
-
-PreprocessingMode = Literal["none", "inline_cleaning", "two_phase"]
-ExampleFormat = Literal["markdown", "json", "narrative"]
-ExecutionEngine = Literal["litellm", "native"]
-ReasoningEffort = Literal["low", "medium", "high"]
 
 
 class ProjectType(str, Enum):
@@ -42,48 +37,18 @@ class OutputFormat(str, Enum):
     NARRATIVE = "narrative"
 
 
-class PromptEstimationRequest(BaseModel):
-    """Typed estimation parameters passed to the Jinja2 prompt template engine."""
+class EstimationRequest(BaseModel):
+    """Payload schema for software project estimation requests."""
 
     description: str = Field(
         ...,
         min_length=20,
-        max_length=80000,
+        max_length=2000,
         description="Free-text description or transcription of the project to estimate.",
     )
     project_type: ProjectType = Field(description="Project domain categories with a basic profile.")
     detail_level: DetailLevel = Field(description="How deep the estimation should go.")
     output_format: OutputFormat = Field(description="Shape of the rendered estimation.")
-
-
-class EstimationRequest(BaseModel):
-    """Payload schema for software project estimation requests."""
-
-    transcription: str = Field(
-        ...,
-        min_length=50,
-        description="Meeting transcript text containing client requirements and project scope.",
-        examples=[
-            "In the meeting with the marketing team, the client explained that they need a landing page with a contact form..."],
-    )
-    preprocessing: PreprocessingMode = Field(
-        default="none",
-        description="Input preprocessing strategy: none | inline_cleaning | two_phase",
-    )
-    example_format: ExampleFormat = Field(
-        default="markdown",
-        description="Format used to render the CAG examples in the system prompt",
-    )
-    num_examples: int = Field(
-        default=3,
-        ge=0,
-        le=5,
-        description="Number of canonical examples to inject (0..N where N=len(CANONICAL_EXAMPLES))",
-    )
-    use_examples: bool = Field(
-        default=True,
-        description="Toggle the CAG examples block on/off (overrides num_examples when False)",
-    )
     model: str | None = Field(
         default=None,
         validate_default=True,
@@ -92,23 +57,9 @@ class EstimationRequest(BaseModel):
         json_schema_extra=lambda schema: schema.update(enum=get_supported_models()),
         description="Override the default LLM model for this request. Must be one of the catalog supported models.",
     )
-    max_tokens: int = Field(
-        default=4000,
-        gt=0,
-        le=16000,
-        description="Maximum output tokens for the estimation call",
-    )
-    reasoning_effort: ReasoningEffort | None = Field(
-        default=None,
-        description="Qualitative reasoning effort tier: 'low' | 'medium' | 'high'.",
-    )
-    evaluate: bool = Field(
-        default=True,
-        description="Run the structural evaluation on the generated estimation",
-    )
-    engine: ExecutionEngine = Field(
+    engine: ProviderMode = Field(
         default="litellm",
-        description="Execution engine: 'litellm' for dynamic multi-provider routing, or 'native' for legacy direct SDK calls.",
+        description="Provider dispatch mode: 'litellm' for dynamic multi-provider routing, or 'native' for direct vendor SDK calls.",
     )
 
     @field_validator("model", mode="after")
@@ -162,22 +113,12 @@ class StructureCheck(BaseModel):
 class EstimationResponse(BaseModel):
     """Response schema containing the generated estimation and provider metadata."""
 
-    estimation: str = Field(..., description="Formatted software project effort estimation breakdown.")
+    text: str = Field(..., description="Generated software project effort estimation text.")
+    prompt_version: str = Field(..., description="Prompt template version identifier.")
     model: str = Field(..., description="Model identifier used to produce the estimation.")
     provider: str = Field(..., description="LLM provider name used to produce the estimation.")
     cost_usd: float | None = Field(
         default=None,
         description="Calculated execution cost in USD reported by the routing engine.",
     )
-
-    # region Added in live session
     usage: TokenUsage
-    finish_reason: str = Field(..., description="Stop reason reported by the provider")
-    preprocessing: PreprocessingMode = "none"
-    extracted_requirements: str | None = Field(
-        default=None,
-        description="Phase-1 output when preprocessing='two_phase'; null otherwise",
-    )
-    latency_ms: int = Field(..., description="Server-side total latency in milliseconds")
-    validation: StructureCheck | None = None
-    cache_hit: bool = Field(default=False, description="True when the response was served from cache")

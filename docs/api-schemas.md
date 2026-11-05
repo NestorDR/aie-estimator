@@ -4,10 +4,11 @@
 
 `src/aie_estimator/schemas/estimations.py` defines the domain data models and validation perimeter for the estimation service. Built with Pydantic v2, these schemas enforce strict request validation before execution and guarantee deterministic response contracts across all LLM providers.
 
-The schemas govern three functional phases of the estimation lifecycle:
-1. **Request Intake (`EstimationRequest`)**: Ingestion, constraint validation, engine selection (`engine="litellm"` vs `engine="native"`), and default configuration for meeting transcript analysis.
-2. **Execution & Instrumentation (`TokenUsage` and Execution Cost)**: Token consumption accounting across single-phase and two-phase workflows, plus execution cost tracking (`cost_usd`).
-3. **Quality & Compliance (`StructureCheck` & `EstimationResponse`)**: Level-1 deterministic structural evaluation, cache status tracking, and standardized response payload delivery.
+The schemas govern the core phases of the estimation lifecycle:
+1. **Request Intake (`EstimationRequest`)**: Ingestion, constraint validation, domain classifications (`project_type`, `detail_level`, `output_format`), engine selection (`engine="litellm"` vs `engine="native"`), and model catalog validation.
+2. **Execution & Instrumentation (`TokenUsage` and Execution Cost)**: Token consumption accounting across input and output tokens, plus execution cost tracking (`cost_usd`).
+3. **Response Delivery (`EstimationResponse`)**: Standardized delivery of markdown estimation text, prompt template version tracking, provider attribution, and token telemetry.
+4. **Quality & Compliance (`StructureCheck`)**: Level-1 deterministic structural evaluation used by offline benchmarks and quality tests.
 
 ---
 
@@ -19,47 +20,60 @@ Payload schema for `POST /api/v1/estimate`:
 
 | Field | Type | Default | Constraints | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| `transcription` | `str` | *(required)* | `min_length=50` | Meeting transcript containing client requirements and project scope. |
-| `engine` | `Literal["litellm", "native"]` | `"litellm"` | `"litellm"` or `"native"` | Execution engine: LiteLLM Router dynamic routing or legacy direct vendor SDK calls. |
-| `preprocessing` | `PreprocessingMode` | `"none"` | `"none"`, `"inline_cleaning"`, `"two_phase"` | Transcript preprocessing strategy before prompt assembly. |
-| `example_format` | `ExampleFormat` | `"markdown"` | `"markdown"`, `"json"`, `"narrative"` | Serialization format used for few-shot reference examples. |
-| `num_examples` | `int` | `3` | `ge=0, le=5` | Number of historical canonical examples injected into the prompt. |
-| `use_examples` | `bool` | `True` | — | Master toggle for few-shot examples (overrides `num_examples` when `False`). |
-| `model` | `str \| None` | `settings.llm_model` | Must exist in `get_supported_models()` | Target LLM model or logical profile override (`reasoner-fast`, `reasoner-deep`, etc.). |
-| `max_tokens` | `int` | `4000` | `gt=0, le=16000` | Maximum token budget for the estimation completion. |
-| `reasoning_effort` | `Literal["low", "medium", "high"] \| None` | `None` | `"low"`, `"medium"`, `"high"` | Qualitative reasoning effort tier for reasoning-capable models and router profiles. |
-| `evaluate` | `bool` | `True` | — | When `True`, triggers Level-1 structural evaluation (`StructureCheck`). |
+| `description` | `str` | *(required)* | `min_length=20`, `max_length=2000` | Free-text description or transcription of the project to estimate. |
+| `project_type` | `ProjectType` | *(required)* | `"mobile_app"`, `"web_saas"`, `"internal_tool"`, `"data_pipeline"` | Project domain category used to contextualize estimation rules. |
+| `detail_level` | `DetailLevel` | *(required)* | `"summary"`, `"medium"`, `"detailed"` | Granularity and depth of the task breakdown. |
+| `output_format` | `OutputFormat` | *(required)* | `"phases_table"`, `"line_items"`, `"narrative"` | Target presentation layout for the rendered estimation. |
+| `model` | `str \| None` | `None` | Must exist in `get_supported_models()` | Target LLM model or logical profile override (`reasoner-fast`, `cost-saver`, etc.). Defaults to `settings.llm_model`. |
+| `engine` | `ProviderMode` | `"litellm"` | `"litellm"` or `"native"` | Provider dispatch mode: LiteLLM Router dynamic routing or direct vendor SDK calls. |
 
-### 2. `EstimationResponse`
+### 2. Domain Enums
+
+```python
+class ProjectType(str, Enum):
+    MOBILE_APP = "mobile_app"
+    WEB_SAAS = "web_saas"
+    INTERNAL_TOOL = "internal_tool"
+    DATA_PIPELINE = "data_pipeline"
+
+
+class DetailLevel(str, Enum):
+    SUMMARY = "summary"
+    MEDIUM = "medium"
+    DETAILED = "detailed"
+
+
+class OutputFormat(str, Enum):
+    PHASES_TABLE = "phases_table"
+    LINE_ITEMS = "line_items"
+    NARRATIVE = "narrative"
+```
+
+### 3. `EstimationResponse`
 
 Unified response schema returned by `POST /api/v1/estimate`:
 
 | Field | Type | Description |
 | :--- | :--- | :--- |
-| `estimation` | `str` | Complete generated software project estimation markdown text. |
+| `text` | `str` | Complete generated software project estimation markdown text. |
+| `prompt_version` | `str` | Prompt template version identifier resolved at runtime (e.g. `"v1"`). |
 | `model` | `str` | Identifier of the model or profile that produced the estimation. |
-| `provider` | `str` | Upstream provider or `"litellm"` invoked. |
+| `provider` | `str` | Upstream provider or routing framework (`"litellm"`, `"openai"`, `"anthropic"`). |
 | `cost_usd` | `float \| None` | Calculated execution cost in USD reported by the routing engine, or `null`. |
-| `usage` | `TokenUsage` | Breakdown of input, output, and preprocessing token consumption. |
-| `finish_reason` | `str` | Upstream completion reason reported by the provider (`stop`, `end_turn`, etc.). |
-| `latency_ms` | `int` | Server-side total turnaround latency in milliseconds. |
-| `cache_hit` | `bool` | `True` when served directly from Redis exact-match cache; `False` on API invocation. |
-| `preprocessing` | `PreprocessingMode` | Active preprocessing strategy utilized for the request. |
-| `extracted_requirements` | `str \| None` | Clean requirements produced during Phase 1 when `preprocessing="two_phase"`; `None` otherwise. |
-| `validation` | `StructureCheck \| None` | Structural evaluation result when `evaluate=True`; `None` when evaluation is disabled. |
+| `usage` | `TokenUsage` | Breakdown of input, output, and sub-call token consumption. |
 
-### 3. Supporting Sub-Schemas
+### 4. Supporting Sub-Schemas
 
 #### `TokenUsage`
-Tracks end-to-end token consumption across multi-phase workflows:
+Tracks end-to-end token consumption across LLM invocations:
 - `input_tokens` (`int`): Main prompt input tokens.
 - `output_tokens` (`int`): Estimation completion tokens.
 - `total_tokens` (`int`): Sum of main call input and output tokens.
-- `preprocessing_input_tokens` (`int`, default `0`): Phase-1 requirement extraction input tokens.
-- `preprocessing_output_tokens` (`int`, default `0`): Phase-1 requirement extraction completion tokens.
+- `preprocessing_input_tokens` (`int`, default `0`): Upstream or preprocessing input tokens.
+- `preprocessing_output_tokens` (`int`, default `0`): Upstream or preprocessing completion tokens.
 
 #### `StructureCheck`
-Level-1 structural verification generated by `src/aie_estimator/services/evaluation.py`:
+Level-1 structural verification generated by `src/aie_estimator/services/evaluation.py` for deterministic parsing and scoring:
 - `has_title` (`bool`): Matches Markdown H2 heading (`## ...`).
 - `has_breakdown_table` (`bool`): Matches task breakdown table with `Task | Hours | Cost` header.
 - `has_totals_section` (`bool`): Detects both `Total hours` and `Total cost` declarations.
@@ -79,11 +93,14 @@ Level-1 structural verification generated by `src/aie_estimator/services/evaluat
 
 ## Usage Examples
 
-### 1. Minimal Request with LiteLLM Router
+### 1. Estimation Request with LiteLLM Router
 
 ```json
 {
-  "transcription": "Client: We need a scalable notification service supporting email and SMS. Team: We can implement webhooks with AWS SNS/SES. Client: Launch target is within 3 weeks.",
+  "description": "We need a scalable notification service supporting email and SMS with webhooks and AWS SNS/SES integration. Launch target is within 3 weeks.",
+  "project_type": "web_saas",
+  "detail_level": "detailed",
+  "output_format": "phases_table",
   "model": "reasoner-fast",
   "engine": "litellm"
 }
@@ -93,8 +110,9 @@ Corresponding HTTP 200 response payload:
 
 ```json
 {
-  "estimation": "## Notification Service Implementation\n\n### Task breakdown\n| Task | Hours | Cost (EUR) |\n| Webhook API & Handlers | 30 | 1875.00 |\n| AWS SNS/SES Integration | 25 | 1562.50 |\n| Notification Templates | 15 | 937.50 |\n| Automated Testing & CI | 20 | 1250.00 |\n\n### Totals\n- Total hours: 90\n- Total cost: 5625 EUR\n- Recommended team: 1 Backend Engineer, 1 DevOps Engineer\n- Estimated duration: 2-3 weeks\n\n### Risks and assumptions\n- AWS account and SES production sending quotas are approved prior to kickoff.",
-  "model": "openai/gpt-6-luna",
+  "text": "## Notification Service Implementation\n\n### Task breakdown\n| Task | Hours | Cost (EUR) |\n| Webhook API & Handlers | 30 | 1875.00 |\n| AWS SNS/SES Integration | 25 | 1562.50 |\n| Notification Templates | 15 | 937.50 |\n| Automated Testing & CI | 20 | 1250.00 |\n\n### Totals\n- Total hours: 90\n- Total cost: 5625 EUR\n- Recommended team: 1 Backend Engineer, 1 DevOps Engineer\n- Estimated duration: 2-3 weeks\n\n### Risks and assumptions\n- AWS account and SES production sending quotas are approved prior to kickoff.",
+  "prompt_version": "v1",
+  "model": "openai/gpt-5-mini",
   "provider": "litellm",
   "cost_usd": 0.00034,
   "usage": {
@@ -103,45 +121,24 @@ Corresponding HTTP 200 response payload:
     "total_tokens": 1060,
     "preprocessing_input_tokens": 0,
     "preprocessing_output_tokens": 0
-  },
-  "finish_reason": "stop",
-  "latency_ms": 1420,
-  "cache_hit": false,
-  "preprocessing": "none",
-  "extracted_requirements": null,
-  "validation": {
-    "has_title": true,
-    "has_breakdown_table": true,
-    "has_totals_section": true,
-    "has_team_section": true,
-    "has_duration_section": true,
-    "declared_total_hours": 90,
-    "sum_row_hours": 90,
-    "hours_match": true,
-    "declared_total_cost": 5625.0,
-    "sum_row_cost": 5625.0,
-    "cost_match": true,
-    "finish_reason_ok": true,
-    "score": 1.0,
-    "issues": []
   }
 }
 ```
 
-### 2. Two-Phase Preprocessing with Extended Thinking on Native Engine
+### 2. Minimal Request Using Defaults
 
 ```json
 {
-  "transcription": "Raw noisy transcript with small talk, interruptions, and requirements...",
-  "preprocessing": "two_phase",
-  "engine": "native",
-  "model": "claude-haiku-5-5",
-  "reasoning_effort": "low",
-  "example_format": "markdown",
-  "num_examples": 2,
-  "evaluate": true
+  "description": "Build an internal administration dashboard for managing customer support tickets and viewing analytics.",
+  "project_type": "internal_tool",
+  "detail_level": "medium",
+  "output_format": "line_items"
 }
 ```
+
+In this request:
+- `model` defaults to the environment configured `settings.llm_model`.
+- `engine` defaults to `"litellm"`.
 
 ---
 
@@ -150,5 +147,8 @@ Corresponding HTTP 200 response payload:
 ### 1. Boundary Validation
 `EstimationRequest` uses `@field_validator("model", mode="after")` to validate requested model identifiers against `get_supported_models()` at the API boundary, accepting both physical model IDs and logical profile names while rejecting placeholders and unknown models with HTTP 422.
 
-### 2. Dual-Engine Dispatch
-The `engine` field defaults to `"litellm"`. When set to `"native"`, callers bypass the LiteLLM Router and execute directly against legacy vendor SDKs for verified benchmarking or fallback scenarios.
+### 2. Prompt Template Integration
+`EstimationRequest` attributes (`description`, `project_type`, `detail_level`, `output_format`) feed directly into Jinja2 templates via `src/aie_estimator/prompts/loader.py:render_estimation_prompt()`, selecting domain-specific guidelines, few-shot examples, and formatting instructions.
+
+### 3. Dual-Engine Dispatch
+The `engine` field defaults to `"litellm"`. When set to `"native"`, callers bypass the LiteLLM Router and execute directly against vendor SDKs for verified benchmarking or fallback scenarios.

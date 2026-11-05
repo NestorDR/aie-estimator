@@ -19,7 +19,7 @@ The project enforces strict separation of concerns across dedicated application 
 - **Schemas (`src/aie_estimator/schemas`)**: Defines domain data schemas and Pydantic models (`EstimationRequest`, `EstimationResponse`) for request payload validation and response contracts.
 - **Routers (`src/aie_estimator/routers/`)**: Defines HTTP routes, endpoint documentation, status codes, and request/response handling.
 - **Services (`src/aie_estimator/services/`)**: Encapsulates core business logic, CAG prompt assembly, multi-provider LLM dispatch, fallback token cost estimation, and response caching.
-- **Context (`src/aie_estimator/context/`)**: Stores static reference datasets and few-shot estimation examples injected into model prompts.
+- **Prompts (`src/aie_estimator/prompts/`)**: Stores versioned Jinja2 prompt templates (`system.j2`, `user.j2`) and loader for estimation prompt rendering.
 - **Settings (`src/aie_estimator/settings.py`)**: Environment-aware configuration and settings management powered by `pydantic-settings`, supporting structured JSON logging, credential isolation via `SecretStr`, and secret synchronization to `os.environ`.
 - **Server (`src/aie_estimator/server.py`)**: Centralizes FastAPI application initialization, lifespan event handlers, router registration, and global exception mapping.
 
@@ -72,13 +72,13 @@ aie-estimator/
 │       ├── server.py                   # FastAPI server setup and lifespan handling
 │       ├── llm_profiles.yml            # LiteLLM router profiles, tiers, and telemetry config
 │       ├── .env.example                # Example environment configuration
-│       ├── context/
+│       ├── prompts/                    # Jinja2 prompt templates and loader
 │       │   ├── __init__.py
-│       │   └── examples.py             # Historical few-shot estimation examples
+│       │   ├── loader.py
+│       │   └── estimation/v1/          # Modular prompt components (system, user, examples)
 │       ├── schemas/
 │       │   ├── __init__.py
-│       │   ├── estimations.py          # EstimationRequest and EstimationResponse schemas
-│       │   └── models.py               # Model catalog and specification schemas
+│       │   └── estimations.py          # EstimationRequest and EstimationResponse schemas
 │       ├── routers/
 │       │   ├── __init__.py
 │       │   ├── estimations_router.py   # POST /api/v1/estimate endpoint
@@ -86,11 +86,10 @@ aie-estimator/
 │       └── services/
 │           ├── __init__.py
 │           ├── cache.py                # Deterministic exact-match Redis cache
+│           ├── estimations_service.py  # Estimation orchestration and multi-engine coordination
 │           ├── evaluation.py           # Output evaluation and scoring
-│           ├── litellm_provider.py     # LiteLLM router profiles, reasoning dispatch, and cost tracking
-│           ├── llm_service.py          # CAG prompt assembly and multi-engine coordination
-│           ├── native_providers.py     # Native OpenAI and Anthropic SDK integrations
-│           └── pricing.py              # Fallback token execution cost estimation
+│           ├── exceptions.py           # Service and provider exception hierarchy
+│           └── providers/              # Isolated provider integrations and dispatch
 ├── tests/                              # Unit and integration test suites
 ├── .dockerignore
 ├── .gitignore
@@ -306,7 +305,7 @@ Verify local setup against the baseline project criteria:
 - [x] API keys and secrets load from `.env.<environment>` via `pydantic-settings` without hardcoded fallbacks
 - [x] `GET /health` returns HTTP 200 with `status: healthy`
 - [x] `POST /api/v1/estimate` processes transcriptions and returns structured estimations
-- [x] Prompts include historical few-shot reference examples from `src/aie_estimator/context/examples.py`
+- [x] Prompts include historical few-shot reference examples from `src/aie_estimator/prompts/estimation/v1/examples.j2`
 - [x] Streamlit conversational UI accessible at `http://localhost:8501` via `uv run streamlit run streamlit_app.py`
 - [x] Redis exact-match cache short-circuits repeated estimation requests with offline fallback
 - [x] Swagger documentation is accessible at `/docs`
@@ -333,7 +332,7 @@ Verify local setup against the baseline project criteria:
 Detailed architecture guides and technical documentation are maintained in the [`docs/`](docs/) directory:
 
 - [API Schemas & Data Contracts](docs/api-schemas.md): Request and response payload schemas, field validation rules, token accounting, and Level-1 structural evaluation scoring.
-- [LLM Service Architecture & Multi-Provider Integration](docs/llm-service.md): Deep dive into OpenAI Responses API, Anthropic Messages API, extended thinking, client lifecycle, retry backoff, and exception handling.
+- [Estimations Service Architecture & Provider Subpackage](docs/estimations-service.md): Deep dive into estimations orchestration, provider isolation, LiteLLM Router, native SDKs, retry backoff, and exception handling.
 - [Model Catalog & Request Validation](docs/model-catalog.md): Centralized model catalog, supported OpenAI/Anthropic models, reasoning metadata, and boundary validation.
 - [Reasoning Profiles & Dynamic Routing](docs/reasoning-profiles.md): LiteLLM router profiles, qualitative reasoning effort tiers, cost-optimized dynamic fallback, and credential filtering.
 - [Conversational UI & Exact-Match Cache](docs/streamlit-conversational-ui.md): Streamlit chat interface, simulated progressive streaming, deterministic Redis exact-match caching, and graceful degradation.

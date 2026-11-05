@@ -9,9 +9,10 @@ from pydantic import SecretStr
 import pytest
 
 # --- App modules ---
-from aie_estimator.schemas.models import DEFAULT_CLAUDE_LLM, DEFAULT_GPT_LLM
-from aie_estimator.services import LLMServiceError
-from aie_estimator.services.native_providers import (
+from aie_estimator.services.providers.model_catalog import DEFAULT_CLAUDE_LLM, DEFAULT_GPT_LLM
+from aie_estimator.services import LLMProviderError
+from aie_estimator.services.providers.generation_options import GenerationOptions
+from aie_estimator.services.providers.native_providers import (
     call_anthropic,
     call_openai,
     get_anthropic_client,
@@ -34,7 +35,7 @@ def test_client_caching_and_lifecycle(monkeypatch: pytest.MonkeyPatch) -> None:
         openai_api_key=SecretStr("sk-test-openai-key"),
         anthropic_api_key=SecretStr("sk-test-anthropic-key"),
     )
-    monkeypatch.setattr("aie_estimator.services.native_providers.get_settings", lambda: test_settings)
+    monkeypatch.setattr("aie_estimator.services.providers.native_providers.get_settings", lambda: test_settings)
 
     openai_1 = get_openai_client()
     openai_2 = get_openai_client()
@@ -53,7 +54,7 @@ def test_client_missing_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     GIVEN unconfigured API credentials
     WHEN client accessor functions are invoked
-    THEN LLMServiceError is raised indicating missing configuration.
+    THEN LLMProviderError is raised indicating missing configuration.
 
     :param monkeypatch: Pytest monkeypatch fixture.
     """
@@ -62,14 +63,14 @@ def test_client_missing_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:
         openai_api_key=None,
         anthropic_api_key=None,
     )
-    monkeypatch.setattr("aie_estimator.services.native_providers.get_settings", lambda: empty_settings)
+    monkeypatch.setattr("aie_estimator.services.providers.native_providers.get_settings", lambda: empty_settings)
     get_openai_client.cache_clear()
     get_anthropic_client.cache_clear()
 
-    with pytest.raises(LLMServiceError, match=r"OpenAI API key"):
+    with pytest.raises(LLMProviderError, match=r"OpenAI API key"):
         get_openai_client()
 
-    with pytest.raises(LLMServiceError, match=r"Anthropic API key"):
+    with pytest.raises(LLMProviderError, match=r"Anthropic API key"):
         get_anthropic_client()
 
 
@@ -108,15 +109,18 @@ async def test_call_openai_model_parameter_selection(
     mock_resp.usage.total_tokens = 400
     mock_client.responses.create.return_value = mock_resp
 
-    monkeypatch.setattr("aie_estimator.services.native_providers.get_openai_client", lambda: mock_client)
+    monkeypatch.setattr("aie_estimator.services.providers.native_providers.get_openai_client", lambda: mock_client)
 
-    result = await call_openai(
-        messages=sample_transcription,
-        system_prompt="You are a CAG estimator.",
+    opts = GenerationOptions(
         model=model,
         max_tokens=3000,
         temperature=0.3,
-        effort="medium",
+        reasoning_effort="medium",
+    )
+    result = await call_openai(
+        user_prompt=sample_transcription,
+        system_prompt="You are a CAG estimator.",
+        opts=opts,
     )
 
     assert result["estimation"] == "Detailed estimation content."
@@ -176,15 +180,18 @@ async def test_call_openai_temperature_bad_request_stripping(
     async def mock_sleep(_: float) -> None:
         pass
 
-    monkeypatch.setattr("aie_estimator.services.native_providers.get_openai_client", lambda: mock_client)
+    monkeypatch.setattr("aie_estimator.services.providers.native_providers.get_openai_client", lambda: mock_client)
     monkeypatch.setattr("asyncio.sleep", mock_sleep)
 
-    result = await call_openai(
-        messages=sample_transcription,
-        system_prompt=None,
+    opts = GenerationOptions(
         model="custom-standard-model",
         max_tokens=2000,
         temperature=0.3,
+    )
+    result = await call_openai(
+        user_prompt=sample_transcription,
+        system_prompt=None,
+        opts=opts,
     )
 
     assert result["estimation"] == "Recovered estimation."
@@ -201,7 +208,7 @@ async def test_call_openai_retry_exhaustion(
     """
     GIVEN persistent transient rate limits from OpenAI
     WHEN retry attempts exceed the maximum configured count
-    THEN LLMServiceError is raised with logged diagnostic context.
+    THEN LLMProviderError is raised with logged diagnostic context.
 
     :param sample_transcription: Sample transcript fixture.
     :param monkeypatch: Pytest monkeypatch fixture.
@@ -219,15 +226,15 @@ async def test_call_openai_retry_exhaustion(
     async def mock_sleep(_: float) -> None:
         pass
 
-    monkeypatch.setattr("aie_estimator.services.native_providers.get_openai_client", lambda: mock_client)
+    monkeypatch.setattr("aie_estimator.services.providers.native_providers.get_openai_client", lambda: mock_client)
     monkeypatch.setattr("asyncio.sleep", mock_sleep)
 
-    with pytest.raises(LLMServiceError, match=r"OpenAI call failed"):
+    with pytest.raises(LLMProviderError, match=r"OpenAI call failed"):
+        opts = GenerationOptions(model=DEFAULT_GPT_LLM, max_tokens=1000)
         await call_openai(
-            messages=sample_transcription,
+            user_prompt=sample_transcription,
             system_prompt=None,
-            model=DEFAULT_GPT_LLM,
-            max_tokens=1000,
+            opts=opts,
         )
 
 
@@ -271,15 +278,18 @@ async def test_call_anthropic_thinking_and_temperature_exclusivity(
     mock_resp.content = [text_block]
     mock_client.messages.create.return_value = mock_resp
 
-    monkeypatch.setattr("aie_estimator.services.native_providers.get_anthropic_client", lambda: mock_client)
+    monkeypatch.setattr("aie_estimator.services.providers.native_providers.get_anthropic_client", lambda: mock_client)
 
-    result = await call_anthropic(
-        messages=sample_transcription,
-        system_prompt="CAG instructions",
+    opts = GenerationOptions(
         model=DEFAULT_CLAUDE_LLM,
         max_tokens=4000,
         temperature=0.3,
         reasoning_effort=reasoning_effort,
+    )
+    result = await call_anthropic(
+        user_prompt=sample_transcription,
+        system_prompt="CAG instructions",
+        opts=opts,
     )
 
     assert result["estimation"] == "Anthropic estimation output."

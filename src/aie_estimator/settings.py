@@ -17,8 +17,7 @@ import structlog
 from structlog.processors import CallsiteParameter, CallsiteParameterAdder
 
 # --- App modules ---
-from aie_estimator.schemas.models import DEFAULT_GPT_LLM
-from aie_estimator.services.model_catalog import PROVIDER_PREFIXES, get_model_provider
+from aie_estimator.services.providers.model_catalog import DEFAULT_GPT_LLM, PROVIDER_PREFIXES
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
 
@@ -34,7 +33,7 @@ class Environment(str, Enum):
 
 
 class Settings(BaseSettings):
-    """ Application settings loaded from environment variables for a specific environment. """
+    """Application settings loaded from environment variables for a specific environment."""
 
     # Application environment and version
     app_env: Environment = Environment.DEV
@@ -57,20 +56,12 @@ class Settings(BaseSettings):
     scaleway_api_key: SecretStr | None = None
     nebius_api_key: SecretStr | None = None
     llm_model: str = DEFAULT_GPT_LLM
+    active_prompt_version: str = "v1"
 
     # Cache settings
     redis_host: str = "localhost"
     redis_port: int = 6379
     cache_ttl: int = 86400
-
-    @property
-    def llm_provider(self) -> str:
-        """
-        Derive the default provider from llm_model via the model catalog service.
-
-        :return: Provider identifier ('openai', 'anthropic', 'litellm', etc.), or UNKNOWN_PROVIDER if not found.
-        """
-        return get_model_provider(self.llm_model)
 
     # Configure env file handling
     model_config = SettingsConfigDict(
@@ -100,7 +91,7 @@ class Settings(BaseSettings):
             test_settings = Settings(app_env=Environment.TEST, server_port=8080)
 
         :param kwargs: Keyword arguments to override settings during instantiation.
-        
+
         :raises ValueError: If an unrecognized environment identifier is provided.
         :raises ValidationError: If setting validation fails.
         """
@@ -192,8 +183,7 @@ class Settings(BaseSettings):
             cache_logger_on_first_use=self.app_env == Environment.PROD,
         )
 
-        console_renderer = structlog.processors.JSONRenderer() if use_json else structlog.dev.ConsoleRenderer(
-            colors=True)
+        console_renderer = structlog.processors.JSONRenderer() if use_json else structlog.dev.ConsoleRenderer(colors=True)
         console_formatter = structlog.stdlib.ProcessorFormatter(
             foreign_pre_chain=shared_processors,
             processors=[structlog.stdlib.ProcessorFormatter.remove_processors_meta, console_renderer],
@@ -208,8 +198,7 @@ class Settings(BaseSettings):
             log_dir.mkdir(parents=True, exist_ok=True)
             log_file = log_dir / ("app.log" if self.app_env == Environment.PROD else "dev.log")
 
-            file_renderer = structlog.processors.JSONRenderer() if use_json else structlog.dev.ConsoleRenderer(
-                colors=False)
+            file_renderer = structlog.processors.JSONRenderer() if use_json else structlog.dev.ConsoleRenderer(colors=False)
             file_formatter = structlog.stdlib.ProcessorFormatter(
                 foreign_pre_chain=shared_processors,
                 processors=[structlog.stdlib.ProcessorFormatter.remove_processors_meta, file_renderer],

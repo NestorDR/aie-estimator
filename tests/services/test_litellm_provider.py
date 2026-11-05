@@ -9,9 +9,10 @@ import litellm
 import pytest
 
 # --- App modules ---
-from aie_estimator.schemas.models import DEFAULT_FAST_PROFILE, DEFAULT_GPT_LLM
-from aie_estimator.services import LLMServiceError
-from aie_estimator.services.litellm_provider import call_litellm_router, get_litellm_router
+from aie_estimator.services.providers.model_catalog import DEFAULT_FAST_PROFILE, DEFAULT_GPT_LLM
+from aie_estimator.services import LLMProviderError
+from aie_estimator.services.providers.generation_options import GenerationOptions
+from aie_estimator.services.providers.litellm_provider import call_litellm_router, get_litellm_router
 from tests.conftest import REASONING_EFFORT_TEST_CASES
 
 
@@ -46,7 +47,7 @@ def test_get_litellm_router_zero_credentials_raises(monkeypatch: pytest.MonkeyPa
     """
     GIVEN no API keys configured in the environment
     WHEN get_litellm_router is initialized
-    THEN LLMServiceError is raised indicating no valid credentials.
+    THEN LLMProviderError is raised indicating no valid credentials.
 
     :param monkeypatch: Pytest monkeypatch fixture.
     """
@@ -54,7 +55,7 @@ def test_get_litellm_router_zero_credentials_raises(monkeypatch: pytest.MonkeyPa
         monkeypatch.delenv(key, raising=False)
 
     get_litellm_router.cache_clear()
-    with pytest.raises(LLMServiceError, match=r"No models in Router have valid credentials"):
+    with pytest.raises(LLMProviderError, match=r"No models in Router have valid credentials"):
         get_litellm_router()
 
 
@@ -106,13 +107,13 @@ async def test_call_router_cost_extraction_and_response_structure(
 
     mock_router = MagicMock()
     mock_router.acompletion = AsyncMock(return_value=mock_response)
-    monkeypatch.setattr("aie_estimator.services.litellm_provider.get_litellm_router", lambda: mock_router)
+    monkeypatch.setattr("aie_estimator.services.providers.litellm_provider.get_litellm_router", lambda: mock_router)
 
+    opts = GenerationOptions(model=DEFAULT_FAST_PROFILE, max_tokens=2000)
     result = await call_litellm_router(
-        messages="Analyze this project transcript",
+        user_prompt="Analyze this project transcript",
         system_prompt="You are an estimator",
-        model=DEFAULT_FAST_PROFILE,
-        max_tokens=2000,
+        opts=opts,
     )
 
     assert result["estimation"] == "Estimated Effort: 42 hours."
@@ -167,14 +168,17 @@ async def test_call_router_dispatches_reasoning_effort(
 
     mock_router = MagicMock()
     mock_router.acompletion = AsyncMock(return_value=mock_response)
-    monkeypatch.setattr("aie_estimator.services.litellm_provider.get_litellm_router", lambda: mock_router)
+    monkeypatch.setattr("aie_estimator.services.providers.litellm_provider.get_litellm_router", lambda: mock_router)
 
-    result = await call_litellm_router(
-        messages="Analyze project",
-        system_prompt="System prompt",
+    opts = GenerationOptions(
         model=DEFAULT_FAST_PROFILE,
         max_tokens=2000,
         reasoning_effort=reasoning_effort,
+    )
+    result = await call_litellm_router(
+        user_prompt="Analyze project",
+        system_prompt="System prompt",
+        opts=opts,
     )
 
     assert result["estimation"] == "Router estimation output."
@@ -206,7 +210,7 @@ def test_get_litellm_router_reloads_on_cache_clear(
         encoding="utf-8",
     )
 
-    with patch("aie_estimator.services.litellm_provider.get_profiles_config_path", return_value=config_file):
+    with patch("aie_estimator.services.providers.litellm_provider.get_profiles_config_path", return_value=config_file):
         get_litellm_router.cache_clear()
         router_v1 = get_litellm_router()
         models_v1 = [m["model_name"] for m in router_v1.model_list]
@@ -223,4 +227,3 @@ def test_get_litellm_router_reloads_on_cache_clear(
         models_v2 = [m["model_name"] for m in router_v2.model_list]
         assert "beta" in models_v2
     get_litellm_router.cache_clear()
-

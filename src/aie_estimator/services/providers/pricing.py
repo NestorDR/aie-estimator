@@ -1,7 +1,8 @@
-# src/aie_estimator/services/pricing.py
+# src/aie_estimator/services/providers/pricing.py
 
 # --- Python Standard Library ---
 from typing import Final
+
 
 # Cost per 1M tokens in USD. Update as vendor pricing changes.
 MODEL_COSTS: Final[dict[str, dict[str, float]]] = {
@@ -24,7 +25,7 @@ def estimate_cost(model: str, tokens_in: int, tokens_out: int) -> float | None:
     :param model: Upstream model identifier or routing name.
     :param tokens_in: Ingress prompt token count.
     :param tokens_out: Egress completion token count.
-    
+
     :return: Calculated cost in USD rounded to 6 decimal places, or None if the model is unconfigured.
     """
     # Normalize vendor-prefixed identifiers (e.g. "openai/gpt-6-luna") to base cost catalog keys

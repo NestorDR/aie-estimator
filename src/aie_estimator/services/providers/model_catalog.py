@@ -1,6 +1,7 @@
-# src/aie_estimator/services/model_catalog.py
+# src/aie_estimator/services/providers/model_catalog.py
 
 # --- Python Standard Library ---
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Final
@@ -9,20 +10,18 @@ from typing import Any, Final
 import structlog
 import yaml
 
-# --- App modules ---
-from aie_estimator.schemas.models import (
-    DEFAULT_CLAUDE_LLM,
-    DEFAULT_DEEP_PROFILE,
-    DEFAULT_FAST_PROFILE,
-    DEFAULT_GPT_LLM,
-    UNKNOWN_PROVIDER,
-    ModelSpec,
-)
-
-log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
+# Logical names to group model categories, decoupling the app from specific vendors
+DEFAULT_FAST_PROFILE: Final[str] = "reasoner-fast"
+DEFAULT_DEEP_PROFILE: Final[str] = "reasoner-deep"
 
 # Logical names to group model categories, decoupling the app from specific vendors
 _LOGICAL_PROFILE_NAMES: Final[set[str]] = {DEFAULT_FAST_PROFILE, DEFAULT_DEEP_PROFILE}
+
+# Default vendor models for direct native calls and fallback configuration
+DEFAULT_GPT_LLM: Final[str] = "gpt-6-luna"
+DEFAULT_CLAUDE_LLM: Final[str] = "claude-haiku-5-5"
+
+UNKNOWN_PROVIDER: Final[str] = "unknown"
 
 # Supported LLM providers and their model prefixes, used to identify vendors and map API key env vars
 PROVIDER_PREFIXES: Final[dict[str, tuple[str, ...]]] = {
@@ -33,6 +32,24 @@ PROVIDER_PREFIXES: Final[dict[str, tuple[str, ...]]] = {
     "scaleway": ("scaleway/",),
     "nebius": ("nebius/",),
 }
+
+
+@dataclass(frozen=True, slots=True)
+class ModelSpec:
+    """
+    Metadata specification for supported large language models.
+
+    :param provider: Upstream LLM provider identifier ('openai', 'anthropic', 'litellm', etc.).
+    :param is_reasoning: Whether the model supports chain-of-thought reasoning / thinking capabilities.
+    :param is_profile: Whether this entry represents a logical routing profile rather than a physical model.
+    """
+
+    provider: str
+    is_reasoning: bool = False
+    is_profile: bool = False
+
+
+log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
 
 _DEFAULT_CATALOG: Final[dict[str, ModelSpec]] = {
     DEFAULT_FAST_PROFILE: ModelSpec(provider="litellm", is_reasoning=True, is_profile=True),
@@ -67,9 +84,17 @@ def get_profiles_config_path() -> Path:
     """
     Resolve the filesystem path to the llm_profiles.yml configuration file.
 
-    :return: Absolute Path to the package-relative llm_profiles.yml file.
+    :return: Absolute Path to the resolved llm_profiles.yml file.
     """
-    return Path(__file__).resolve().parent.parent / "llm_profiles.yml"
+    package_config = Path(__file__).resolve().parents[2] / "llm_profiles.yml"
+    if package_config.is_file():
+        return package_config
+
+    project_root_config = Path.cwd() / "llm_profiles.yml"
+    if project_root_config.is_file():
+        return project_root_config
+
+    return package_config
 
 
 @lru_cache(maxsize=1)

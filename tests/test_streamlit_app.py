@@ -443,4 +443,3 @@ def test_apptest_successive_turns_retain_metadata(
     assert at.session_state.messages[3]["role"] == "assistant"
     assert at.session_state.messages[3]["metadata"] == result_turn_2
     assert at.session_state.last_metrics == result_turn_2
-

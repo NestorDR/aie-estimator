@@ -19,7 +19,8 @@ Always apply good software engineering practices: **KISS, YAGNI, DRY, SOLID, ACI
 
 ### Specific Code Rules
 - **First line of modules**: each module must start with its full relative path inside a comment. (e.g. `# src/01_foundations/sesion-01-ejercicios-alumno_1.py`).
-- **Top-level imports**: imports MUST be at the top of the module separated in three groups with a blank line between each group, in the order: `# --- Python Standard Library ---`; `# --- Third Party Libraries ---`; `# --- App modules ---`.
+- **Top-level imports**: imports MUST be at the top of the module separated in three groups with a blank line between each group, in the order: `# --- Python Standard Library ---`; `# --- Third Party Libraries ---`; `# --- App modules ---`. If any of the groups are empty, remove the corresponding separator heading `# --- ... ---`.
+- **Explicit Re-exports**: In `__init__.py` files or modules intended for re-exporting, prefer explicit redundant aliases (`from path import Symbol as Symbol`) over declaring `__all__` lists to mark public symbols.
 - **Constants**: Constants MUST be named in `UPPER_CASE_WITH_UNDERSCORES` (e.g., `MAX_ITERATIONS = 100`) and declared with `Final` from `typing`. This applies to constants regardless of their type: built-ins (str, int, float, bool, None), collections (list, tuple, dict, set), and other objects. Internal constants MUST start with an underscore and be named in `_UPPER_CASE_WITH_UNDERSCORES` (e.g., `_INTERNAL_CONSTANT = 1`).
 - **String quotes**: Use double quotes (`"..."`) for all string literals and f-strings by default. Use simple quotes (`'...'`) only when they avoid escaping apostrophes or improve readability.
 - **Self-Descriptive Names**: Prefer clear and self-descriptive names; avoid acronyms and abbreviations.
@@ -71,8 +72,9 @@ Deliver technical text without rhetorical padding. Adhere strictly to these omis
 ## 7. Key Reference Files
 - `src/aie_estimator/__main__.py`: Entry point for the CLI.
 - `src/aie_estimator/llm_profiles.yml`: Reasoning profile configurations, fallbacks, and cost-routing candidate models.
-- `src/aie_estimator/services/litellm_provider.py`: LiteLLM Router integration, reasoning parameter dispatch, and cost extraction.
-- `src/aie_estimator/services/native_providers.py`: Native provider dispatch for OpenAI and Anthropic SDKs.
+- `src/aie_estimator/services/estimations_service.py`: Orchestration service for estimation generation, requirements extraction, and caching.
+- `src/aie_estimator/services/providers/litellm_provider.py`: LiteLLM Router integration, reasoning parameter dispatch, and cost extraction.
+- `src/aie_estimator/services/providers/native_providers.py`: Native provider dispatch for OpenAI and Anthropic SDKs.
 - `src/aie_estimator/services/cache.py`: Exact-match Redis caching service.
 - `auto/`: Windows command automation scripts (`dev.cmd`, `stl.cmd`, `dc.cmd`, `lint.cmd`, `test.cmd`, `update.cmd`, `cleanup.cmd`).
 - `docker/`: Multi-stage production `Dockerfile` and Docker Compose definitions (`docker-compose.dev.yml`, `docker-compose.prod.yml`).

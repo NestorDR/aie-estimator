@@ -13,9 +13,7 @@ import httpx
 import streamlit as st
 
 # --- App modules ---
-from aie_estimator.schemas.estimations import ExampleFormat
-from aie_estimator.services.model_catalog import get_supported_models
-from aie_estimator.services.llm_service import build_system_prompt
+from aie_estimator.services.providers.model_catalog import get_supported_models
 from aie_estimator.settings import get_settings
 
 load_dotenv()
@@ -176,7 +174,6 @@ def render_estimation_metadata(metadata: dict[str, Any]) -> None:
                     st.caption(f"• {issue}")
 
 
-
 # Initialize conversation history and metrics in session state
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -220,9 +217,7 @@ with st.sidebar:
             )
             or "None"
         )
-        selected_reasoning_effort: str | None = (
-            None if selected_reasoning_effort_opt == "None" else selected_reasoning_effort_opt
-        )
+        selected_reasoning_effort: str | None = None if selected_reasoning_effort_opt == "None" else selected_reasoning_effort_opt
 
     with st.container(border=True):
         st.subheader(":material/psychology: Context and preprocessing")
@@ -240,7 +235,7 @@ with st.sidebar:
             value=True,
             help="Inject historical estimation examples from the canonical context repository.",
         )
-        selected_example_format: ExampleFormat = (
+        selected_example_format: str = (
             st.segmented_control(
                 "Example format",
                 options=["markdown", "json", "narrative"],
@@ -274,22 +269,6 @@ with st.sidebar:
             "Run structural evaluation",
             value=True,
             help="Perform Level-1 validation on generated estimation tables and totals.",
-        )
-
-    st.header("Active CAG context")
-    with st.expander(":material/visibility: Active system prompt", expanded=False):
-        active_system_prompt = build_system_prompt(
-            example_format=selected_example_format,
-            num_examples=selected_num_examples if selected_use_examples else 0,
-            use_examples=selected_use_examples,
-            inline_cleaning=(selected_preprocessing == "inline_cleaning"),
-        )
-        st.text_area(
-            "System prompt instructions",
-            value=active_system_prompt,
-            height=300,
-            disabled=True,
-            label_visibility="collapsed",
         )
 
     if st.button("Clear chat history", icon=":material/delete:", width="stretch"):

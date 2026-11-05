@@ -1,4 +1,4 @@
-# src/aie_estimator/services/litellm_provider.py
+# src/aie_estimator/services/providers/litellm_provider.py
 
 # --- Python Standard Library ---
 from functools import lru_cache
@@ -12,9 +12,14 @@ import structlog
 import yaml
 
 # --- App modules ---
-from aie_estimator.schemas.models import DEFAULT_FAST_PROFILE
-from aie_estimator.services import LLMServiceError, format_provider_response
-from aie_estimator.services.model_catalog import get_model_catalog, get_profiles_config_path
+from aie_estimator.services.exceptions import LLMProviderError
+from aie_estimator.services.providers.formatting import format_provider_response
+from aie_estimator.services.providers.generation_options import GenerationOptions
+from aie_estimator.services.providers.model_catalog import (
+    DEFAULT_FAST_PROFILE,
+    get_model_catalog,
+    get_profiles_config_path,
+)
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
 
@@ -28,19 +33,19 @@ def get_litellm_router() -> Router:
     and dynamically filters models whose environment credentials are missing or empty.
 
     :return: Configured LiteLLM Router instance.
-    :raises LLMServiceError: If configuration cannot be loaded or no models have valid credentials.
+    :raises LLMProviderError: If configuration cannot be loaded or no models have valid credentials.
     """
     config_path = get_profiles_config_path()
     if not config_path.is_file():
         log.error("litellm_profiles_file_not_found", config_path=str(config_path))
-        raise LLMServiceError(f"LiteLLM profiles configuration file not found at {config_path}")
+        raise LLMProviderError(f"LiteLLM profiles configuration file not found at {config_path}")
 
     try:
         with config_path.open("r", encoding="utf-8") as file:
             config = yaml.safe_load(file) or {}
     except Exception as e:
         log.exception("litellm_profiles_read_failed", config_path=str(config_path), error=repr(e))
-        raise LLMServiceError(f"Failed to read LiteLLM profiles configuration: {e}") from e
+        raise LLMProviderError(f"Failed to read LiteLLM profiles configuration: {e}") from e
 
     # Apply general engine and zero-telemetry guardrails
     general_settings = config.get("general_settings", {})
@@ -73,9 +78,8 @@ def get_litellm_router() -> Router:
 
     if not filtered_model_list:
         log.error("litellm_router_no_valid_credentials", total_configured_models=len(model_list))
-        raise LLMServiceError(
-            "No models in Router have valid credentials configured in the environment. "
-            "Please configure at least one provider API key."
+        raise LLMProviderError(
+            "No models in Router have valid credentials configured in the environment. Please configure at least one provider API key."
         )
 
     log.info(
@@ -94,50 +98,45 @@ def get_litellm_router() -> Router:
 
 
 async def call_litellm_router(
-    messages: str | list[dict[str, Any]],
+    user_prompt: str,
     system_prompt: str | None,
-    model: str,
-    max_tokens: int,
+    opts: GenerationOptions,
+    *,
     temperature: float | None = None,
-    reasoning_effort: str | None = None,
 ) -> dict[str, Any]:
     """
     Send an asynchronous estimation request through the LiteLLM Router with cost extraction and error handling.
 
-    :param messages: Single string prompt or multi-turn list of message objects.
+    :param user_prompt: Pre-rendered user prompt string.
     :param system_prompt: Optional system instructions and reference context.
-    :param model: Target model identifier or logical profile.
-    :param max_tokens: Maximum output token budget.
-    :param temperature: Optional sampling temperature.
-    :param reasoning_effort: Optional qualitative reasoning effort tier ('low', 'medium', 'high').
+    :param opts: Generation options controlling model, max_tokens, and reasoning_effort.
+    :param temperature: Optional sampling temperature override.
 
     :return: Standardized response dictionary containing estimation, model, provider, finish_reason, usage, and cost_usd.
-    :raises LLMServiceError: If the LiteLLM router call fails.
+    :raises LLMProviderError: If the LiteLLM router call fails.
     """
     router = get_litellm_router()
     catalog = get_model_catalog()
+    model = opts.effective_model
     model_spec = catalog.get(model)
     target_profile = model if (model_spec and model_spec.is_profile) else DEFAULT_FAST_PROFILE
 
     formatted_messages: list[dict[str, Any]] = []
     if system_prompt:
         formatted_messages.append({"role": "system", "content": system_prompt})
-
-    if isinstance(messages, str):
-        formatted_messages.append({"role": "user", "content": messages})
-    else:
-        formatted_messages.extend(messages)
+    formatted_messages.append({"role": "user", "content": user_prompt})
 
     kwargs: dict[str, Any] = {
         "model": target_profile,
         "messages": formatted_messages,
-        "max_tokens": max_tokens,
+        "max_tokens": opts.max_tokens,
     }
-    if temperature is not None:
-        kwargs["temperature"] = temperature
+    resolved_temp = temperature if temperature is not None else opts.temperature
+    if resolved_temp is not None:
+        kwargs["temperature"] = resolved_temp
 
-    if reasoning_effort is not None:
-        kwargs["reasoning_effort"] = reasoning_effort
+    if opts.reasoning_effort is not None:
+        kwargs["reasoning_effort"] = opts.reasoning_effort
 
     try:
         response = await router.acompletion(**kwargs)
@@ -149,7 +148,7 @@ async def call_litellm_router(
             error_type=type(e).__name__,
             error=repr(e),
         )
-        raise LLMServiceError(f"LiteLLM router call failed: {e}") from e
+        raise LLMProviderError(f"LiteLLM router call failed: {e}") from e
 
     choice = response.choices[0]
 

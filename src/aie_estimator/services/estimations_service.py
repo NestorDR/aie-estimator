@@ -1,0 +1,101 @@
+# src/aie_estimator/services/estimations_service.py
+
+# --- Python Standard Library ---
+import time
+from typing import Any, Final
+
+# --- Third Party Libraries ---
+import structlog
+
+# --- App modules ---
+from aie_estimator.services.cache import EstimationCache, get_estimation_cache
+from aie_estimator.services.exceptions import LLMProviderError
+from aie_estimator.services.providers import GenerationOptions, call_llm
+
+log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
+
+
+async def generate_estimation(
+    system_prompt: str,
+    user_prompt: str,
+    opts: GenerationOptions | None = None,
+) -> dict[str, Any]:
+    """
+    Coordinate the end-to-end software project estimation workflow using multi-role prompts.
+
+    :param system_prompt: Pre-rendered system prompt string containing instructions and calibration examples.
+    :param user_prompt: Pre-rendered user prompt string containing the project details.
+    :param opts: Optional generation options controlling model selection, engine, and token limits.
+
+    :return: Response dictionary containing estimation text, model metadata, token usage, latency, and cache hit indicator.
+    :raises LLMProviderError: If any LLM provider invocation encounters an error.
+    :raises ValueError: If user_prompt is not provided.
+    """
+    if not user_prompt:
+        raise ValueError("user_prompt must be provided.")
+
+    if opts is None:
+        opts = GenerationOptions()
+
+    t0 = time.perf_counter()
+
+    model = opts.effective_model
+    provider = opts.provider
+
+    cache = get_estimation_cache()
+    cache_key = EstimationCache.make_key(
+        system_prompt=system_prompt,
+        user_message=user_prompt,
+        model=model,
+        max_tokens=opts.max_tokens,
+        reasoning_effort=opts.reasoning_effort,
+        engine=opts.engine,
+    )
+
+    cached_result = await cache.get(cache_key)
+    if cached_result is not None:
+        cached_result["latency_ms"] = int((time.perf_counter() - t0) * 1000)
+        cached_result["cache_hit"] = True
+        log.info("estimation_served_from_cache", model=model, latency_ms=cached_result["latency_ms"])
+        return cached_result
+
+    log.info(
+        "generating_estimation",
+        engine=opts.engine,
+        provider=provider,
+        model=model,
+        max_tokens=opts.max_tokens,
+        reasoning_effort=opts.reasoning_effort,
+    )
+
+    try:
+        result = await call_llm(
+            user_prompt=user_prompt,
+            system_prompt=system_prompt,
+            opts=opts,
+        )
+
+    except LLMProviderError:
+        raise
+
+    except Exception as e:
+        log.exception(
+            "llm_call_failed",
+            provider=provider,
+            model=model,
+            error=repr(e),
+            engine=opts.engine,
+        )
+        raise LLMProviderError(f"LLM call failed: {e}") from e
+
+    result.setdefault("cost_usd", None)
+    result["usage"].setdefault("preprocessing_input_tokens", 0)
+    result["usage"].setdefault("preprocessing_output_tokens", 0)
+    result["extracted_requirements"] = None
+    result["latency_ms"] = int((time.perf_counter() - t0) * 1000)
+    result["cache_hit"] = False
+    result["text"] = result.get("estimation", "")
+
+    await cache.set(cache_key, result)
+
+    return result
