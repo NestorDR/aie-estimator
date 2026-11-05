@@ -1,10 +1,10 @@
-# Conversational UI Wrapper and Exact-Match Caching
+# Structured Product Estimation Form and Exact-Match Caching
 
 ## Overview
 
-This document specifies the conversational web interface and exact-match response caching layer implemented in `aie-estimator`.
+This document specifies the structured product parameter estimation web interface and exact-match response caching layer implemented in `aie-estimator`.
 
-The conversational interface wrapper provides a web-based Chat UI powered by Streamlit (`streamlit_app.py`). It enables engineers to submit client meeting transcriptions, observe generated software project estimations via simulated real-time streaming, inspect active Context-Augmented Generation (CAG) instructions and reference examples, and track execution metrics across interactions.
+The web interface is powered by Streamlit (`streamlit_app.py`) and transitions the client presentation layer from legacy conversational chat feeds into a structured parameter product interface. It enables software engineers to configure multi-dimensional project parameters (`description`, `project_type`, `detail_level`, `output_format`), validate inputs client-side, submit typed `EstimationRequest` payloads to `POST /api/v1/estimate`, observe instant static Markdown rendering of the generated estimation and active prompt template version, and inspect turn-anchored execution telemetry in an expandable container.
 
 Complementing the UI, an exact-match caching layer (`src/aie_estimator/services/cache.py`) backed by Redis short-circuits repeated LLM invocations by returning cached estimations with low latency (~1–3 ms) when identical generation parameters and prompt contents are detected.
 
@@ -25,7 +25,7 @@ auto\dc.cmd dev
 :: Terminal 1: Start FastAPI backend in the current console
 auto\dev.cmd
 
-:: Terminal 2: Start Streamlit Conversational Interface in the current console
+:: Terminal 2: Start Streamlit Product Form in the current console
 auto\stl.cmd
 ```
 
@@ -38,102 +38,120 @@ Start the FastAPI estimation backend and the Streamlit interface in separate ter
 uv run aie-estimator
 # or: uv run uvicorn aie_estimator.server:server.app --reload --host localhost --port 8000
 
-# Terminal 2: Start Streamlit Conversational Interface
+# Terminal 2: Start Streamlit Product Form
 uv run streamlit run streamlit_app.py
 ```
 
 Streamlit automatically opens the application at `http://localhost:8501`.
 
-![Streamlit Conversational UI](assets/session03_streamlit_ui.png)
+### 2. Interactive Structured Form Submission
 
-### 2. Interactive Meeting Estimation
+1. **Enter Project Description**: Input between 20 and 2000 characters in the `st.text_area` describing goals, key features, architecture, and constraints.
+2. **Select Domain and Formatting Dimensions**:
+   - **Project type**: Dropdown (`st.selectbox`) selecting among `web_saas`, `mobile_app`, `internal_tool`, or `data_pipeline`.
+   - **Detail level**: Segmented control (`st.segmented_control`) selecting among `summary`, `medium`, or `detailed`.
+   - **Output format**: Dropdown (`st.selectbox`) selecting among `phases_table`, `line_items`, or `narrative`.
+3. **Submit Estimation**: Click the primary submit button (`Generate estimation`).
+4. **View Rendered Estimation**:
+   - The estimation body text renders instantly as Markdown in the main viewport.
+   - The active prompt template version is displayed prominently above the estimation text (`Prompt version: v1`).
 
-1. Paste a meeting transcript containing project requirements (minimum 50 characters) into the chat input at the bottom of the screen.
-2. The user message appears in the chat transcript.
-3. The assistant generates and streams the software effort breakdown word-by-word into the chat view.
-4. The conversation remains visible across successive turns, backed by `st.session_state.messages`.
+### 3. Client-Side Input Validation
 
-### 3. Generation Parameter Configuration
+The interface validates the project description bounds client-side prior to network dispatch:
+- Descriptions under 20 characters display an immediate error alert: `The project description must be at least 20 characters long.` with the `:material/error:` icon.
+- Descriptions exceeding 2000 characters display an immediate error alert: `The project description cannot exceed 2000 characters.` with the `:material/error:` icon.
+- Invalid submissions suppress HTTP requests to the backend entirely.
 
-Open the Streamlit sidebar to customize generation parameters prior to submitting a transcript:
+### 4. Generation Parameters and Model Overrides
 
-- **Model and Engine (`st.container(border=True)`)**:
-  - **Target model**: Dropdown menu dynamically listing models and profiles from `get_supported_models()`, preselecting the application default (`settings.llm_model`).
-  - **Execution engine**: Segmented control switching between `litellm` (multi-provider routing) and `native` (legacy direct SDK dispatch).
-  - **Reasoning effort**: Segmented control selecting the qualitative reasoning tier (`None`, `low`, `medium`, `high`) for reasoning models.
-- **Context and Preprocessing (`st.container(border=True)`)**:
-  - **Preprocessing strategy**: Segmented control selecting `inline_cleaning` (appends transcript cleaning instructions to prompt), `two_phase` (executes Phase-1 requirement extraction before estimation), or `none` (raw transcript passed as-is).
-  - **Include canonical examples**: Toggle switch enabling or disabling the injection of reference estimations.
-  - **Example format**: Segmented control selecting CAG serialization (`markdown`, `json`, or `narrative`), disabled when examples are toggled off.
-  - **Example count**: Numeric slider configuring the number of reference examples (0 to 5) injected into the prompt context.
-- **Output and Validation (`st.container(border=True)`)**:
-  - **Max output tokens**: Slider configuring output generation boundaries (500 to 16,000, step 500).
-  - **Run structural evaluation**: Toggle switch enabling Level-1 validation on generated estimation tables, hour totals, costs, team composition, and project duration.
+The Streamlit sidebar exposes real-time service telemetry and execution controls:
+- **Service Status**:
+  - Displays the active API endpoint address (`estimate_endpoint`).
+  - Displays the primary configured model (`settings.llm_model`), fallback model, and cache TTL in seconds.
+- **Model and Engine Overrides**:
+  - **Target model**: Dropdown menu populated dynamically via `get_supported_models()` from the catalog, pre-selecting the primary model default.
+  - **Execution engine**: Segmented control switching between `litellm` (multi-provider cost routing) and `native` (direct provider SDK dispatch).
+- Selections made in the sidebar are automatically passed in the `model` and `engine` fields of the dispatched `EstimationRequest` payload.
 
-### 4. Inspecting CAG Context and Metrics
+### 5. Inspecting Execution Telemetry
 
-The sidebar provides real-time visibility into active prompt context and execution outcomes:
+Directly beneath each rendered estimation, an expandable telemetry card (`:material/insights: Execution telemetry`, collapsed by default) provides granular operational insights:
+- **Model**: Physical model or routing profile utilized for inference.
+- **Provider**: Upstream LLM provider (`openrouter`, `openai`, `anthropic`, `gemini`, etc.).
+- **Cost**: Total monetary cost of execution in USD formatted to 5 decimal places (e.g. `$0.00350`).
+- **Token Usage**: Token breakdown showing input tokens, output tokens, total tokens, and preprocessing tokens (when Phase-1 requirements extraction is executed).
 
-- **Service Status**: Displays the connected backend endpoint URL (`ESTIMATOR_API_BASE_URL`).
-- **Active CAG Context**: Expandable panel rendering the live system prompt assembled by `build_system_prompt()`. It dynamically reflects the active `example_format`, `num_examples`, `use_examples`, and `inline_cleaning` settings.
-- **Turn-Anchored Execution Details & Evaluation**: Each assistant message in the chat feed retains its full `EstimationResponse` payload, displaying an expandable card containing:
-  - Model identifier, upstream provider, response latency, exact-match cache status (`Hit` vs `Miss`), monetary execution cost in USD (`cost_usd`), and provider finish reason.
-  - Complete token consumption (`input_tokens`, `output_tokens`, `total_tokens`), including two-phase preprocessing tokens (`preprocessing_input_tokens`, `preprocessing_output_tokens`) when active.
-  - Extracted requirements preview when `two_phase` preprocessing was executed.
-  - Structural evaluation summary conforming to `StructureCheck`: overall score percentage and status badge, declared vs table-summed hours and cost verification (`hours_match`, `cost_match`), and detected issues list.
-- **Clear Chat History**: Resets conversation messages and execution metrics in session state.
+### 6. Cache Hit Verification
 
-### 5. Cache Hit Verification
-
-When an identical transcription is submitted again with the same parameters:
-- The backend serves the response directly from Redis.
-- The assistant's execution card displays `Cache: Hit` with a response latency under 5 ms and zero additional upstream tokens consumed.
+When identical estimation parameters and description text are submitted again:
+- The backend returns the cached estimation directly from Redis.
+- The UI reflects the cached response with low latency (~1–3 ms) and zero incremental token expenditure.
 
 ---
 
 ## Technical Considerations
 
-### 1. Decoupled HTTP Architecture
+### 1. Decoupled Asynchronous HTTP Client
 
-`streamlit_app.py` acts strictly as an HTTP client communicating with `POST /api/v1/estimate` using `httpx.AsyncClient` invoked via `asyncio.run()`. The backend router contract and Pydantic validation schemas remain untouched, preventing coupling between UI presentation and core service internals while preparing the client for native Server-Sent Events (SSE) streaming.
-
-### 2. Simulated Progressive Streaming
-
-Because the `POST /api/v1/estimate` endpoint operates without SSE streaming in this stage, `streamlit_app.py` emulates streaming output via `st.write_stream` using a word-level generator with a 10 ms delay:
+`streamlit_app.py` acts strictly as an HTTP client communicating with `POST /api/v1/estimate` using `httpx.AsyncClient` wrapped in `asyncio.run()`. The backend router contract and Pydantic validation schemas remain decoupled from Streamlit presentation concerns:
 
 ```python
-def simulate_stream(text: str, delay_seconds: float = 0.01) -> Iterator[str]:
-    words = text.split(" ")
-    for idx, word in enumerate(words):
-        yield word if idx == len(words) - 1 else f"{word} "
-        time.sleep(delay_seconds)
+async def send_estimation_request(
+    description: str,
+    project_type: str,
+    detail_level: str,
+    output_format: str,
+    *,
+    model: str | None = None,
+    engine: str = "litellm",
+    endpoint: str = estimate_endpoint,
+) -> dict[str, Any]:
+    ...
 ```
 
-This delivers progressive visual feedback while preparing a drop-in migration path for native Server-Sent Events (SSE) streaming in subsequent stages.
+### 2. Instant Static Markdown Rendering
 
-### 3. Deterministic SHA-256 Cache Keying
+The legacy simulated word-streaming generator has been replaced by instant static rendering (`st.markdown(estimation_data.get("text", ""))`). This provides instantaneous, deterministic report presentation, aligns with batch template prompt generation, and eliminates artificial browser rendering delays.
 
-Cache keys are computed using a SHA-256 hash across all input parameters that affect output generation, including `engine`:
+### 3. Session State Persistence
+
+The active estimation response dictionary is cached in `st.session_state["latest_estimation"]`. When a user toggles sidebar settings or interacts with secondary widgets, the rendered Markdown estimation, prompt version tag, and execution telemetry persist across script rerun cycles without requiring form re-submission.
+
+### 4. Runtime Isolation for Testability
+
+UI elements and page configuration are guarded with `if runtime.exists():`:
+
+```python
+if runtime.exists():
+    st.set_page_config(...)
+    ...
+```
+
+This prevents bare-mode execution when `streamlit_app.py` is imported during unit test collection, protecting Streamlit's singleton `DeltaGenerator` stack from form context leakage while ensuring seamless execution under both `streamlit run` and headless `AppTest.from_file()`.
+
+### 5. Deterministic SHA-256 Cache Keying
+
+Cache keys are computed using a SHA-256 hash across all input parameters that affect output generation:
 
 ```python
 payload = json.dumps(
     {
+        "description": description,
+        "detail_level": detail_level,
         "engine": engine,
-        "max_tokens": max_tokens,
         "model": model,
-        "preprocessing": preprocessing,
-        "reasoning_effort": reasoning_effort,
-        "system_prompt": system_prompt,
-        "user_message": user_message,
+        "output_format": output_format,
+        "project_type": project_type,
     },
     sort_keys=True,
 )
 cache_key = f"estimation:{hashlib.sha256(payload.encode('utf-8')).hexdigest()}"
 ```
 
-Because the `system_prompt` string incorporates active instructions, pricing rates, and reference estimation examples, any manual changes to prompt text or CAG context automatically invalidate stale cache keys without manual cache flushing.
+Any modification to prompt templates or generation parameters yields a distinct hash, guaranteeing cache consistency without manual invalidation.
 
-### 4. Resilience and Graceful Degradation
+### 6. Resilience and Graceful Degradation
 
 Redis operations in `EstimationCache` are non-blocking asynchronous coroutines implemented with `redis.asyncio.Redis` and encapsulated in try/except blocks catching `redis.exceptions.RedisError`. If Redis is offline, unconfigured, or unreachable:
 - Asynchronous cache lookups (`await cache.get(key)`) log a warning and return `None` (cache miss).
@@ -141,10 +159,10 @@ Redis operations in `EstimationCache` are non-blocking asynchronous coroutines i
 - Estimation requests complete normally through direct LLM calls without throwing HTTP 500 errors.
 - On shutdown, `await cache.close()` cleanly closes the connection pool.
 
-### 5. Environment Configuration & Settings
+### 7. Environment Configuration & Settings
 
-The cache layer is configured in [src/aie_estimator/settings.py](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/settings.py) and reads environment variables from `.env.<environment>`:
-- `REDIS_HOST`: Redis server host (`localhost` for host development with `docker/docker-compose.dev.yml`, `redis` inside the Docker Compose network for `docker/docker-compose.prod.yml`).
+The interface and cache layer read settings from `.env.<environment>` via [src/aie_estimator/settings.py](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/settings.py):
+- `ESTIMATOR_API_BASE_URL`: Streamlit backend target address (default: `http://localhost:8000`).
+- `REDIS_HOST`: Redis server host (`localhost` for host development, `redis` inside Docker Compose).
 - `REDIS_PORT`: Redis server port (default: `6379`).
 - `CACHE_TTL`: Cache entry time-to-live in seconds (default: `86400`).
-- `ESTIMATOR_API_BASE_URL`: Streamlit backend target address (default: `http://localhost:8000`).
