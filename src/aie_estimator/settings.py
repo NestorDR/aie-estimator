@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     nebius_api_key: SecretStr | None = None
     llm_model: str = DEFAULT_FAST_PROFILE
     active_prompt_version: str = "v1"
-    litellm_local_model_cost_map: bool = False
+    litellm_local_model_cost_map: bool = True
 
     # Cache settings
     redis_host: str = "localhost"
