@@ -18,7 +18,7 @@ from structlog.processors import CallsiteParameter, CallsiteParameterAdder
 
 # --- App modules ---
 from aie_estimator.telemetry import inject_opentelemetry_context
-from aie_estimator.utils.model_constants import DEFAULT_GPT_LLM, PROVIDER_PREFIXES
+from aie_estimator.utils.model_constants import DEFAULT_FAST_PROFILE, PROVIDER_PREFIXES
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
 
@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     mistral_api_key: SecretStr | None = None
     scaleway_api_key: SecretStr | None = None
     nebius_api_key: SecretStr | None = None
-    llm_model: str = DEFAULT_GPT_LLM
+    llm_model: str = DEFAULT_FAST_PROFILE
     active_prompt_version: str = "v1"
     litellm_local_model_cost_map: bool = False
 

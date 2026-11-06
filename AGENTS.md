@@ -53,6 +53,7 @@ Always apply good software engineering practices: **KISS, YAGNI, DRY, SOLID, ACI
   - **Think in Code**: During exploratory tasks (such as `/opsx-explore`), do not read multiple files into context sequentially. Prefer writing and executing targeted scripts via `ctx_execute` to parse files locally and output only distilled summaries.
   - **Terminal Output**: Adhere to the RTK guidelines for CLI commands to keep context usage minimal during test and build runs.
 - **LiteLLM Cost Map Policy**: LiteLLM is permanently configured to use its bundled local cost map via `Settings` and `[tool.pytest_env]`. Never execute ad-hoc scripts that fetch remote pricing or inject import-time `os.environ` hacks. Always run test suites via `rtk uv run pytest`.
+- **Windows Test Execution Mode**: When executing test suites (`rtk uv run pytest` or `uv run pytest`) on Windows, always pass `BypassSandbox: true`. Python 3.14's default `asyncio.ProactorEventLoop` requires Windows I/O Completion Ports (IOCP) and local loopback socket creation (`WSASocket`) that are restricted by the standard process sandbox, causing async tests to hang.
 
 ## 6. User Interaction Rules
 - **Tone**: Professional, direct, objective, and critical. Avoid flattery, sycophancy, or celebratory language. Write plainly using short, declarative sentences.
