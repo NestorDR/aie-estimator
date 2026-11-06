@@ -87,3 +87,65 @@ cache_key = EstimationCache.make_key(
 ```
 Requests configured with `"low"` reasoning do not hit cached responses generated with `"high"` reasoning, preserving SLA accuracy and cost predictability.
 
+---
+
+## Two-Level Resilience & Runtime Failover
+
+The LiteLLM Router (`src/aie_estimator/services/providers/litellm_provider.py`) operates a two-level resilience strategy configured declaratively in `src/aie_estimator/llm_profiles.yml`:
+
+```
++---------------------------------------------------------------------------------+
+|                         TWO-LEVEL RUNTIME FAILOVER                              |
++---------------------------------------------------------------------------------+
+|                                                                                 |
+|  [LEVEL 1: Intra-Tier Multi-Provider Rotation]                                  |
+|  Profile: "reasoner-fast" (Tier 1)                                              |
+|  Routing Strategy: cost-based-routing | Timeout: 30.0s | Retries: 2             |
+|                                                                                 |
+|  Available Candidates (pruned at startup if API key is missing):                |
+|    1. OpenAI 6 (openai/gpt-6-luna)                                              |
+|    2. Google Gemini (gemini/gemini-3.5-flash-lite)                              |
+|    3. Anthropic (claude-haiku-5-5)                                              |
+|    4. Mistral AI (mistral/mistral-small-3.2-24b-instruct)                       |
+|    5. Scaleway DeepSeek (openai/deepseek-ai/DeepSeek-V4-Flash)                  |
+|                                                                                 |
+|  Failover Trigger: Rate limit (429), server error (5xx), network timeout.       |
+|  Action: LiteLLM Router rotates to the next lowest-cost healthy candidate.      |
+|                                                                                 |
++---------------------------------------------------------------------------------+
+                                       |
+                   (All Tier 1 candidates exhausted / failed)
+                                       v
++---------------------------------------------------------------------------------+
+|  [LEVEL 2: Cross-Tier Failover Escalation]                                      |
+|  Policy: router_settings.fallbacks: - reasoner-fast: ["reasoner-deep"]          |
+|                                                                                 |
+|  Target Profile: "reasoner-deep" (Tier 2 Frontier Reasoning)                    |
+|    1. OpenAI 6 Deep (openai/gpt-6-luna, reasoning_effort: high)                 |
+|    2. Google Gemini (gemini/gemini-3.8-flash, reasoning_effort: medium)         |
+|    3. Anthropic Claude (claude-sonnet-5-5, effort: medium)                      |
+|    4. Nebius DeepSeek (openai/deepseek-ai/DeepSeek-R2)                          |
++---------------------------------------------------------------------------------+
+```
+
+### 1. Level 1: Intra-Tier Multi-Provider Rotation
+
+Within an active profile (e.g. `reasoner-fast`), LiteLLM dynamically routes traffic to the lowest-cost healthy provider with valid credentials.
+If an upstream provider returns an HTTP 429 (Rate Limit), HTTP 5xx (Server Error), or fails to respond within `timeout: 30.0` seconds, LiteLLM automatically retries against the next available candidate provider in the tier up to `num_retries: 2` without failing the user request.
+
+### 2. Level 2: Cross-Tier Fallback Escalation
+
+If all candidate providers in Tier 1 (`reasoner-fast`) fail or are rate-limited, LiteLLM executes the cross-tier fallback policy defined in `llm_profiles.yml`:
+```yaml
+router_settings:
+  fallbacks:
+    - reasoner-fast: ["reasoner-deep"]
+```
+The router transparently escalates execution to the Tier 2 frontier reasoning pool (`reasoner-deep`).
+
+### 3. Dynamic Credential Pruning
+
+At router initialization, `get_litellm_router()` checks each model's required `api_key` environment variable (e.g. `os.environ/SCALEWAY_API_KEY`).
+Any deployment lacking valid credentials in the environment is omitted from the active candidate list. As long as at least one provider has valid API credentials configured, the router initializes successfully and runs without runtime errors.
+
+

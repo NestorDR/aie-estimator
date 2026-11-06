@@ -84,8 +84,11 @@ def get_litellm_router() -> Router:
 
     log.info(
         "litellm_router_initialized",
-        active_models_count=len(filtered_model_list),
+        model_list=filtered_model_list,
         routing_strategy=router_settings.get("routing_strategy", "cost-based-routing"),
+        num_retries=router_settings.get("num_retries", 2),
+        timeout=router_settings.get("timeout", 30.0),
+        fallbacks=router_settings.get("fallbacks"),
     )
 
     return Router(

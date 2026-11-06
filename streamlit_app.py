@@ -113,19 +113,18 @@ if runtime.exists():
         st.code(estimate_endpoint, language="text")
 
         settings = get_settings()
-        primary_model = settings.llm_model
-        fallback_model = os.getenv("FALLBACK_MODEL", "claude-haiku-5-5")
+        configured_model = settings.llm_model
         cache_ttl_seconds = settings.cache_ttl
 
-        st.markdown(f"**Primary model:** `{primary_model}`")
-        st.markdown(f"**Fallback model:** `{fallback_model}`")
+        st.markdown(f"**Configured model:** `{configured_model}`")
+        st.markdown("**Resilience tier:** `Tier 1 (cost-based failover to Tier 2)`")
         st.markdown(f"**Cache TTL:** `{cache_ttl_seconds}s`")
 
         st.header("Generation parameters")
         with st.container(border=True):
             st.subheader(":material/tune: Model and engine")
             supported_models = get_supported_models()
-            default_index = supported_models.index(primary_model) if primary_model in supported_models else 0
+            default_index = supported_models.index(configured_model) if configured_model in supported_models else 0
             selected_model: str = st.selectbox(
                 "Target model",
                 options=supported_models,

@@ -123,4 +123,26 @@ This guarantees GDPR compliance and ensures unsupported parameters (e.g., passin
 - **Model Identifier Resolution**: `estimate_cost` normalizes vendor-prefixed identifiers (e.g. "openai/gpt-6-luna") matching against `MODEL_COSTS` keys.
 - **Unconfigured Models**: If a model is not found in `MODEL_COSTS`, `estimate_cost` returns `None`. The resulting response omits `cost_usd`, and the Streamlit UI displays `Cost: N/A`.
 
+### 6. Runtime Resilience and Engine Comparison
+
+The service provides two distinct execution engines with fundamentally different resilience characteristics:
+
+| Feature / Behavior | LiteLLM Router (`engine="litellm"`) | Native SDKs (`engine="native"`) |
+|:-------------------|:-------------------------------------|:--------------------------------|
+| **Target Scope** | Multi-provider logical profile (`reasoner-fast`, `reasoner-deep`) | Direct vendor SDK (`gpt-6-luna`, `claude-haiku-5-5`) |
+| **Intra-Tier Provider Rotation** | Yes: dynamically rotates across up to 5 healthy providers on 429/5xx/timeout | No: fixed to target provider SDK |
+| **Cross-Tier Failover** | Yes: escalates from `reasoner-fast` to `reasoner-deep` on tier exhaustion | No: no secondary fallback provider |
+| **Max Network Retries** | Configured via `num_retries: 2` in `llm_profiles.yml` | Jittered exponential retries via SDK clients |
+| **Timeout Handling** | Configured per-call timeout (`timeout: 30.0s`) before rotating | SDK client default HTTP timeout |
+| **Failure Telemetry** | Emits `litellm_router_call_failed` event with target profile and error type | Emits `native_provider_call_failed` event with provider and error |
+| **Exception Raised** | Wraps failure in `LLMProviderError` | Wraps failure in `LLMProviderError` |
+
+#### Operational Failover Flow (`engine="litellm"`)
+1. **Entry**: Request arrives specifying a logical profile (or defaulting to `settings.llm_model = "reasoner-fast"`).
+2. **Dynamic Routing**: LiteLLM selects the lowest-cost available provider with valid credentials.
+3. **Transient Failure**: If the selected provider returns an HTTP 429 (Rate Limit), 5xx error, or exceeds 30.0s, LiteLLM rotates to the next candidate in `reasoner-fast`.
+4. **Tier Escalation**: If all Tier 1 candidates fail after retry limits, LiteLLM triggers `router_settings.fallbacks` and dispatches to `reasoner-deep`.
+5. **Termination**: If all Tier 2 candidates also fail, an `LLMProviderError` is raised and caught by `estimations_service.py`, which emits an `estimation_generation_failed` log and surfaces a 502/503 error to the caller.
+
+
 
