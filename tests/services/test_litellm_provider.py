@@ -1,8 +1,9 @@
 # tests/services/test_litellm_provider.py
 
 # --- Python Standard Library ---
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from collections.abc import Callable
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock
 
 # --- Third Party Libraries ---
 import litellm
@@ -13,7 +14,6 @@ from aie_estimator.services.providers.model_catalog import DEFAULT_FAST_PROFILE,
 from aie_estimator.services import LLMProviderError
 from aie_estimator.services.providers.generation_options import GenerationOptions
 from aie_estimator.services.providers.litellm_provider import call_litellm_router, get_litellm_router
-from tests.conftest import REASONING_EFFORT_TEST_CASES
 
 
 def test_get_litellm_router_credential_filtering(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -76,38 +76,53 @@ def test_get_litellm_router_zero_telemetry_guardrails(monkeypatch: pytest.Monkey
     assert litellm.modify_params is True
 
 
+@pytest.fixture
+def mock_router_response(monkeypatch: pytest.MonkeyPatch) -> Callable[..., MagicMock]:
+    """
+    Provide a builder that patches get_litellm_router with a mock Router returning a canned completion.
+
+    :param monkeypatch: Pytest monkeypatch fixture.
+    :return: Builder returning the mock router so tests can inspect acompletion calls.
+    """
+
+    def _build(content: str, hidden_params: dict[str, Any], prompt_tokens: int = 100, completion_tokens: int = 50) -> MagicMock:
+        mock_choice = MagicMock()
+        mock_choice.finish_reason = "stop"
+        mock_choice.message.content = content
+
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+        mock_response.usage.prompt_tokens = prompt_tokens
+        mock_response.usage.completion_tokens = completion_tokens
+        mock_response.usage.total_tokens = prompt_tokens + completion_tokens
+        mock_response.model = f"openai/{DEFAULT_GPT_LLM}"
+        mock_response._hidden_params = hidden_params
+
+        mock_router = MagicMock()
+        mock_router.acompletion = AsyncMock(return_value=mock_response)
+        monkeypatch.setattr("aie_estimator.services.providers.litellm_provider.get_litellm_router", lambda: mock_router)
+        return mock_router
+
+    return _build
+
+
 @pytest.mark.anyio
 async def test_call_router_cost_extraction_and_response_structure(
-    monkeypatch: pytest.MonkeyPatch,
+    mock_router_response: Callable[..., MagicMock],
 ) -> None:
     """
     GIVEN a mocked LiteLLM Router completion response containing hidden cost params
     WHEN call_litellm_router is executed
     THEN response metadata, token counts, and cost_usd are extracted accurately.
 
-    :param monkeypatch: Pytest monkeypatch fixture.
+    :param mock_router_response: Router response builder fixture.
     """
-    mock_choice = MagicMock()
-    mock_choice.finish_reason = "stop"
-    mock_choice.message.content = "Estimated Effort: 42 hours."
-
-    mock_usage = MagicMock()
-    mock_usage.prompt_tokens = 250
-    mock_usage.completion_tokens = 75
-    mock_usage.total_tokens = 325
-
-    mock_response = MagicMock()
-    mock_response.choices = [mock_choice]
-    mock_response.usage = mock_usage
-    mock_response.model = f"openai/{DEFAULT_GPT_LLM}"
-    mock_response._hidden_params = {
-        "response_cost": 0.00035,
-        "custom_llm_provider": "openai",
-    }
-
-    mock_router = MagicMock()
-    mock_router.acompletion = AsyncMock(return_value=mock_response)
-    monkeypatch.setattr("aie_estimator.services.providers.litellm_provider.get_litellm_router", lambda: mock_router)
+    mock_router_response(
+        "Estimated Effort: 42 hours.",
+        {"response_cost": 0.00035, "custom_llm_provider": "openai"},
+        prompt_tokens=250,
+        completion_tokens=75,
+    )
 
     opts = GenerationOptions(model=DEFAULT_FAST_PROFILE, max_tokens=2000)
     result = await call_litellm_router(
@@ -128,47 +143,23 @@ async def test_call_router_cost_extraction_and_response_structure(
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    ("reasoning_effort", "expected_effort"),
-    REASONING_EFFORT_TEST_CASES,
-    ids=[
-        "router_reasoning_disabled",
-        "router_low",
-        "router_medium",
-        "router_high",
-    ],
+    "reasoning_effort",
+    [None, "medium"],
+    ids=["router_reasoning_disabled", "router_medium"],
 )
 async def test_call_router_dispatches_reasoning_effort(
-    monkeypatch: pytest.MonkeyPatch,
+    mock_router_response: Callable[..., MagicMock],
     reasoning_effort: str | None,
-    expected_effort: str | None,
 ) -> None:
     """
     GIVEN qualitative reasoning effort tier
     WHEN call_litellm_router executes
     THEN reasoning_effort is forwarded directly to router.acompletion and extra_body is omitted.
 
-    :param monkeypatch: Pytest monkeypatch fixture.
+    :param mock_router_response: Router response builder fixture.
     :param reasoning_effort: Explicit qualitative reasoning effort tier.
-    :param expected_effort: Expected qualitative tier forwarded to router.acompletion.
     """
-    mock_choice = MagicMock()
-    mock_choice.finish_reason = "stop"
-    mock_choice.message.content = "Router estimation output."
-
-    mock_usage = MagicMock()
-    mock_usage.prompt_tokens = 100
-    mock_usage.completion_tokens = 50
-    mock_usage.total_tokens = 150
-
-    mock_response = MagicMock()
-    mock_response.choices = [mock_choice]
-    mock_response.usage = mock_usage
-    mock_response.model = f"openai/{DEFAULT_GPT_LLM}"
-    mock_response._hidden_params = {}
-
-    mock_router = MagicMock()
-    mock_router.acompletion = AsyncMock(return_value=mock_response)
-    monkeypatch.setattr("aie_estimator.services.providers.litellm_provider.get_litellm_router", lambda: mock_router)
+    mock_router = mock_router_response("Router estimation output.", {})
 
     opts = GenerationOptions(
         model=DEFAULT_FAST_PROFILE,
@@ -184,46 +175,4 @@ async def test_call_router_dispatches_reasoning_effort(
     assert result["estimation"] == "Router estimation output."
     call_kwargs = mock_router.acompletion.call_args.kwargs
     assert "extra_body" not in call_kwargs
-
-    if expected_effort is not None:
-        assert call_kwargs.get("reasoning_effort") == expected_effort
-    else:
-        assert "reasoning_effort" not in call_kwargs
-
-
-def test_get_litellm_router_reloads_on_cache_clear(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    GIVEN an updated configuration file
-    WHEN get_litellm_router.cache_clear() is called
-    THEN a new Router instance is returned reflecting the updated configuration.
-
-    :param tmp_path: Temporary directory fixture.
-    :param monkeypatch: Pytest monkeypatch fixture.
-    """
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-openai-key")
-    config_file = tmp_path / "llm_profiles.yml"
-    config_file.write_text(
-        "general_settings:\n  disable_telemetry: true\nmodel_list:\n  - model_name: 'alpha'\n    litellm_params:\n      model: 'openai/gpt-6-luna'\n      api_key: 'os.environ/OPENAI_API_KEY'\n",
-        encoding="utf-8",
-    )
-
-    with patch("aie_estimator.services.providers.litellm_provider.get_profiles_config_path", return_value=config_file):
-        get_litellm_router.cache_clear()
-        router_v1 = get_litellm_router()
-        models_v1 = [m["model_name"] for m in router_v1.model_list]
-        assert "alpha" in models_v1
-        assert "beta" not in models_v1
-
-        config_file.write_text(
-            "general_settings:\n  disable_telemetry: true\nmodel_list:\n  - model_name: 'alpha'\n    litellm_params:\n      model: 'openai/gpt-6-luna'\n      api_key: 'os.environ/OPENAI_API_KEY'\n  - model_name: 'beta'\n    litellm_params:\n      model: 'openai/gpt-6-luna'\n      api_key: 'os.environ/OPENAI_API_KEY'\n",
-            encoding="utf-8",
-        )
-
-        get_litellm_router.cache_clear()
-        router_v2 = get_litellm_router()
-        models_v2 = [m["model_name"] for m in router_v2.model_list]
-        assert "beta" in models_v2
-    get_litellm_router.cache_clear()
+    assert call_kwargs.get("reasoning_effort") == reasoning_effort

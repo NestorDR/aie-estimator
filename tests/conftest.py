@@ -2,7 +2,7 @@
 
 # --- Python Standard Library ---
 from collections.abc import Callable, Generator
-from typing import Any, Final, get_args
+from typing import Any
 
 # --- Third Party Libraries ---
 from fastapi import FastAPI
@@ -12,7 +12,6 @@ import pytest
 # --- App modules ---
 from aie_estimator.server import Server
 from aie_estimator.services.cache import get_estimation_cache
-from aie_estimator.services.providers.generation_options import ReasoningEffort
 from aie_estimator.services.providers.litellm_provider import get_litellm_router
 from aie_estimator.services.providers.model_catalog import (
     DEFAULT_GPT_LLM,
@@ -21,11 +20,6 @@ from aie_estimator.services.providers.model_catalog import (
 )
 from aie_estimator.services.providers.native_providers import get_anthropic_client, get_openai_client
 from aie_estimator.settings import get_settings
-
-REASONING_EFFORT_TEST_CASES: Final[tuple[tuple[str | None, str | None], ...]] = (
-    (None, None),
-    *((effort, effort) for effort in get_args(ReasoningEffort)),
-)
 
 
 def _clear_all_caches() -> None:
@@ -99,28 +93,20 @@ def make_estimation_result() -> Callable[..., dict[str, Any]]:
     """
 
     def _factory(**overrides: Any) -> dict[str, Any]:
-        default_estimation = overrides.get("estimation", "Project Breakdown:\n- Backend: 40h\nTotal: 40h")
-        base = {
-            "estimation": default_estimation,
-            "text": default_estimation,
+        # Production still emits both `estimation` and `text`; keep them in sync unless overridden.
+        body = overrides.get("estimation") or overrides.get("text") or "Project Breakdown:\n- Backend: 40h\nTotal: 40h"
+        return {
+            "estimation": body,
+            "text": body,
             "model": DEFAULT_GPT_LLM,
             "provider": "openai",
             "finish_reason": "stop",
-            "usage": {
-                "input_tokens": 100,
-                "output_tokens": 50,
-                "total_tokens": 150,
-            },
+            "usage": {"input_tokens": 100, "output_tokens": 50, "total_tokens": 150},
             "preprocessing": "none",
             "extracted_requirements": None,
             "latency_ms": 250,
             "cost_usd": None,
+            **overrides,
         }
-        base.update(overrides)
-        if "text" not in overrides and "estimation" in overrides:
-            base["text"] = overrides["estimation"]
-        elif "estimation" not in overrides and "text" in overrides:
-            base["estimation"] = overrides["text"]
-        return base
 
     return _factory

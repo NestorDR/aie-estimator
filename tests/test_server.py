@@ -28,7 +28,6 @@ def test_server_read_root_endpoint(client: TestClient) -> None:
 
 
 def test_server_llm_provider_error_handler(
-    app: FastAPI,
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -37,7 +36,6 @@ def test_server_llm_provider_error_handler(
     WHEN a client sends a POST request to /api/v1/estimate
     THEN HTTP 500 is returned with a consistent, sanitized error message.
 
-    :param app: FastAPI application fixture.
     :param client: TestClient fixture.
     :param monkeypatch: Pytest monkeypatch fixture.
     """
@@ -63,58 +61,37 @@ def test_server_llm_provider_error_handler(
     assert "error occurred while generating the estimation" in data["detail"].lower()
 
 
-def test_server_database_connection_error_handler(
-    app: FastAPI,
-    client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    GIVEN a ConnectionError raised during request handling
-    WHEN a client sends a request to an endpoint
-    THEN HTTP 503 is returned with a structured service unavailable response.
-
-    :param app: FastAPI application fixture.
-    :param client: TestClient fixture.
-    :param monkeypatch: Pytest monkeypatch fixture.
-    """
-
-    async def mock_connection_error(*args: Any, **kwargs: Any) -> dict[str, Any]:
-        raise ConnectionError("PostgreSQL pool refused connection.")
-
-    monkeypatch.setattr("aie_estimator.services.estimations_service.generate_estimation", mock_connection_error)
-
-    response = client.post(
-        "/api/v1/estimate",
-        json={
-            "description": "Valid length project description for database exception testing.",
-            "project_type": "web_saas",
-            "detail_level": "medium",
-            "output_format": "phases_table",
-        },
-    )
-
-    assert response.status_code == 503
-    data = response.json()
-    assert "Database service unavailable" in data["detail"]
-
-
+@pytest.mark.parametrize(
+    ("error", "expected_status", "expected_detail"),
+    [
+        (RuntimeError("Fatal memory segmentation or hardware error."), 500, "Unexpected server error"),
+        (ConnectionError("Connection pool refused."), 503, "Database service unavailable"),
+    ],
+    ids=["unhandled_runtime_error", "connection_error"],
+)
 def test_server_unhandled_exception_handler(
     app: FastAPI,
     monkeypatch: pytest.MonkeyPatch,
+    error: Exception,
+    expected_status: int,
+    expected_detail: str,
 ) -> None:
     """
-    GIVEN an unexpected runtime error raised during request handling
+    GIVEN an unexpected runtime error or ConnectionError raised during request handling
     WHEN a client sends a request to an endpoint
-    THEN HTTP 500 is returned with sanitized unexpected server error details.
+    THEN a sanitized HTTP 500 or 503 response is returned.
 
     :param app: FastAPI application fixture.
     :param monkeypatch: Pytest monkeypatch fixture.
+    :param error: Exception raised by the service layer.
+    :param expected_status: Expected HTTP status code.
+    :param expected_detail: Substring expected in the response detail.
     """
 
-    async def mock_unexpected_error(*args: Any, **kwargs: Any) -> dict[str, Any]:
-        raise RuntimeError("Fatal memory segmentation or hardware error.")
+    async def mock_failing_generation(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise error
 
-    monkeypatch.setattr("aie_estimator.services.estimations_service.generate_estimation", mock_unexpected_error)
+    monkeypatch.setattr("aie_estimator.services.estimations_service.generate_estimation", mock_failing_generation)
 
     with TestClient(app, raise_server_exceptions=False) as no_raise_client:
         response = no_raise_client.post(
@@ -127,6 +104,5 @@ def test_server_unhandled_exception_handler(
             },
         )
 
-    assert response.status_code == 500
-    data = response.json()
-    assert data["detail"] == "Unexpected server error"
+    assert response.status_code == expected_status
+    assert expected_detail in response.json()["detail"]

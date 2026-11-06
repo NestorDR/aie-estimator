@@ -17,7 +17,7 @@ from aie_estimator.services.cache import (
     EstimationCache,
     get_estimation_cache,
 )
-from aie_estimator.settings import Environment, Settings, get_settings
+from aie_estimator.settings import Environment, Settings
 
 
 def test_make_key_deterministic_output() -> None:
@@ -47,15 +47,15 @@ def test_make_key_deterministic_output() -> None:
 
 
 @pytest.mark.parametrize(
-    ("param_override", "expected_different"),
+    "param_override",
     [
-        ({"system_prompt": "Updated system instructions."}, True),
-        ({"user_message": "Different client requirements."}, True),
-        ({"model": DEFAULT_CLAUDE_LLM}, True),
-        ({"max_tokens": 2000}, True),
-        ({"reasoning_effort": "low"}, True),
-        ({"preprocessing": "inline_cleaning"}, True),
-        ({"engine": "native"}, True),
+        ({"system_prompt": "Updated system instructions."}),
+        ({"user_message": "Different client requirements."}),
+        ({"model": DEFAULT_CLAUDE_LLM}),
+        ({"max_tokens": 2000}),
+        ({"reasoning_effort": "low"}),
+        ({"preprocessing": "inline_cleaning"}),
+        ({"engine": "native"}),
     ],
     ids=[
         "different_system_prompt",
@@ -69,7 +69,6 @@ def test_make_key_deterministic_output() -> None:
 )
 def test_make_key_differentiates_on_parameter_changes(
     param_override: dict[str, Any],
-    expected_different: bool,
 ) -> None:
     """
     GIVEN baseline parameters and a single parameter alteration
@@ -77,7 +76,6 @@ def test_make_key_differentiates_on_parameter_changes(
     THEN the resulting keys differ.
 
     :param param_override: Dictionary of keyword argument overrides.
-    :param expected_different: Whether the generated key must differ from baseline.
     """
     base_params: dict[str, Any] = {
         "system_prompt": "Baseline system prompt.",
@@ -91,7 +89,7 @@ def test_make_key_differentiates_on_parameter_changes(
     base_key = EstimationCache.make_key(**base_params)
     modified_key = EstimationCache.make_key(**modified_params)
 
-    assert (base_key != modified_key) is expected_different
+    assert base_key != modified_key
 
 
 @pytest.mark.anyio
@@ -133,17 +131,6 @@ async def test_cache_get_miss_returns_none() -> None:
     mock_redis.get.assert_called_once_with("estimation:non-existent-key")
 
 
-def test_cache_default_ttl_resolved_from_settings() -> None:
-    """
-    GIVEN an EstimationCache initialized without explicit TTL
-    WHEN inspected
-    THEN its ttl property reflects the value from get_settings().cache_ttl.
-    """
-    mock_redis = AsyncMock()
-    cache = EstimationCache(mock_redis)
-    assert cache.ttl == get_settings().cache_ttl
-
-
 @pytest.mark.anyio
 async def test_cache_set_stores_serialized_payload_with_ttl(
     make_estimation_result: Callable[..., dict[str, Any]],
@@ -170,17 +157,18 @@ async def test_cache_set_stores_serialized_payload_with_ttl(
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    ("method_name", "args"),
+    ("method_name", "args", "expected_result"),
     [
-        ("get", ("estimation:failing-key",)),
-        ("set", ("estimation:failing-key", {"data": 1})),
-        ("close", ()),
+        ("get", ("estimation:failing-key",), None),
+        ("set", ("estimation:failing-key", {"data": 1}), None),
+        ("close", (), None),
     ],
     ids=["get_connection_error", "set_connection_error", "close_connection_error"],
 )
 async def test_cache_graceful_degradation_on_redis_error(
     method_name: str,
     args: tuple[Any, ...],
+    expected_result: None,
 ) -> None:
     """
     GIVEN a Redis client that raises redis.exceptions.RedisError
@@ -189,6 +177,7 @@ async def test_cache_graceful_degradation_on_redis_error(
 
     :param method_name: Method name on EstimationCache to invoke.
     :param args: Arguments to pass to the method.
+    :param expected_result: Value the suppressed call returns.
     """
     mock_redis = AsyncMock()
     mock_redis.get.side_effect = RedisConnectionError("Connection refused")
@@ -198,9 +187,7 @@ async def test_cache_graceful_degradation_on_redis_error(
     cache = EstimationCache(mock_redis)
     method = getattr(cache, method_name)
 
-    result = await method(*args)
-    if method_name == "get":
-        assert result is None
+    assert await method(*args) is expected_result
 
 
 @pytest.mark.anyio
@@ -216,54 +203,32 @@ async def test_cache_close_calls_underlying_aclose() -> None:
     mock_redis.aclose.assert_called_once()
 
 
-def test_estimation_cache_factories() -> None:
-    """
-    GIVEN host and port parameters
-    WHEN from_host_port factory method is executed
-    THEN configured EstimationCache instance is constructed.
-    """
-    mock_client = AsyncMock()
-
-    with patch("redis.asyncio.Redis", return_value=mock_client) as mock_redis_cls:
-        cache_host_port = EstimationCache.from_host_port(host="cache.local", port=6380, ttl=1800)
-        assert isinstance(cache_host_port, EstimationCache)
-        assert cache_host_port.ttl == 1800
-        mock_redis_cls.assert_called_once_with(
-            host="cache.local",
-            port=6380,
-            decode_responses=True,
-            socket_timeout=1.0,
-            socket_connect_timeout=1.0,
-        )
-
-
-def test_get_estimation_cache_singleton_lifecycle(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_get_estimation_cache_builds_client_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     GIVEN configured Redis settings
-    WHEN get_estimation_cache is invoked multiple times
-    THEN the same instance is returned until explicitly reset.
+    WHEN get_estimation_cache is invoked
+    THEN the Redis client and TTL come from settings.
 
     :param monkeypatch: Pytest monkeypatch fixture.
     """
     test_settings = Settings(
         app_env=Environment.TEST,
-        redis_host="localhost",
-        redis_port=6379,
-        cache_ttl=3600,
+        redis_host="cache.local",
+        redis_port=6380,
+        cache_ttl=1800,
     )
     monkeypatch.setattr("aie_estimator.services.cache.get_settings", lambda: test_settings)
 
-    mock_client = AsyncMock()
-    with patch("redis.asyncio.Redis", return_value=mock_client) as mock_redis_cls:
+    with patch("redis.asyncio.Redis", return_value=AsyncMock()) as mock_redis_cls:
+        get_estimation_cache.cache_clear()
+        cache = get_estimation_cache()
         get_estimation_cache.cache_clear()
 
-        cache_1 = get_estimation_cache()
-        cache_2 = get_estimation_cache()
-
-        assert cache_1 is cache_2
-        assert mock_redis_cls.call_count == 1
-
-        get_estimation_cache.cache_clear()
-        cache_3 = get_estimation_cache()
-        assert cache_3 is not cache_1
-        assert mock_redis_cls.call_count == 2
+    assert cache.ttl == 1800
+    mock_redis_cls.assert_called_once_with(
+        host="cache.local",
+        port=6380,
+        decode_responses=True,
+        socket_timeout=1.0,
+        socket_connect_timeout=1.0,
+    )

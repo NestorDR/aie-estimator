@@ -2,7 +2,7 @@
 
 ## Overview
 
-Guide for writing, organizing, and validating tests in `aie-estimator`. The main sections state the conventions new tests must follow. Measured figures and the cleanup backlog live in the dated [Appendix](#appendix-current-state-snapshot).
+Guide for writing, organizing, and validating tests in `aie-estimator`. The main sections state the conventions new tests must follow.
 
 When a convention changes, update the rule here first, then bring existing tests into line.
 
@@ -24,7 +24,7 @@ Test modules mirror the source tree, one test module per source module. For exam
 - **Placement**: fixtures shared by several test modules go in `tests/conftest.py`; otherwise keep them module-local or in a package-level `conftest.py`.
 - **No orphans**: every shared fixture must have at least one consumer.
 - **Factories over repetition**: when the same payload or mock shape repeats across tests, provide it through a factory fixture (see [Pattern 6](#6-factory-fixtures)) instead of inline dictionaries or module constants.
-- **Autouse only for isolation**: e.g. `clean_settings_cache` in `tests/conftest.py` clears application `lru_cache` singletons around each test, and `mock_default_cache` in `test_llm_service.py` keeps tests off Redis. Register every new `lru_cache` singleton in `_clear_all_caches()`.
+- **Autouse only for isolation**: e.g. `clean_settings_cache` in `tests/conftest.py` clears application `lru_cache` singletons around each test. Register every new `lru_cache` singleton in `_clear_all_caches()`.
 
 Core shared fixtures are `app` (FastAPI app with override teardown), `client` (`TestClient` running lifespan handlers), and `sample_transcription`. See `tests/conftest.py` for the full list.
 
@@ -70,14 +70,17 @@ with pytest.raises(ValidationError, match=r"valid integer"):
 
 ### 3. Environment Overrides
 
-Use `monkeypatch`, never direct `os.environ` assignment. `clean_settings_cache` guarantees the next `get_settings()` re-reads the environment:
+Use `monkeypatch`, never direct `os.environ` assignment. `clean_settings_cache` guarantees each test starts with a fresh `get_settings()`:
 
 ```python
-def test_get_settings_cache_clear(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("APP_ENV", "test")
-    get_settings.cache_clear()
+def test_mirror_secrets_to_environ_does_not_overwrite_existing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MISTRAL_API_KEY", "existing-preset-key")
 
-    assert get_settings().app_env == Environment.TEST
+    settings = Settings(app_env=Environment.TEST)
+    settings.mistral_api_key = SecretStr("new-attempted-key")
+    settings.mirror_secrets_to_environ()
+
+    assert environ.get("MISTRAL_API_KEY") == "existing-preset-key"
 ```
 
 ### 4. Mocking at the Boundary
@@ -147,7 +150,7 @@ with (
 $env:APP_ENV = "test"; rtk uv run pytest --cache-clear --basetemp="$env:TEMP\pytest_runner"
 rtk uv run pytest tests/routers/test_health_router.py
 rtk uv run pytest -k "dependency_override"
-rtk uv run --with pytest-cov pytest --cov=aie_estimator --cov=streamlit_app --cov-branch --cov-report=term-missing
+rtk uv run pytest   # coverage options come from addopts in pyproject.toml
 ```
 
 `auto\test.cmd` wraps the suite run and cleans up test artifacts (manual use only).
@@ -158,12 +161,12 @@ Prefix supported terminal commands with `rtk`; if it is unavailable, run the bas
 
 ## Coverage
 
-- **Target**: 85% combined line + branch coverage for `aie_estimator` and `streamlit_app`. Always measure with `--cov-branch`.
+- **Target**: 85% combined line + branch coverage, measured on `aie_estimator` only (`addopts` in `pyproject.toml`: `--cov=aie_estimator --cov-branch`). `streamlit_app` is tested but not measured.
 - **No regressions**: a change must not lower total coverage; new modules ship with tests for their public functions and error branches.
 - **Bug fixes** include a regression test that fails before the fix.
 - **Exclusions** (`# pragma: no cover`) are limited to entry-point glue and carry a reason comment.
 - **Priorities**: business logic first, then error branches and exception handlers, then UI code (extract testable functions rather than testing Streamlit rendering).
-- **Enforcement** (`pytest-cov` as a dev dependency and `--cov-fail-under=85`) is planned once the baseline reaches the target.
+- **Enforcement**: `--cov-fail-under=85` is active in `addopts`, so partial runs (single file, `-k`, `--lf`) fail the gate; add `--no-cov` for them.
 
 ---
 

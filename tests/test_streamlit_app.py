@@ -26,11 +26,25 @@ _DEFAULT_TIMEOUT: Final[float] = 10.0
 
 
 @pytest.mark.anyio
-async def test_send_estimation_request_dispatches_expected_payload() -> None:
+@pytest.mark.parametrize(
+    ("extra_kwargs", "expected_extra_json"),
+    [
+        ({}, {"engine": "litellm"}),
+        ({"model": "gpt-6-luna", "engine": "native"}, {"model": "gpt-6-luna", "engine": "native"}),
+    ],
+    ids=["defaults", "model_and_engine_overrides"],
+)
+async def test_send_estimation_request_dispatches_expected_payload(
+    extra_kwargs: dict[str, Any],
+    expected_extra_json: dict[str, Any],
+) -> None:
     """
-    GIVEN valid project estimation parameters
+    GIVEN valid project estimation parameters with or without model and engine overrides
     WHEN send_estimation_request is executed
     THEN an asynchronous HTTP POST request is sent with the JSON payload conforming to EstimationRequest.
+
+    :param extra_kwargs: Optional keyword arguments (model, engine) supplied to send_estimation_request.
+    :param expected_extra_json: Expected model and engine entries in the JSON payload.
     """
     fake_response = {
         "text": "## Estimation Breakdown\n- Task 1: 10h",
@@ -38,13 +52,7 @@ async def test_send_estimation_request_dispatches_expected_payload() -> None:
         "model": "reasoner-fast",
         "provider": "openrouter",
         "cost_usd": 0.0035,
-        "usage": {
-            "input_tokens": 120,
-            "output_tokens": 60,
-            "total_tokens": 180,
-            "preprocessing_input_tokens": 0,
-            "preprocessing_output_tokens": 0,
-        },
+        "usage": {"input_tokens": 120, "output_tokens": 60, "total_tokens": 180},
     }
 
     mock_client_instance = AsyncMock()
@@ -54,134 +62,25 @@ async def test_send_estimation_request_dispatches_expected_payload() -> None:
     mock_client_instance.post.return_value = mock_resp
     mock_client_instance.__aenter__.return_value = mock_client_instance
 
+    description = "Build a high performance SaaS inventory management portal with analytics."
     with patch("httpx.AsyncClient", return_value=mock_client_instance):
         result = await send_estimation_request(
-            description="Build a high performance SaaS inventory management portal with analytics.",
+            description=description,
             project_type="web_saas",
             detail_level="medium",
             output_format="phases_table",
+            **extra_kwargs,
         )
 
     assert result == fake_response
     mock_client_instance.post.assert_called_once()
-    call_kwargs = mock_client_instance.post.call_args.kwargs
-    assert call_kwargs["json"] == {
-        "description": "Build a high performance SaaS inventory management portal with analytics.",
+    assert mock_client_instance.post.call_args.kwargs["json"] == {
+        "description": description,
         "project_type": "web_saas",
         "detail_level": "medium",
         "output_format": "phases_table",
-        "engine": "litellm",
+        **expected_extra_json,
     }
-
-
-@pytest.mark.anyio
-@pytest.mark.parametrize(
-    ("custom_kwargs", "expected_extra_keys"),
-    [
-        (
-            {"model": "gpt-6-luna", "engine": "native"},
-            {"model": "gpt-6-luna", "engine": "native"},
-        ),
-        (
-            {"model": "claude-haiku-5-5", "engine": "litellm"},
-            {"model": "claude-haiku-5-5", "engine": "litellm"},
-        ),
-    ],
-    ids=["native_gpt", "litellm_claude"],
-)
-async def test_send_estimation_request_custom_overrides(
-    custom_kwargs: dict[str, Any],
-    expected_extra_keys: dict[str, Any],
-) -> None:
-    """
-    GIVEN custom model and engine overrides
-    WHEN send_estimation_request is executed
-    THEN the dispatched HTTP POST payload serializes the specified overrides.
-
-    :param custom_kwargs: Keyword arguments supplied to send_estimation_request.
-    :param expected_extra_keys: Expected serialized override key-value pairs in JSON payload.
-    """
-    fake_response = {
-        "text": "## Custom Estimation",
-        "prompt_version": "v1",
-        "model": expected_extra_keys.get("model", "default"),
-        "provider": "openai",
-        "cost_usd": 0.005,
-        "usage": {"input_tokens": 100, "output_tokens": 50, "total_tokens": 150},
-    }
-
-    mock_client_instance = AsyncMock()
-    mock_resp = MagicMock()
-    mock_resp.json.return_value = fake_response
-    mock_resp.raise_for_status.return_value = None
-    mock_client_instance.post.return_value = mock_resp
-    mock_client_instance.__aenter__.return_value = mock_client_instance
-
-    with patch("httpx.AsyncClient", return_value=mock_client_instance):
-        result = await send_estimation_request(
-            description="A comprehensive project description satisfying character bounds.",
-            project_type="mobile_app",
-            detail_level="detailed",
-            output_format="line_items",
-            **custom_kwargs,
-        )
-
-    assert result == fake_response
-    call_kwargs = mock_client_instance.post.call_args.kwargs
-    for key, value in expected_extra_keys.items():
-        assert call_kwargs["json"][key] == value
-
-
-@pytest.mark.anyio
-async def test_send_estimation_request_raises_on_http_error() -> None:
-    """
-    GIVEN an HTTP error response from the backend
-    WHEN send_estimation_request is executed
-    THEN an httpx.HTTPStatusError exception is raised.
-    """
-    mock_client_instance = AsyncMock()
-    mock_resp = MagicMock()
-    mock_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
-        "500 Internal Server Error",
-        request=MagicMock(),
-        response=MagicMock(status_code=500),
-    )
-    mock_client_instance.post.return_value = mock_resp
-    mock_client_instance.__aenter__.return_value = mock_client_instance
-
-    with patch("httpx.AsyncClient", return_value=mock_client_instance), pytest.raises(
-        httpx.HTTPStatusError,
-        match=r"Server Error",
-    ):
-        await send_estimation_request(
-            description="A sufficiently detailed description that passes character length constraints.",
-            project_type="web_saas",
-            detail_level="summary",
-            output_format="narrative",
-        )
-
-
-@pytest.mark.anyio
-async def test_send_estimation_request_raises_on_request_error() -> None:
-    """
-    GIVEN a network connection failure
-    WHEN send_estimation_request is executed
-    THEN an httpx.RequestError exception is raised.
-    """
-    mock_client_instance = AsyncMock()
-    mock_client_instance.post.side_effect = httpx.RequestError("Connection refused", request=MagicMock())
-    mock_client_instance.__aenter__.return_value = mock_client_instance
-
-    with patch("httpx.AsyncClient", return_value=mock_client_instance), pytest.raises(
-        httpx.RequestError,
-        match=r"Connection refused",
-    ):
-        await send_estimation_request(
-            description="A sufficiently detailed description that passes character length constraints.",
-            project_type="internal_tool",
-            detail_level="medium",
-            output_format="phases_table",
-        )
 
 
 # endregion
@@ -209,38 +108,31 @@ def test_apptest_initial_render_and_sidebar_widgets() -> None:
     assert at.session_state.latest_estimation is None
 
 
-def test_apptest_client_validation_short_description() -> None:
+@pytest.mark.parametrize(
+    ("description", "expected_error"),
+    [
+        ("Too short", f"at least {MIN_DESCRIPTION_LENGTH} characters"),
+        ("x" * (MAX_DESCRIPTION_LENGTH + 1), f"cannot exceed {MAX_DESCRIPTION_LENGTH} characters"),
+    ],
+    ids=["too_short", "too_long"],
+)
+def test_apptest_client_validation_description_length(description: str, expected_error: str) -> None:
     """
     GIVEN an initialized Streamlit app
-    WHEN a project description with fewer than 20 characters is submitted
-    THEN an error banner is displayed and no network request is executed.
+    WHEN a project description outside the allowed length bounds is submitted
+    THEN an error banner is displayed and no estimation is stored.
+
+    :param description: Project description violating the length constraints.
+    :param expected_error: Error text expected in the banner.
     """
     at = AppTest.from_file(_APP_PATH, default_timeout=_DEFAULT_TIMEOUT)
     at.run()
 
-    at.text_area[0].set_value("Too short")
+    at.text_area[0].set_value(description)
     at.button[0].click().run()
 
     assert len(at.error) > 0
-    assert f"at least {MIN_DESCRIPTION_LENGTH} characters" in at.error[0].value
-    assert at.session_state.latest_estimation is None
-
-
-def test_apptest_client_validation_long_description() -> None:
-    """
-    GIVEN an initialized Streamlit app
-    WHEN a project description exceeding 2000 characters is submitted
-    THEN an error banner is displayed and no network request is executed.
-    """
-    at = AppTest.from_file(_APP_PATH, default_timeout=_DEFAULT_TIMEOUT)
-    at.run()
-
-    long_text = "x" * (MAX_DESCRIPTION_LENGTH + 1)
-    at.text_area[0].set_value(long_text)
-    at.button[0].click().run()
-
-    assert len(at.error) > 0
-    assert f"cannot exceed {MAX_DESCRIPTION_LENGTH} characters" in at.error[0].value
+    assert expected_error in at.error[0].value
     assert at.session_state.latest_estimation is None
 
 

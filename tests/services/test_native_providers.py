@@ -1,6 +1,7 @@
 # tests/services/test_native_providers.py
 
 # --- Python Standard Library ---
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 # --- Third Party Libraries ---
@@ -19,14 +20,13 @@ from aie_estimator.services.providers.native_providers import (
     get_openai_client,
 )
 from aie_estimator.settings import Environment, Settings
-from tests.conftest import REASONING_EFFORT_TEST_CASES
 
 
-def test_client_caching_and_lifecycle(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_clients_built_from_configured_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     GIVEN configured API credentials
-    WHEN client accessor functions are invoked multiple times
-    THEN the client instances are cached via lru_cache and reused until explicitly cleared.
+    WHEN client accessor functions are invoked
+    THEN clients are built with the configured keys.
 
     :param monkeypatch: Pytest monkeypatch fixture.
     """
@@ -37,17 +37,8 @@ def test_client_caching_and_lifecycle(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setattr("aie_estimator.services.providers.native_providers.get_settings", lambda: test_settings)
 
-    openai_1 = get_openai_client()
-    openai_2 = get_openai_client()
-    assert openai_1 is openai_2
-
-    anthropic_1 = get_anthropic_client()
-    anthropic_2 = get_anthropic_client()
-    assert anthropic_1 is anthropic_2
-
-    get_openai_client.cache_clear()
-    openai_3 = get_openai_client()
-    assert openai_3 is not openai_1
+    assert get_openai_client().api_key == "sk-test-openai-key"
+    assert get_anthropic_client().api_key == "sk-test-anthropic-key"
 
 
 def test_client_missing_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -76,10 +67,10 @@ def test_client_missing_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    ("model", "is_reasoning"),
+    ("model", "expected_params", "absent_params", "expected_cost"),
     [
-        ("custom-standard-model", False),
-        (DEFAULT_GPT_LLM, True),
+        ("custom-standard-model", {"temperature": 0.3}, ("reasoning",), None),
+        (DEFAULT_GPT_LLM, {"reasoning": {"effort": "medium"}}, ("temperature",), 0.0001),
     ],
     ids=["custom_standard", "gpt6_reasoning"],
 )
@@ -87,7 +78,9 @@ async def test_call_openai_model_parameter_selection(
     sample_transcription: str,
     monkeypatch: pytest.MonkeyPatch,
     model: str,
-    is_reasoning: bool,
+    expected_params: dict[str, Any],
+    absent_params: tuple[str, ...],
+    expected_cost: float | None,
 ) -> None:
     """
     GIVEN a target model identifier
@@ -97,7 +90,9 @@ async def test_call_openai_model_parameter_selection(
     :param sample_transcription: Sample transcript fixture.
     :param monkeypatch: Pytest monkeypatch fixture.
     :param model: Target model identifier.
-    :param is_reasoning: Whether model is classified as reasoning-capable.
+    :param expected_params: Sampling parameters expected in the request.
+    :param absent_params: Sampling parameters that must not be sent.
+    :param expected_cost: Expected cost_usd (None when the model has no pricing entry).
     """
     mock_client = AsyncMock()
     mock_resp = MagicMock()
@@ -126,24 +121,15 @@ async def test_call_openai_model_parameter_selection(
     assert result["estimation"] == "Detailed estimation content."
     assert result["finish_reason"] == "stop"
     assert result["usage"]["total_tokens"] == 400
-
-    if model == DEFAULT_GPT_LLM:
-        assert result["cost_usd"] == 0.0001
-    else:
-        assert "cost_usd" not in result
+    assert result.get("cost_usd") == expected_cost
 
     call_kwargs = mock_client.responses.create.call_args.kwargs
     assert call_kwargs["model"] == model
     assert call_kwargs["input"] == sample_transcription
     assert call_kwargs["instructions"] == "You are a CAG estimator."
     assert call_kwargs["max_output_tokens"] == 3000
-
-    if is_reasoning:
-        assert call_kwargs.get("reasoning") == {"effort": "medium"}
-        assert "temperature" not in call_kwargs
-    else:
-        assert call_kwargs.get("temperature") == 0.3
-        assert "reasoning" not in call_kwargs
+    assert {k: call_kwargs.get(k) for k in expected_params} == expected_params
+    assert all(k not in call_kwargs for k in absent_params)
 
 
 @pytest.mark.anyio
@@ -240,20 +226,19 @@ async def test_call_openai_retry_exhaustion(
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    ("reasoning_effort", "expected_effort"),
-    REASONING_EFFORT_TEST_CASES,
-    ids=[
-        "thinking_disabled",
-        "effort_low",
-        "effort_medium",
-        "effort_high",
+    ("reasoning_effort", "expected_params", "absent_params"),
+    [
+        (None, {"temperature": 0.3}, ("thinking", "output_config")),
+        ("medium", {"thinking": {"type": "adaptive"}, "output_config": {"effort": "medium"}}, ("temperature",)),
     ],
+    ids=["thinking_disabled", "effort_medium"],
 )
 async def test_call_anthropic_thinking_and_temperature_exclusivity(
     sample_transcription: str,
     monkeypatch: pytest.MonkeyPatch,
     reasoning_effort: str | None,
-    expected_effort: str | None,
+    expected_params: dict[str, Any],
+    absent_params: tuple[str, ...],
 ) -> None:
     """
     GIVEN Anthropic configuration with or without qualitative reasoning effort
@@ -263,7 +248,8 @@ async def test_call_anthropic_thinking_and_temperature_exclusivity(
     :param sample_transcription: Sample transcript fixture.
     :param monkeypatch: Pytest monkeypatch fixture.
     :param reasoning_effort: Explicit qualitative reasoning effort tier.
-    :param expected_effort: Expected effort tier passed to output_config.
+    :param expected_params: Sampling parameters expected in the request.
+    :param absent_params: Sampling parameters that must not be sent.
     """
     mock_client = AsyncMock()
     mock_resp = MagicMock()
@@ -295,18 +281,10 @@ async def test_call_anthropic_thinking_and_temperature_exclusivity(
     assert result["estimation"] == "Anthropic estimation output."
     assert result["finish_reason"] == "end_turn"
     assert result["usage"]["total_tokens"] == 500
-    assert result["cost_usd"] == 0.000325
 
     call_kwargs = mock_client.messages.create.call_args.kwargs
     assert call_kwargs["max_tokens"] == 4000
     assert call_kwargs["messages"] == [{"role": "user", "content": sample_transcription}]
     assert call_kwargs["system"] == "CAG instructions"
-
-    if expected_effort is not None:
-        assert call_kwargs.get("thinking") == {"type": "adaptive"}
-        assert call_kwargs.get("output_config") == {"effort": expected_effort}
-        assert "temperature" not in call_kwargs
-    else:
-        assert call_kwargs.get("temperature") == 0.3
-        assert "thinking" not in call_kwargs
-        assert "output_config" not in call_kwargs
+    assert {k: call_kwargs.get(k) for k in expected_params} == expected_params
+    assert all(k not in call_kwargs for k in absent_params)

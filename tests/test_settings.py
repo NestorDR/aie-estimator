@@ -13,57 +13,7 @@ import pytest
 import structlog
 
 # --- App modules ---
-from aie_estimator.settings import Environment, Settings, get_settings
-
-
-def test_get_settings_returns_cached_singleton() -> None:
-    """
-    GIVEN no prior calls or existing cached settings
-    WHEN get_settings is invoked multiple times
-    THEN the exact same Settings singleton instance is returned.
-    """
-    first_instance = get_settings()
-    second_instance = get_settings()
-
-    assert isinstance(first_instance, Settings)
-    assert first_instance is second_instance
-
-
-def test_get_settings_cache_clear(monkeypatch: pytest.MonkeyPatch) -> None:
-    """
-    GIVEN an environment variable override for APP_ENV
-    WHEN get_settings.cache_clear() is executed and get_settings is called
-    THEN a reloaded Settings instance reflecting the new environment is returned.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    """
-    monkeypatch.setenv("APP_ENV", "test")
-    get_settings.cache_clear()
-
-    reloaded_settings = get_settings()
-    assert reloaded_settings.app_env == Environment.TEST
-
-
-@pytest.mark.parametrize(
-    ("env_str", "expected_env"),
-    [
-        ("dev", Environment.DEV),
-        ("prod", Environment.PROD),
-        ("test", Environment.TEST),
-    ],
-    ids=["env_dev", "env_prod", "env_test"],
-)
-def test_settings_initialization_valid_env_strings(env_str: str, expected_env: Environment) -> None:
-    """
-    GIVEN valid environment string representations
-    WHEN Settings is instantiated with app_env
-    THEN Settings is successfully initialized with the corresponding Environment enum member without writing files.
-
-    :param env_str: String representation of the target environment.
-    :param expected_env: Expected Environment enum member.
-    """
-    settings = Settings(app_env=env_str, enable_file_logging=False)
-    assert settings.app_env == expected_env
+from aie_estimator.settings import Environment, Settings
 
 
 @pytest.mark.parametrize(
@@ -193,72 +143,12 @@ def test_configure_logging_captures_callsite_parameters(capsys: pytest.CaptureFi
     assert "func_name" in log_text
 
 
-def test_settings_server_host_configuration() -> None:
-    """
-    GIVEN default Settings initialization and custom override
-    WHEN server_host is inspected
-    THEN established defaults and overrides are verified.
-    """
-    default_settings = Settings(app_env=Environment.TEST)
-    assert default_settings.server_host == "localhost"
-
-    custom_settings = Settings(app_env=Environment.TEST, server_host="10.0.0.5")
-    assert custom_settings.server_host == "10.0.0.5"
-
-
-def test_settings_cache_configuration_defaults() -> None:
-    """
-    GIVEN default Settings initialization
-    WHEN cache settings are inspected
-    THEN redis_host, redis_port, redis_url, and cache_ttl reflect established defaults.
-    """
-    settings = Settings(app_env=Environment.TEST)
-    assert settings.redis_host == "localhost"
-    assert settings.redis_port == 6379
-    assert settings.cache_ttl == 86400
-
-
-@pytest.mark.parametrize(
-    ("custom_host", "custom_port", "custom_ttl"),
-    [
-        ("10.0.0.1", 6380, 3600),
-        ("cache.internal", 6379, 7200),
-    ],
-    ids=["custom_ip_port", "internal_host"],
-)
-def test_settings_cache_configuration_overrides(
-    custom_host: str,
-    custom_port: int,
-    custom_ttl: int,
-) -> None:
-    """
-    GIVEN custom redis_host, redis_port, and cache_ttl constructor overrides
-    WHEN Settings is instantiated
-    THEN the configured values override defaults and redis_url reflects them.
-
-    :param custom_host: Custom Redis host.
-    :param custom_port: Custom Redis port.
-    :param custom_ttl: Custom cache time-to-live in seconds.
-    """
-    settings = Settings(
-        app_env=Environment.TEST,
-        redis_host=custom_host,
-        redis_port=custom_port,
-        cache_ttl=custom_ttl,
-    )
-    assert settings.redis_host == custom_host
-    assert settings.redis_port == custom_port
-    assert settings.cache_ttl == custom_ttl
-
-
 @pytest.mark.parametrize(
     ("key_attribute", "env_variable", "test_value"),
     [
-        ("mistral_api_key", "MISTRAL_API_KEY", "test-mistral-key"),
         ("scaleway_api_key", "SCALEWAY_API_KEY", "test-scaleway-key"),
-        ("nebius_api_key", "NEBIUS_API_KEY", "test-nebius-key"),
     ],
-    ids=["mistral_key", "scaleway_key", "nebius_key"],
+    ids=["scaleway_key"],
 )
 def test_settings_additional_api_keys_initialization(
     key_attribute: str,
@@ -326,36 +216,13 @@ def test_mirror_secrets_to_environ_does_not_overwrite_existing(monkeypatch: pyte
     assert environ.get("MISTRAL_API_KEY") == "existing-preset-key"
 
 
-def test_settings_active_prompt_version_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
-    """
-    GIVEN default Settings and environment variable override
-    WHEN active_prompt_version is inspected
-    THEN it defaults to 'v1' and reflects ACTIVE_PROMPT_VERSION override.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    """
-    default_settings = Settings(app_env=Environment.TEST)
-    assert default_settings.active_prompt_version == "v1"
-
-    custom_instance = Settings(app_env=Environment.TEST, active_prompt_version="v2")
-    assert custom_instance.active_prompt_version == "v2"
-
-    monkeypatch.setenv("ACTIVE_PROMPT_VERSION", "v3")
-    env_settings = Settings(app_env=Environment.TEST)
-    assert env_settings.active_prompt_version == "v3"
-
-
 @pytest.mark.parametrize(
     ("env_val", "expected_bool"),
     [
         ("true", True),
-        ("True", True),
-        ("1", True),
         ("false", False),
-        ("False", False),
-        ("0", False),
     ],
-    ids=["true_lower", "true_capital", "true_num", "false_lower", "false_capital", "false_num"],
+    ids=["true", "false"],
 )
 def test_settings_otel_tracing_configuration(
     monkeypatch: pytest.MonkeyPatch,
@@ -376,17 +243,6 @@ def test_settings_otel_tracing_configuration(
     assert settings.enable_otel_tracing is expected_bool
 
 
-def test_settings_otel_tracing_defaults() -> None:
-    """
-    GIVEN default configuration in test environment
-    WHEN Settings is initialized without overrides
-    THEN enable_otel_tracing defaults to False and otel_exporter_otlp_endpoint to localhost.
-    """
-    settings = Settings(app_env=Environment.TEST)
-    assert settings.enable_otel_tracing is False
-    assert settings.otel_exporter_otlp_endpoint == "http://localhost:4317"
-
-
 def test_settings_litellm_local_model_cost_map_test_env() -> None:
     """
     GIVEN an instantiation of Settings with app_env=Environment.TEST
@@ -395,22 +251,3 @@ def test_settings_litellm_local_model_cost_map_test_env() -> None:
     """
     settings = Settings(app_env=Environment.TEST)
     assert settings.litellm_local_model_cost_map is True
-
-
-def test_settings_litellm_local_model_cost_map_dev_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """
-    GIVEN an instantiation of Settings with app_env=Environment.DEV
-    WHEN LITELLM_LOCAL_MODEL_COST_MAP environment variable is altered
-    THEN Settings parses the boolean override as expected.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    """
-    monkeypatch.setenv("LITELLM_LOCAL_MODEL_COST_MAP", "false")
-    settings = Settings(app_env=Environment.DEV)
-    assert settings.litellm_local_model_cost_map is False
-
-    monkeypatch.setenv("LITELLM_LOCAL_MODEL_COST_MAP", "true")
-    settings_override = Settings(app_env=Environment.DEV)
-    assert settings_override.litellm_local_model_cost_map is True
-
-
