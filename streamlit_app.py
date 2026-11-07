@@ -14,13 +14,14 @@ from streamlit import runtime
 # --- App modules ---
 from aie_estimator.schemas.estimations import DetailLevel, OutputFormat, ProjectType
 from aie_estimator.services.providers.model_catalog import get_supported_models
+from aie_estimator.services.providers.generation_options import ProviderMode
 from aie_estimator.settings import get_settings
 
 load_dotenv()
 
 DEFAULT_API_BASE_URL: Final[str] = "http://localhost:8000"
 PAGE_TITLE: Final[str] = "Software Estimator"
-PAGE_ICON: Final[str] = "📊"
+PAGE_ICON: Final[str] = "🧮"  # :abacus: - Visit: https://streamlit-emoji-shortcodes-streamlit-app-gwckff.streamlit.app/
 MIN_DESCRIPTION_LENGTH: Final[int] = 20
 MAX_DESCRIPTION_LENGTH: Final[int] = 2000
 
@@ -29,14 +30,14 @@ estimate_endpoint: Final[str] = f"{api_base_url}/api/v1/estimate"
 
 
 async def send_estimation_request(
-    description: str,
-    project_type: str,
-    detail_level: str,
-    output_format: str,
-    *,
-    model: str | None = None,
-    engine: str = "litellm",
-    endpoint: str = estimate_endpoint,
+        description: str,
+        project_type: str,
+        detail_level: str,
+        output_format: str,
+        *,
+        model: str | None = None,
+        engine: str = "litellm",
+        endpoint: str = estimate_endpoint,
 ) -> dict[str, Any]:
     """
     Dispatch an asynchronous HTTP POST request to the backend estimation endpoint with typed request parameters.
@@ -66,6 +67,28 @@ async def send_estimation_request(
         response = await client.post(endpoint, json=payload)
         response.raise_for_status()
         return response.json()
+
+
+def option_to_text(option: str, splitter: str = "_") -> str:
+    """
+    Remove splitter and capitalize words in a string for display purposes.
+
+    :param option: The option string to convert (e.g., 'web_saas').
+    :param splitter: The character used to split the option string (default is underscore).
+    :return:
+    """
+    return " ".join(word.capitalize() for word in option.split(splitter))
+
+
+def text_to_option(text: str, joiner: str = "_") -> str:
+    """
+    Convert a display string back to an option string with underscores.
+
+    :param text: The display string to convert.
+    :param joiner: The character used to join the words (default is underscore).
+    :return:
+    """
+    return text.lower().replace(" ", joiner)
 
 
 def render_telemetry_container(metadata: dict[str, Any]) -> None:
@@ -103,6 +126,26 @@ if runtime.exists():
         layout="wide",
     )
 
+    st.markdown(
+        """
+        <style>
+            .stApp { font-size: 1.05rem; }
+            h1 { font-size: 2.4rem !important; }
+            h2 { font-size: 1.7rem !important; }
+            h3 { font-size: 1.35rem !important; }
+            
+            /* Widgets, labels, buttons, markdown, text area */
+            .stApp p,
+            .stApp label,
+            .stApp button,
+            .stApp div[data-testid="stMarkdownContainer"] { font-size: 1.05rem; }
+            .stTextArea textarea { font-size: 1.15rem !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     # Initialize session state for persistent estimation display
     if "latest_estimation" not in st.session_state:
         st.session_state.latest_estimation = None
@@ -127,18 +170,16 @@ if runtime.exists():
             default_index = supported_models.index(configured_model) if configured_model in supported_models else 0
             selected_model: str = st.selectbox(
                 "Target model",
-                options=supported_models,
+                options=[option_to_text(m, "-") for m in supported_models],
                 index=default_index,
-                help="Select an available LLM or dynamic routing profile from the catalog.",
+                help="Choose an available LLM or dynamic routing profile from the catalog.",
             )
-            selected_engine: str = (
-                st.segmented_control(
-                    "Execution engine",
-                    options=["litellm", "native"],
-                    default="litellm",
-                    help="LiteLLM provides dynamic provider routing; native dispatches directly via SDK.",
-                )
-                or "litellm"
+            supported_engines = [option_to_text(e) for e in ProviderMode.__args__]
+            selected_engine: str | None = st.segmented_control(
+                "Execution engine",
+                options=supported_engines,
+                default=supported_engines[0],
+                help="LiteLLM provides dynamic provider routing; Native dispatches directly via SDK.",
             )
 
     # Render main product header
@@ -156,25 +197,35 @@ if runtime.exists():
             placeholder="Describe the project: goals, key features, constraints…",
             help=f"Between {MIN_DESCRIPTION_LENGTH} and {MAX_DESCRIPTION_LENGTH} characters.",
         )
-        project_type = st.selectbox(
-            "Project type",
-            options=[t.value for t in ProjectType],
-            index=1,
-        )
-        detail_level = (
-            st.segmented_control(
-                "Detail level",
-                options=[d.value for d in DetailLevel],
-                default=DetailLevel.MEDIUM.value,
+
+        col_type, col_detail, col_format, col_submit = st.columns([1, 1, 1, 0.7], gap="small")
+        with col_type:
+            project_type = st.selectbox(
+                "Project type",
+                options=[option_to_text(t.value) for t in ProjectType],
+                index=0,
             )
-            or DetailLevel.MEDIUM.value
-        )
-        output_format = st.selectbox(
-            "Output format",
-            options=[f.value for f in OutputFormat],
-            index=0,
-        )
-        submitted = st.form_submit_button("Generate estimation", type="primary", width="stretch")
+        with col_detail:
+            detail_level = st.selectbox(
+                "Detail level",
+                options=[option_to_text(d.value) for d in DetailLevel],
+                index=1,
+            )
+        with col_format:
+            output_format = st.selectbox(
+                "Output format",
+                options=[option_to_text(f.value) for f in OutputFormat],
+                index=0,
+            )
+        with col_submit:
+            with st.container(horizontal=False):
+                st.markdown('<div style="height: 1.9rem;"></div>', unsafe_allow_html=True)
+
+                submitted = st.form_submit_button(
+                    "Estimate",
+                    type="primary",
+                    width="stretch",
+                )
 
     # Handle form submission and validation
     if submitted:
@@ -195,18 +246,20 @@ if runtime.exists():
                     result = asyncio.run(
                         send_estimation_request(
                             cleaned_description,
-                            project_type=project_type,
-                            detail_level=detail_level,
-                            output_format=output_format,
-                            model=selected_model,
-                            engine=selected_engine,
+                            project_type=text_to_option(project_type),
+                            detail_level=text_to_option(detail_level),
+                            output_format=text_to_option(output_format),
+                            model=text_to_option(selected_model, "-"),
+                            engine=text_to_option(selected_engine or "litellm"),
                         )
                     )
                     st.session_state.latest_estimation = result
                 except httpx.HTTPStatusError as exc:
-                    st.error(f"Service returned {exc.response.status_code}: {exc.response.text}", icon=":material/error:")
+                    st.error(f"Service returned {exc.response.status_code}: {exc.response.text}",
+                             icon=":material/error:")
                 except httpx.RequestError as exc:
-                    st.error(f"Could not reach the estimator backend at `{estimate_endpoint}`: {exc}", icon=":material/error:")
+                    st.error(f"Could not reach the estimator backend at `{estimate_endpoint}`: {exc}",
+                             icon=":material/error:")
 
     # Render latest estimation output and telemetry from session state
     if st.session_state.latest_estimation:
