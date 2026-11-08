@@ -6,20 +6,20 @@ from os import environ
 from typing import Any, Final
 
 # --- Third Party Libraries ---
+import instructor
 import litellm
 from litellm import Router
 import structlog
 import yaml
 
 # --- App modules ---
-from aie_estimator.services.exceptions import LLMProviderError
+from aie_estimator.model_catalog import get_model_catalog
+from aie_estimator.schemas.estimations import EstimationResult
+from aie_estimator.services.exceptions import LLMProviderError, unwrap_exception
 from aie_estimator.services.providers.formatting import format_provider_response
 from aie_estimator.services.providers.generation_options import GenerationOptions
+from aie_estimator.settings import get_settings
 from aie_estimator.utils.model_constants import DEFAULT_FAST_PROFILE
-from aie_estimator.services.providers.model_catalog import (
-    get_model_catalog,
-    get_profiles_config_path,
-)
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
 
@@ -35,16 +35,16 @@ def get_litellm_router() -> Router:
     :return: Configured LiteLLM Router instance.
     :raises LLMProviderError: If configuration cannot be loaded or no models have valid credentials.
     """
-    config_path = get_profiles_config_path()
-    if not config_path.is_file():
-        log.error("litellm_profiles_file_not_found", config_path=str(config_path))
-        raise LLMProviderError(f"LiteLLM profiles configuration file not found at {config_path}")
+    profiles_path = get_settings().llm_profiles_path
+    if not profiles_path.is_file():
+        log.error("litellm_profiles_file_not_found", profiles_path=str(profiles_path))
+        raise LLMProviderError(f"LiteLLM profiles configuration file not found at {profiles_path}")
 
     try:
-        with config_path.open("r", encoding="utf-8") as file:
+        with profiles_path.open("r", encoding="utf-8") as file:
             config = yaml.safe_load(file) or {}
     except Exception as e:
-        log.exception("litellm_profiles_read_failed", config_path=str(config_path), error=repr(e))
+        log.exception("litellm_profiles_read_failed", profiles_path=str(profiles_path), error=repr(e))
         raise LLMProviderError(f"Failed to read LiteLLM profiles configuration: {e}") from e
 
     # Apply general engine and zero-telemetry guardrails
@@ -101,11 +101,11 @@ def get_litellm_router() -> Router:
 
 
 async def call_litellm_router(
-    user_prompt: str,
-    system_prompt: str | None,
-    opts: GenerationOptions,
-    *,
-    temperature: float | None = None,
+        user_prompt: str,
+        system_prompt: str | None,
+        opts: GenerationOptions,
+        *,
+        temperature: float | None = None,
 ) -> dict[str, Any]:
     """
     Send an asynchronous estimation request through the LiteLLM Router with cost extraction and error handling.
@@ -115,7 +115,7 @@ async def call_litellm_router(
     :param opts: Generation options controlling model, max_tokens, and reasoning_effort.
     :param temperature: Optional sampling temperature override.
 
-    :return: Standardized response dictionary containing estimation, model, provider, finish_reason, usage, and cost_usd.
+    :return: Standardized response dictionary containing result, model, provider, finish_reason, usage, and cost_usd.
     :raises LLMProviderError: If the LiteLLM router call fails.
     """
     router = get_litellm_router()
@@ -141,17 +141,27 @@ async def call_litellm_router(
     if opts.reasoning_effort is not None:
         kwargs["reasoning_effort"] = opts.reasoning_effort
 
+    # noinspection bad-assignment
+    client: instructor.AsyncInstructor = instructor.from_litellm(router.acompletion, mode=instructor.Mode.JSON)
+
     try:
-        response = await router.acompletion(**kwargs)
+        # `create_with_completion` is an asynchronous coroutine method that must be awaited
+        # because `instructor.from_litellm` was initialized with the async `router.acompletion` callable.
+        structured_result, response = await client.chat.completions.create_with_completion(
+            response_model=EstimationResult,
+            max_retries=opts.max_retries,
+            **kwargs,
+        )
     except Exception as e:
+        err = unwrap_exception(e)
         log.exception(
             "litellm_router_call_failed",
             model=model,
             target_profile=target_profile,
-            error_type=type(e).__name__,
-            error=repr(e),
+            error_type=type(err).__name__,
+            error=repr(err),
         )
-        raise LLMProviderError(f"LiteLLM router call failed: {e}") from e
+        raise LLMProviderError(f"LiteLLM router call failed: {err}") from e
 
     choice = response.choices[0]
 
@@ -164,7 +174,6 @@ async def call_litellm_router(
     #
     # Visit [OpenAI Chat Completions API reference](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create), which documents `finish_reason` and its values. [[1]](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)
     finish_reason = getattr(choice, "finish_reason", "stop") or "stop"
-    estimation_text = getattr(choice.message, "content", "") or ""
 
     usage = getattr(response, "usage", None)
     input_tokens = getattr(usage, "prompt_tokens", 0) if usage else 0
@@ -194,7 +203,7 @@ async def call_litellm_router(
     )
 
     return format_provider_response(
-        estimation=estimation_text,
+        result=structured_result,
         model=actual_model,
         provider=provider,
         finish_reason=finish_reason,

@@ -91,7 +91,7 @@ Requests configured with `"low"` reasoning do not hit cached responses generated
 
 ## Two-Level Resilience & Runtime Failover
 
-The LiteLLM Router (`src/aie_estimator/services/providers/litellm_provider.py`) operates a two-level resilience strategy configured declaratively in `src/aie_estimator/llm_profiles.yml`:
+The LiteLLM Router (`src/aie_estimator/services/providers/litellm_provider.py`) operates a two-level resilience strategy configured declaratively in `src/aie_estimator/llm_profiles.yml`. (For the full end-to-end 4-layer retry architecture covering network retries, Instructor validation re-prompting, and application parameter recovery, see [estimations-service.md](estimations-service.md#9-multi-layer-llm-retry-architecture)).
 
 ```
 +---------------------------------------------------------------------------------+

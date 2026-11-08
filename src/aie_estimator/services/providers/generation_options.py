@@ -5,10 +5,11 @@ from dataclasses import dataclass
 from typing import Final, Literal
 
 # --- App modules ---
-from aie_estimator.services.providers.model_catalog import get_model_provider
+from aie_estimator.model_catalog import get_model_provider
+from aie_estimator.schemas.estimations import ProviderMode
 from aie_estimator.settings import get_settings
 
-ProviderMode = Literal["litellm", "native"]
+
 ReasoningEffort = Literal["low", "medium", "high"]
 
 DEFAULT_MAX_TOKENS: Final[int] = 4000

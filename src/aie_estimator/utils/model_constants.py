@@ -1,4 +1,4 @@
-# src/aie_estimator/services/providers/model_constants.py
+# src/aie_estimator/utils/model_constants.py
 
 # --- Python Standard Library ---
 from typing import Final
@@ -8,7 +8,7 @@ DEFAULT_FAST_PROFILE: Final[str] = "reasoner-fast"
 DEFAULT_DEEP_PROFILE: Final[str] = "reasoner-deep"
 
 # Logical names to group model categories, decoupling the app from specific vendors
-_LOGICAL_PROFILE_NAMES: Final[set[str]] = {DEFAULT_FAST_PROFILE, DEFAULT_DEEP_PROFILE}
+LOGICAL_PROFILE_NAMES: Final[set[str]] = {DEFAULT_FAST_PROFILE, DEFAULT_DEEP_PROFILE}
 
 # Default vendor models for direct native calls and fallback configuration
 DEFAULT_GPT_LLM: Final[str] = "gpt-6-luna"

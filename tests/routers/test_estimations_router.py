@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 # --- App modules ---
-from aie_estimator.services.providers.model_catalog import DEFAULT_FAST_PROFILE, DEFAULT_GPT_LLM
+from aie_estimator.utils.model_constants import DEFAULT_FAST_PROFILE, DEFAULT_GPT_LLM
 
 VALID_PAYLOAD: Final[dict[str, Any]] = {
     "description": "This is a comprehensive description of an inventory management SaaS system.",
@@ -46,7 +46,7 @@ def test_create_estimation_valid_request_returns_200(
     """
     GIVEN a valid estimation request
     WHEN a POST request is sent to /api/v1/estimate
-    THEN HTTP 200 is returned with text, prompt_version, model, provider, and usage metadata.
+    THEN HTTP 200 is returned with result, prompt_version, model, provider, and usage metadata.
 
     :param client: Shared TestClient fixture.
     :param make_estimation_result: Estimation result factory fixture.
@@ -54,7 +54,6 @@ def test_create_estimation_valid_request_returns_200(
     """
     mock_generate = AsyncMock(
         return_value=make_estimation_result(
-            estimation="Detailed project effort breakdown narrative.",
             model=DEFAULT_GPT_LLM,
             provider="openai",
             cost_usd=0.0025,
@@ -70,7 +69,11 @@ def test_create_estimation_valid_request_returns_200(
 
         assert response.status_code == 200
         data = response.json()
-        assert data["text"] == "Detailed project effort breakdown narrative."
+        assert data["result"]["total_cost_eur"] == 20000
+        assert data["result"]["total_duration_weeks"] == 8
+        assert data["result"]["confidence_pct"] == 85
+        assert len(data["result"]["phases"]) == 2
+        assert data["cached"] is False
         assert data["prompt_version"] == "v1"
         assert data["model"] == DEFAULT_GPT_LLM
         assert data["provider"] == "openai"

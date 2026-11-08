@@ -1,20 +1,38 @@
 # tests/services/test_providers_dispatch.py
 
 # --- Python Standard Library ---
+from typing import Any, Final
 from unittest.mock import AsyncMock
 
 # --- Third Party Libraries ---
 import pytest
 
 # --- App modules ---
-from aie_estimator.services import LLMProviderError
-from aie_estimator.services.providers import GenerationOptions, call_llm
-from aie_estimator.services.providers.model_catalog import (
+from aie_estimator.schemas.estimations import EstimationResult
+from aie_estimator.services.exceptions import LLMProviderError
+from aie_estimator.services.providers.dispatcher import call_llm
+from aie_estimator.services.providers.generation_options import GenerationOptions
+from aie_estimator.settings import get_settings
+from aie_estimator.utils.model_constants import (
     DEFAULT_CLAUDE_LLM,
     DEFAULT_FAST_PROFILE,
     DEFAULT_GPT_LLM,
 )
-from aie_estimator.settings import get_settings
+
+DUMMY_RESULT: Final[dict[str, Any]] = {
+    "summary": "Full-stack web application delivery breakdown.",
+    "confidence_pct": 85,
+    "phases": [
+        {
+            "name": "Design & Architecture",
+            "duration_weeks": 2,
+            "cost_eur": 5000,
+            "summary": "Technical architecture specification and UX wireframes.",
+        },
+    ],
+    "total_duration_weeks": 2,
+    "total_cost_eur": 5000,
+}
 
 
 @pytest.mark.anyio
@@ -43,13 +61,14 @@ async def test_call_llm_routes_to_engine_target(
     :param model: Target model identifier.
     :param target: Name of the provider function expected to be called.
     """
-    mock_call = AsyncMock(return_value={"estimation": "Routed result", "model": model})
-    monkeypatch.setattr(f"aie_estimator.services.providers.{target}", mock_call)
+    mock_call = AsyncMock(return_value={"result": EstimationResult(**DUMMY_RESULT), "model": model})
+    monkeypatch.setattr(f"aie_estimator.services.providers.dispatcher.{target}", mock_call)
 
     opts = GenerationOptions(engine=engine, model=model)
     result = await call_llm(user_prompt="User input", system_prompt="System instructions", opts=opts)
 
-    assert result["estimation"] == "Routed result"
+    assert isinstance(result["result"], EstimationResult)
+    assert result["result"].total_cost_eur == 5000
     mock_call.assert_awaited_once_with(
         user_prompt="User input",
         system_prompt="System instructions",

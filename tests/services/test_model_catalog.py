@@ -3,23 +3,24 @@
 # --- Python Standard Library ---
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
 
 # --- Third Party Libraries ---
 import pytest
 
 # --- App modules ---
-from aie_estimator.services.providers.model_catalog import (
+from aie_estimator.model_catalog import (
+    get_model_catalog,
+    get_model_provider,
+    get_supported_models,
+    resolve_provider,
+)
+from aie_estimator.utils.model_constants import (
     DEFAULT_CLAUDE_LLM,
     DEFAULT_DEEP_PROFILE,
     DEFAULT_FAST_PROFILE,
     DEFAULT_GPT_LLM,
     UNKNOWN_PROVIDER,
-    get_model_catalog,
-    get_model_provider,
-    resolve_provider,
 )
-
 
 
 @pytest.mark.parametrize(
@@ -119,7 +120,7 @@ def test_model_catalog_loads_config_or_falls_back(
 ) -> None:
     """
     GIVEN a missing, corrupted, or valid profiles configuration file
-    WHEN get_model_catalog is called
+    WHEN get_model_catalog is called with direct profiles_path parameter injection
     THEN defaults are always present; valid entries are added and unnamed or unknown-provider ones skipped.
 
     :param tmp_path: Pytest temporary directory fixture.
@@ -130,12 +131,15 @@ def test_model_catalog_loads_config_or_falls_back(
     if file_content is not None:
         config_file.write_text(file_content, encoding="utf-8")
     get_model_catalog.cache_clear()
-    with patch("aie_estimator.services.providers.model_catalog.get_profiles_config_path", return_value=config_file):
-        catalog = get_model_catalog()
+    catalog = get_model_catalog(profiles_path=config_file)
+    supported_models = get_supported_models(profiles_path=config_file)
     get_model_catalog.cache_clear()
+
     assert DEFAULT_GPT_LLM in catalog
     assert DEFAULT_FAST_PROFILE in catalog
     assert ("test-model-beta" in catalog) is expect_loaded_model
+    assert ("test-model-beta" in supported_models) is expect_loaded_model
     assert "test-model-unknown" not in catalog
+    assert "test-model-unknown" not in supported_models
     if expect_loaded_model:
         assert catalog["test-model-beta"].provider == "mistral"

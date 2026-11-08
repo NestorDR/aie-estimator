@@ -147,10 +147,10 @@ with (
 ### 8. CLI Execution
 
 ```powershell
-$env:APP_ENV = "test"; rtk uv run pytest --cache-clear --basetemp="$env:TEMP\pytest_runner"
-rtk uv run pytest tests/routers/test_health_router.py
+rtk uv run pytest --cache-clear --cov-fail-under=85  # full regression suite with coverage gate
+rtk uv run pytest tests/routers/test_health_router.py  # single test file with local coverage
 rtk uv run pytest -k "dependency_override"
-rtk uv run pytest   # coverage options come from addopts in pyproject.toml
+rtk uv run pytest --no-cov  # fastest zero-overhead iterative feedback
 ```
 
 `auto\test.cmd` wraps the suite run and cleans up test artifacts (manual use only).
@@ -161,12 +161,12 @@ Prefix supported terminal commands with `rtk`; if it is unavailable, run the bas
 
 ## Coverage
 
-- **Target**: 85% combined line + branch coverage, measured on `aie_estimator` only (`addopts` in `pyproject.toml`: `--cov=aie_estimator --cov-branch`). `streamlit_app` is tested but not measured.
+- **Target**: 85% combined line + branch coverage, measured across both `aie_estimator` and `streamlit_app` (`addopts` in `pyproject.toml`: `--cov=aie_estimator --cov=streamlit_app --cov-branch --cov-report=term-missing --basetemp=.pytest_tmp`).
 - **No regressions**: a change must not lower total coverage; new modules ship with tests for their public functions and error branches.
 - **Bug fixes** include a regression test that fails before the fix.
 - **Exclusions** (`# pragma: no cover`) are limited to entry-point glue and carry a reason comment.
 - **Priorities**: business logic first, then error branches and exception handlers, then UI code (extract testable functions rather than testing Streamlit rendering).
-- **Enforcement**: `--cov-fail-under=85` is active in `addopts`, so partial runs (single file, `-k`, `--lf`) fail the gate; add `--no-cov` for them.
+- **Enforcement**: `--cov-fail-under=85` is enforced via CLI during full regression runs or via `auto/test.cmd`. Single test file runs execute directly without being aborted by the whole-suite threshold; append `--no-cov` for zero-overhead iterative feedback.
 
 ---
 

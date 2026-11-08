@@ -2,20 +2,22 @@
 
 # --- Python Standard Library ---
 from contextlib import asynccontextmanager
-from typing import Final
+from typing import Any, Final
 
 # --- Third Party Libraries ---
 from fastapi import FastAPI, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 import structlog
 
 # --- App modules ---
+from aie_estimator.model_catalog import get_supported_models
 from aie_estimator.routers import estimations_router, health_router
 from aie_estimator.services.cache import get_estimation_cache
-from aie_estimator.services import LLMProviderError
+from aie_estimator.services.exceptions import LLMProviderError
 from aie_estimator.settings import Settings, get_settings
 from aie_estimator.telemetry import instrument_fastapi_app, setup_telemetry
 
@@ -45,9 +47,44 @@ class Server:
         self._register_routers(app)
         self._register_exception_handlers(app)
         self._register_cors_middleware(app)
+        self._setup_openapi(app)
         instrument_fastapi_app(app, self.settings)
 
         return app
+
+    def _setup_openapi(self, app: FastAPI) -> None:
+        """
+        Configure custom OpenAPI schema generation to inject dynamic model catalog enums.
+
+        :param app: FastAPI application instance to attach custom OpenAPI Generator to.
+        """
+
+        def custom_openapi() -> dict[str, Any] | None:
+            if app.openapi_schema:
+                return app.openapi_schema
+
+            openapi_schema = get_openapi(
+                title=app.title,
+                version=app.version,
+                openapi_version=app.openapi_version,
+                description=app.description,
+                routes=app.routes,
+            )
+
+            model_property = (
+                openapi_schema.get("components", {})
+                .get("schemas", {})
+                .get("EstimationRequest", {})
+                .get("properties", {})
+                .get("model")
+            )
+            if model_property:
+                model_property["enum"] = [*get_supported_models(), None]
+
+            app.openapi_schema = openapi_schema
+            return app.openapi_schema
+
+        app.openapi = custom_openapi
 
     @asynccontextmanager
     async def lifespan(self, app: FastAPI):

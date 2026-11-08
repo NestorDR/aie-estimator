@@ -9,7 +9,9 @@ from fastapi.testclient import TestClient
 import pytest
 
 # --- App modules ---
-from aie_estimator.services import LLMProviderError
+from aie_estimator.model_catalog import get_supported_models
+from aie_estimator.server import server
+from aie_estimator.services.exceptions import LLMProviderError
 
 
 def test_server_read_root_endpoint(client: TestClient) -> None:
@@ -106,3 +108,18 @@ def test_server_unhandled_exception_handler(
 
     assert response.status_code == expected_status
     assert expected_detail in response.json()["detail"]
+
+
+def test_server_openapi_includes_supported_models_enum() -> None:
+    """
+    GIVEN a configured Server instance with customized OpenAPI generation
+    WHEN server.app.openapi() is called
+    THEN the EstimationRequest model schema contains an enum containing all supported models and None.
+    """
+    openapi_doc = server.app.openapi()
+    model_prop = openapi_doc["components"]["schemas"]["EstimationRequest"]["properties"]["model"]
+    assert "enum" in model_prop
+    enum_values = model_prop["enum"]
+    assert None in enum_values
+    for model in get_supported_models():
+        assert model in enum_values

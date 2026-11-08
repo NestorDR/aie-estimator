@@ -12,16 +12,20 @@ from aie_estimator.schemas.estimations import (
     DetailLevel,
     EstimationRequest,
     EstimationResponse,
+    EstimationResult,
+    LOW_CONFIDENCE_THRESHOLD,
+    OUT_OF_SCOPE_PREFIX,
     OutputFormat,
+    Phase,
     ProjectType,
     TokenUsage,
 )
-from aie_estimator.services.providers.model_catalog import (
+from aie_estimator.settings import get_settings
+from aie_estimator.utils.model_constants import (
     DEFAULT_DEEP_PROFILE,
     DEFAULT_FAST_PROFILE,
     DEFAULT_GPT_LLM,
 )
-from aie_estimator.settings import get_settings
 
 
 @pytest.mark.parametrize(
@@ -195,23 +199,194 @@ def test_estimation_request_description_length_boundaries() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("phase_kwargs", "expected_match"),
+    [
+        ({"name": "", "duration_weeks": 2, "cost_eur": 1000, "summary": "Valid summary description."}, r"at least 1 character"),
+        ({"name": "P1", "duration_weeks": 0, "cost_eur": 1000, "summary": "Valid summary description."}, r"greater than or equal to 1"),
+        ({"name": "P1", "duration_weeks": 53, "cost_eur": 1000, "summary": "Valid summary description."}, r"less than or equal to 52"),
+        ({"name": "P1", "duration_weeks": 2, "cost_eur": -1, "summary": "Valid summary description."}, r"greater than or equal to 0"),
+        ({"name": "P1", "duration_weeks": 2, "cost_eur": 1000, "summary": "Short"}, r"at least 10 characters"),
+    ],
+    ids=[
+        "empty_name",
+        "zero_duration",
+        "duration_exceeds_max",
+        "negative_cost",
+        "summary_too_short",
+    ],
+)
+def test_phase_field_constraints_raise_validation_error(
+    phase_kwargs: dict[str, Any], expected_match: str
+) -> None:
+    """
+    GIVEN invalid Phase attribute values violating schema constraints
+    WHEN Phase is instantiated
+    THEN a pydantic ValidationError is raised.
+
+    :param phase_kwargs: Arguments for Phase instantiation.
+    :param expected_match: Expected regex match in the validation error.
+    """
+    with pytest.raises(ValidationError, match=expected_match):
+        Phase(**phase_kwargs)
+
+
+def test_estimation_result_field_ordering() -> None:
+    """
+    GIVEN the EstimationResult Pydantic model definition
+    WHEN model field keys are inspected in declaration order
+    THEN phases appears before total_duration_weeks and total_cost_eur for autoregressive generation.
+    """
+    field_names = list(EstimationResult.model_fields.keys())
+    assert field_names == [
+        "summary",
+        "confidence_pct",
+        "phases",
+        "total_duration_weeks",
+        "total_cost_eur",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("phases_costs", "total_cost", "should_pass"),
+    [
+        ([5000, 15000], 20000, True),
+        ([4000, 8000], 10000, False),
+        ([1000], 1000, True),
+        ([1000, 2000, 3000], 6500, False),
+    ],
+    ids=[
+        "costs_match_two_phases",
+        "costs_mismatch_two_phases",
+        "costs_match_single_phase",
+        "costs_mismatch_three_phases",
+    ],
+)
+def test_estimation_result_phases_sum_matches_total_validator(
+    phases_costs: list[int], total_cost: int, should_pass: bool
+) -> None:
+    """
+    GIVEN phase cost breakdown and total_cost_eur
+    WHEN EstimationResult is instantiated
+    THEN phases_sum_matches_total succeeds when values match, or raises ValidationError when they diverge.
+
+    :param phases_costs: List of individual phase costs in EUR.
+    :param total_cost: Stated total cost in EUR.
+    :param should_pass: Whether validation should succeed.
+    """
+    phases = [
+        Phase(
+            name=f"Phase {i+1}",
+            duration_weeks=2,
+            cost_eur=cost,
+            summary=f"Deliverable summary for phase {i+1}.",
+        )
+        for i, cost in enumerate(phases_costs)
+    ]
+    payload = {
+        "summary": "Project effort breakdown covering delivery milestones.",
+        "confidence_pct": 80,
+        "phases": phases,
+        "total_duration_weeks": len(phases) * 2,
+        "total_cost_eur": total_cost,
+    }
+    if should_pass:
+        result = EstimationResult(**payload)
+        assert result.total_cost_eur == total_cost
+    else:
+        with pytest.raises(ValidationError, match=r"does not match"):
+            EstimationResult(**payload)
+
+
+@pytest.mark.parametrize(
+    ("confidence_pct", "summary", "should_pass"),
+    [
+        (25, f"{OUT_OF_SCOPE_PREFIX} The project requirements are too ambiguous to estimate.", True),
+        (10, "The project is completely undefined.", False),
+        (LOW_CONFIDENCE_THRESHOLD, "Marginal confidence project scope description.", True),
+        (90, "High confidence well-defined web application scope.", True),
+    ],
+    ids=[
+        "low_confidence_with_prefix_passes",
+        "low_confidence_without_prefix_fails",
+        "threshold_confidence_without_prefix_passes",
+        "high_confidence_passes",
+    ],
+)
+def test_estimation_result_low_confidence_requires_out_of_scope_prefix(
+    confidence_pct: int, summary: str, should_pass: bool
+) -> None:
+    """
+    GIVEN confidence_pct and project summary narrative
+    WHEN EstimationResult is instantiated
+    THEN low_confidence_requires_out_of_scope_prefix enforces prefix rules when confidence < 30.
+
+    :param confidence_pct: Stated confidence percentage.
+    :param summary: Summary string.
+    :param should_pass: Whether validation is expected to succeed.
+    """
+    payload = {
+        "summary": summary,
+        "confidence_pct": confidence_pct,
+        "phases": [
+            Phase(
+                name="Discovery",
+                duration_weeks=2,
+                cost_eur=5000,
+                summary="Initial discovery and technical research phase.",
+            )
+        ],
+        "total_duration_weeks": 2,
+        "total_cost_eur": 5000,
+    }
+    if should_pass:
+        result = EstimationResult(**payload)
+        assert result.confidence_pct == confidence_pct
+    else:
+        with pytest.raises(ValidationError, match=r"requires summary"):
+            EstimationResult(**payload)
+
+
 def test_estimation_response_serialization() -> None:
     """
-    GIVEN valid response fields including telemetry
+    GIVEN a valid structured EstimationResult and telemetry
     WHEN EstimationResponse is instantiated
     THEN attributes are serialized accurately into dict and JSON.
     """
+    result = EstimationResult(
+        summary="Complete inventory SaaS delivery breakdown.",
+        confidence_pct=85,
+        phases=[
+            Phase(
+                name="Phase 1: Architecture",
+                duration_weeks=2,
+                cost_eur=5000,
+                summary="System architecture design and environment setup.",
+            ),
+            Phase(
+                name="Phase 2: Build",
+                duration_weeks=6,
+                cost_eur=15000,
+                summary="Core API and UI implementation with automated tests.",
+            ),
+        ],
+        total_duration_weeks=8,
+        total_cost_eur=20000,
+    )
     resp = EstimationResponse(
-        text="Phase 1: Discovery (2 weeks)",
+        result=result,
         prompt_version="v1",
+        cached=False,
         model=DEFAULT_GPT_LLM,
         provider="openai",
         cost_usd=0.0012,
         usage=TokenUsage(input_tokens=100, output_tokens=50, total_tokens=150),
     )
     data = resp.model_dump()
-    assert data["text"] == "Phase 1: Discovery (2 weeks)"
+    assert data["result"]["total_cost_eur"] == 20000
+    assert data["result"]["phases"][0]["name"] == "Phase 1: Architecture"
     assert data["prompt_version"] == "v1"
+    assert data["cached"] is False
     assert data["model"] == DEFAULT_GPT_LLM
     assert data["provider"] == "openai"
     assert data["cost_usd"] == 0.0012

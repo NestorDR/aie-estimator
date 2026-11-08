@@ -11,13 +11,13 @@ import pytest
 from redis.exceptions import ConnectionError as RedisConnectionError, TimeoutError as RedisTimeoutError
 
 # --- App modules ---
-from aie_estimator.services.providers.model_catalog import DEFAULT_CLAUDE_LLM, DEFAULT_GPT_LLM
 from aie_estimator.services.cache import (
     CACHE_KEY_PREFIX,
     EstimationCache,
     get_estimation_cache,
 )
 from aie_estimator.settings import Environment, Settings
+from aie_estimator.utils.model_constants import DEFAULT_CLAUDE_LLM, DEFAULT_GPT_LLM
 
 
 def test_make_key_deterministic_output() -> None:

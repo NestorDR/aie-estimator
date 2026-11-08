@@ -1,27 +1,21 @@
 # src/aie_estimator/services/providers/native_providers.py
 
 # --- Python Standard Library ---
-import asyncio
 from functools import lru_cache
-import random
 from typing import Any, Final
 
 # --- Third Party Libraries ---
 from anthropic import AsyncAnthropic
-from openai import (
-    APIConnectionError,
-    AsyncOpenAI,
-    BadRequestError,
-    InternalServerError,
-    RateLimitError,
-)
+import instructor
+from openai import AsyncOpenAI, BadRequestError
 import structlog
 
 # --- App modules ---
-from aie_estimator.services.exceptions import LLMProviderError
+from aie_estimator.model_catalog import get_model_catalog
+from aie_estimator.schemas.estimations import EstimationResult
+from aie_estimator.services.exceptions import LLMProviderError, unwrap_exception
 from aie_estimator.services.providers.formatting import format_provider_response
 from aie_estimator.services.providers.generation_options import GenerationOptions
-from aie_estimator.services.providers.model_catalog import get_model_catalog
 from aie_estimator.settings import get_settings
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
@@ -65,94 +59,85 @@ async def call_openai(
     opts: GenerationOptions,
 ) -> dict[str, Any]:
     """
-    Send an estimation request to the OpenAI Responses API with retries and exponential backoff.
+    Send an estimation request to the OpenAI API with structured parameter recovery.
 
     :param user_prompt: Pre-rendered user prompt string.
     :param system_prompt: Optional system instructions and reference context.
     :param opts: Generation options specifying model, max_tokens, temperature, reasoning_effort, and max_retries.
 
-    :return: Standardized response dictionary containing estimation, model, provider, finish_reason, and usage.
+    :return: Standardized response dictionary containing result, model, provider, finish_reason, and usage.
     :raises LLMProviderError: If retries are exhausted or an unrecoverable API error occurs.
     """
-    client = get_openai_client()
+    raw_client = get_openai_client()
     model = opts.effective_model
     spec = get_model_catalog().get(model)
     is_reasoning_model = spec.is_reasoning if spec is not None else False
 
+    client = instructor.from_openai(raw_client, mode=instructor.Mode.JSON)
+
+    messages: list[dict[str, Any]] = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": user_prompt})
+
+    token_key = "max_completion_tokens" if is_reasoning_model else "max_tokens"
     request_params: dict[str, Any] = {
         "model": model,
-        "input": user_prompt,
-        "max_output_tokens": opts.max_tokens,
-        "store": False,
+        "messages": messages,
+        token_key: opts.max_tokens,
     }
 
-    if system_prompt:
-        request_params["instructions"] = system_prompt
-
     if is_reasoning_model:
-        request_params["reasoning"] = {"effort": opts.reasoning_effort or "medium"}
+        request_params["reasoning_effort"] = opts.reasoning_effort or "medium"
     elif opts.temperature is not None:
         request_params["temperature"] = opts.temperature
 
+    structured_result = None
     response = None
-    secure_rng = random.SystemRandom()
 
-    for attempt in range(opts.max_retries):
+    for _ in range(2):
         try:
-            response = await client.responses.create(**request_params)
-            break
-        except (BadRequestError, RateLimitError, InternalServerError, APIConnectionError) as e:
-            if isinstance(e, BadRequestError) and "temperature" in str(e) and "temperature" in request_params:
-                request_params.pop("temperature", None)
-                log.warning("openai_temperature_stripped_on_bad_request", model=model, error=repr(e))
-
-            if attempt >= opts.max_retries - 1:
-                log.exception("provider_call_failed", provider="openai", model=model, attempt=attempt + 1, error=repr(e))
-                raise LLMProviderError(f"OpenAI call failed: {e}") from e
-
-            jitter: float = secure_rng.uniform(0, 1)
-            wait: float = (2**attempt) + jitter
-            log.warning(
-                "provider_retry_scheduled",
-                provider="openai",
-                model=model,
-                attempt=attempt + 1,
+            structured_result, response = await client.chat.completions.create_with_completion(
+                response_model=EstimationResult,
                 max_retries=opts.max_retries,
-                wait_seconds=round(wait, 2),
-                error=repr(e),
+                **request_params,
             )
-            await asyncio.sleep(wait)
+            break
         except Exception as e:
+            err = unwrap_exception(e)
+            if isinstance(err, BadRequestError):
+                if "temperature" in str(err) and "temperature" in request_params:
+                    request_params.pop("temperature", None)
+                    log.warning("provider_temperature_stripped", provider="openai", model=model, error=repr(err))
+                    continue
+                if "max_tokens" in str(err) and "max_tokens" in request_params:
+                    request_params["max_completion_tokens"] = request_params.pop("max_tokens")
+                    log.warning("provider_tokens_remapped", provider="openai", model=model, error=repr(err))
+                    continue
+
             log.exception(
                 "provider_call_failed",
                 provider="openai",
                 model=model,
-                error=repr(e),
+                error=repr(err),
             )
-            raise LLMProviderError(f"OpenAI call failed: {e}") from e
-
-    if response is None:
+            raise LLMProviderError(f"OpenAI call failed: {err}") from e
+    else:
         log.error("provider_retries_exhausted", provider="openai", model=model)
         raise LLMProviderError("OpenAI call failed: request exhausted after retry attempts.")
 
-    status = getattr(response, "status", "completed")
-    if status != "completed":
-        if status == "incomplete":
-            detail = f"Incomplete response from OpenAI: {getattr(response, 'incomplete_details', None)}"
-        elif status == "failed":
-            detail = f"OpenAI request failed: {getattr(response, 'error', None)}"
-        else:
-            detail = f"OpenAI response status not completed: {status}"
-        log.error("provider_response_incomplete", provider="openai", model=model, status=status, detail=detail)
-        raise LLMProviderError(detail)
+    if structured_result is None or response is None:
+        log.error("provider_retries_exhausted", provider="openai", model=model)
+        raise LLMProviderError("OpenAI call failed: request exhausted after retry attempts.")
 
-    finish_reason = "stop"
+    choice = response.choices[0]
+    finish_reason = getattr(choice, "finish_reason", "stop") or "stop"
     usage = getattr(response, "usage", None)
-    input_tokens = getattr(usage, "input_tokens", 0) if usage else 0
-    output_tokens = getattr(usage, "output_tokens", 0) if usage else 0
+    input_tokens = getattr(usage, "prompt_tokens", 0) if usage else 0
+    output_tokens = getattr(usage, "completion_tokens", 0) if usage else 0
 
     log.info(
-        "llm_response_received",
+        "provider_response_received",
         provider="openai",
         model=getattr(response, "model", model),
         finish_reason=finish_reason,
@@ -161,7 +146,7 @@ async def call_openai(
     )
 
     return format_provider_response(
-        estimation=getattr(response, "output_text", ""),
+        result=structured_result,
         model=getattr(response, "model", model),
         provider="openai",
         finish_reason=finish_reason,
@@ -182,11 +167,13 @@ async def call_anthropic(
     :param system_prompt: Optional system instructions and reference context.
     :param opts: Generation options specifying model, max_tokens, temperature, and reasoning_effort.
 
-    :return: Standardized response dictionary containing estimation, model, provider, finish_reason, and usage.
+    :return: Standardized response dictionary containing result, model, provider, finish_reason, and usage.
     :raises LLMProviderError: If the API call fails or encounters an unhandled provider error.
     """
-    client = get_anthropic_client()
+    raw_client = get_anthropic_client()
     model = opts.effective_model
+
+    client = instructor.from_anthropic(raw_client)
 
     formatted_messages = [{"role": "user", "content": user_prompt}]
 
@@ -206,25 +193,24 @@ async def call_anthropic(
         kwargs["temperature"] = opts.temperature
 
     try:
-        response = await client.messages.create(**kwargs)
+        structured_result, response = await client.messages.create_with_completion(
+            response_model=EstimationResult,
+            max_retries=opts.max_retries,
+            **kwargs,
+        )
     except Exception as e:
+        err = unwrap_exception(e)
         log.exception(
             "provider_call_failed",
             provider="anthropic",
             model=model,
-            error=repr(e),
+            error=repr(err),
         )
-        raise LLMProviderError(f"Anthropic call failed: {e}") from e
+        raise LLMProviderError(f"Anthropic call failed: {err}") from e
 
     finish_reason = getattr(response, "stop_reason", "end_turn") or "end_turn"
     if finish_reason == "max_tokens":
         log.warning("provider_response_truncated", provider="anthropic", model=model, stop_reason=finish_reason)
-
-    text_block = next(
-        (block for block in response.content if getattr(block, "type", None) == "text"),
-        None,
-    )
-    estimation_text = getattr(text_block, "text", "") if text_block else ""
 
     usage = getattr(response, "usage", None)
     input_tokens = getattr(usage, "input_tokens", 0) if usage else 0
@@ -240,7 +226,7 @@ async def call_anthropic(
     )
 
     return format_provider_response(
-        estimation=estimation_text,
+        result=structured_result,
         model=getattr(response, "model", model),
         provider="anthropic",
         finish_reason=finish_reason,

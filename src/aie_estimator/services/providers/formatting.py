@@ -3,16 +3,14 @@
 # --- Python Standard Library ---
 from typing import Any
 
-# --- Third Party Libraries ---
-# (none)
-
 # --- App modules ---
+from aie_estimator.schemas.estimations import EstimationResult
 from aie_estimator.services.providers.pricing import estimate_cost
 
 
 def format_provider_response(
     *,
-    estimation: str,
+    result: EstimationResult,
     model: str,
     provider: str,
     finish_reason: str,
@@ -23,7 +21,7 @@ def format_provider_response(
     """
     Standardize the internal dictionary contract across provider dispatch engines.
 
-    :param estimation: Generated Markdown estimation text.
+    :param result: Validated EstimationResult instance.
     :param model: Upstream model identifier reported by provider.
     :param provider: Upstream provider identifier.
     :param finish_reason: Upstream model completion finish reason.
@@ -31,10 +29,10 @@ def format_provider_response(
     :param output_tokens: Egress completion token count.
     :param cost_usd: Execution cost in USD reported by the routing engine, or None to calculate fallback.
 
-    :return: Standardized response dictionary for downstream evaluation and cache storage.
+    :return: Standardized response dictionary for downstream cache storage and router responses.
     """
     response: dict[str, Any] = {
-        "estimation": estimation,
+        "result": result,
         "model": model,
         "provider": provider,
         "finish_reason": finish_reason,

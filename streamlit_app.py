@@ -12,9 +12,8 @@ import streamlit as st
 from streamlit import runtime
 
 # --- App modules ---
-from aie_estimator.schemas.estimations import DetailLevel, OutputFormat, ProjectType
-from aie_estimator.services.providers.model_catalog import get_supported_models
-from aie_estimator.services.providers.generation_options import ProviderMode
+from aie_estimator.schemas.estimations import DetailLevel, OutputFormat, ProjectType, ProviderMode
+from aie_estimator.model_catalog import get_supported_models
 from aie_estimator.settings import get_settings
 
 load_dotenv()
@@ -264,6 +263,44 @@ if runtime.exists():
     # Render latest estimation output and telemetry from session state
     if st.session_state.latest_estimation:
         estimation_data = st.session_state.latest_estimation
-        st.markdown(f"**Prompt version:** `{estimation_data.get('prompt_version', '?')}`")
-        st.markdown(estimation_data.get("text", ""))
+        prompt_version = estimation_data.get("prompt_version", "?")
+        is_cached = bool(estimation_data.get("cached", False))
+
+        cache_status = " :material/bolt: `Cached`" if is_cached else ""
+        st.markdown(f"**Prompt version:** `{prompt_version}`{cache_status}")
+
+        res = estimation_data.get("result")
+        if isinstance(res, dict):
+            summary = res.get("summary", "")
+            confidence_pct = int(res.get("confidence_pct", 0))
+
+            if confidence_pct < 30 or summary.startswith("Out of scope:"):
+                st.warning(summary, icon=":material/warning:")
+            else:
+                st.info(summary, icon=":material/info:")
+
+            col_cost, col_dur, col_conf = st.columns(3)
+            with col_cost:
+                st.metric("Total cost", f"€{res.get('total_cost_eur', 0):,}")
+            with col_dur:
+                st.metric("Total duration", f"{res.get('total_duration_weeks', 0)} weeks")
+            with col_conf:
+                st.metric("Confidence", f"{confidence_pct}%")
+
+            phases = res.get("phases", [])
+            if phases:
+                st.subheader("Phase breakdown")
+                phases_table = [
+                    {
+                        "Phase": phase.get("name", ""),
+                        "Duration (weeks)": phase.get("duration_weeks", 0),
+                        "Cost (€)": f"€{phase.get('cost_eur', 0):,}",
+                        "Summary": phase.get("summary", ""),
+                    }
+                    for phase in phases
+                ]
+                st.dataframe(phases_table, width="stretch", hide_index=True)
+        elif "text" in estimation_data:
+            st.markdown(estimation_data.get("text", ""))
+
         render_telemetry_container(estimation_data)

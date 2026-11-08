@@ -20,7 +20,12 @@ Always apply good software engineering practices: **KISS, YAGNI, DRY, SOLID, ACI
 ### Specific Code Rules
 - **First line of modules**: each module must start with its full relative path inside a comment. (e.g. `# src/01_foundations/sesion-01-ejercicios-alumno_1.py`).
 - **Top-level imports**: imports MUST be at the top of the module separated in three groups with a blank line between each group, in the order: `# --- Python Standard Library ---`; `# --- Third Party Libraries ---`; `# --- App modules ---`. If any of the groups are empty, remove the corresponding separator heading `# --- ... ---`.
-- **Explicit Re-exports**: In `__init__.py` files or modules intended for re-exporting, prefer explicit redundant aliases (`from path import Symbol as Symbol`) over declaring `__all__` lists to mark public symbols.
+- **Package `__init__.py` and Re-export Policy**:
+  - **Default to Minimal/Empty `__init__.py`**: Internal subpackages (`schemas`, `routers`, `prompts`, `utils`, `services`) must keep their `__init__.py` empty (containing only the required module path comment). Do not add blanket convenience re-exports. Consumers must import symbols directly from the concrete module (e.g. `from aie_estimator.schemas.estimations import EstimationRequest`).
+  - **Intentional Facades Only**: Re-exports in `__init__.py` are strictly reserved for packages designed as intentional public facades that encapsulate internal subpackage complexity (e.g. `services.providers` exporting only `call_llm` and `GenerationOptions`).
+  - **No Out-of-Package Re-exports**: An `__init__.py` must NEVER re-export symbols defined outside its own package directory (e.g. do not re-export `model_catalog` or `exceptions` from `providers/__init__.py`).
+  - **Redundant Alias Syntax**: When re-exporting symbols in a facade `__init__.py`, always use redundant aliasing (`from path import Symbol as Symbol`) instead of `__all__` lists to explicitly mark public symbols for type checkers.
+  - **Submodule Imports**: Submodules can be imported directly from their package namespace (e.g. `from aie_estimator.routers import estimations_router, health_router`) without requiring redundant alias renaming.
 - **Constants**: Constants MUST be named in `UPPER_CASE_WITH_UNDERSCORES` (e.g., `MAX_ITERATIONS = 100`) and declared with `Final` from `typing`. This applies to constants regardless of their type: built-ins (str, int, float, bool, None), collections (list, tuple, dict, set), and other objects. Internal constants MUST start with an underscore and be named in `_UPPER_CASE_WITH_UNDERSCORES` (e.g., `_INTERNAL_CONSTANT = 1`).
 - **String quotes**: Use double quotes (`"..."`) for all string literals and f-strings by default. Use simple quotes (`'...'`) only when they avoid escaping apostrophes or improve readability.
 - **Self-Descriptive Names**: Prefer clear and self-descriptive names; avoid acronyms and abbreviations.
@@ -33,8 +38,11 @@ Always apply good software engineering practices: **KISS, YAGNI, DRY, SOLID, ACI
 - **Testing and Coverage**: Pytest is configured in `pyproject.toml`.
   - Prefer solutions that facilitate achieving high coverage with Pytest-cov without deteriorating style, logic, or performance. Keep business logic and maintainability above micro-optimizations. Use docstring style GIVEN-WHEN-THEN.
   - When asserting exceptions with `pytest.raises`, use concise regular expressions (`match=r'...'`) targeting simple, distinctive keywords (e.g., `match=r'Invalid integer'`, `match=r'cannot be empty'`) rather than expecting full, literal error messages. This prevents tests from being brittle to minor message formatting adjustments while still strictly verifying the intended failure condition.
-  - Deduplicate with `@pytest.mark.parametrize`** to consolidate symmetric or complementary test functions into single parameterized test functions.
+  - Deduplicate with `@pytest.mark.parametrize` to consolidate symmetric or complementary test functions into single parameterized test functions.
   - Functions across test modules must include explicit type hints.
+  - **Pytest Configuration Policy (`addopts`)**: `pyproject.toml` (`tool.pytest.ini_options.addopts`) MUST NEVER include `--cov-fail-under`.
+  - **Single Test File Runs**: Execute directly with `rtk uv run pytest path/to/test_file.py` (which reports local coverage without whole-suite threshold failures) or append `--no-cov` for zero-overhead iterative feedback.
+  - **Full Regression Runs**: The 85% coverage gate (`--cov-fail-under=85`) MUST be passed as an explicit CLI flag (e.g. `rtk uv run pytest --cov-fail-under=85`) or via `auto/test.cmd`. Never embed this threshold in `pyproject.toml`.
 
 ## 4. Comments and Documentation
 - **Preservation**: Do not delete existing comments unless the associated code is modified or deleted. When modifying commented code, update the comments to match the new behavior.
@@ -51,9 +59,9 @@ Always apply good software engineering practices: **KISS, YAGNI, DRY, SOLID, ACI
   - Never execute `.cmd` or `.ps1` scripts inside the `auto/` directory. These are reserved for manual developer execution.
 - **Context & Tool Optimization**:
   - **Think in Code**: During exploratory tasks (such as `/opsx-explore`), do not read multiple files into context sequentially. Prefer writing and executing targeted scripts via `ctx_execute` to parse files locally and output only distilled summaries.
-  - **Terminal Output**: Adhere to the RTK guidelines for CLI commands to keep context usage minimal during test and build runs.
+  - **Terminal Output**: Adhere to the RTK guidelines for CLI commands to keep context usage minimal during test and build runs. On Windows, always invoke linters and tools via `uv run` (e.g. `rtk uv run ruff check`, `rtk uv run pytest`) to ensure binaries installed in virtual environments are resolved correctly.
 - **LiteLLM Cost Map Policy**: LiteLLM is permanently configured to use its bundled local cost map via `Settings` and `[tool.pytest_env]`. Never execute ad-hoc scripts that fetch remote pricing or inject import-time `os.environ` hacks. Always run test suites via `rtk uv run pytest`.
-- **Windows Test Execution Mode**: When executing test suites (`rtk uv run pytest` or `uv run pytest`) on Windows, always pass `BypassSandbox: true`. Python 3.14's default `asyncio.ProactorEventLoop` requires Windows I/O Completion Ports (IOCP) and local loopback socket creation (`WSASocket`) that are restricted by the standard process sandbox, causing async tests to hang.
+- **Windows Async Execution Mode**: When executing test suites (`rtk uv run pytest` or `uv run pytest`) or running ad-hoc Python scripts that invoke `asyncio` event loops or Streamlit AppTest on Windows, always pass `BypassSandbox: true`. Python 3.14's default `asyncio.ProactorEventLoop` requires Windows I/O Completion Ports (IOCP) and local loopback socket creation (`WSASocket`) that are restricted by the standard process sandbox, causing async processes to hang indefinitely.
 
 ## 6. User Interaction Rules
 - **Tone**: Professional, direct, objective, and critical. Avoid flattery, sycophancy, or celebratory language. Write plainly using short, declarative sentences.

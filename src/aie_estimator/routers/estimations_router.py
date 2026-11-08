@@ -8,9 +8,10 @@ from fastapi import APIRouter, status
 import structlog
 
 # --- App modules ---
+import aie_estimator.services.estimations_service as estimations_service
 from aie_estimator.prompts.loader import render_estimation_prompt, resolve_prompt_version
 from aie_estimator.schemas.estimations import EstimationRequest, EstimationResponse
-from aie_estimator.services import estimations_service
+from aie_estimator.services.providers import GenerationOptions
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
 
@@ -39,12 +40,13 @@ async def create_estimation(request: EstimationRequest) -> EstimationResponse:
     log.info("estimation_request_received", prompt_version=prompt_version, model=request.model)
 
     system_prompt, user_prompt = render_estimation_prompt(request, version=prompt_version)
-    opts = estimations_service.GenerationOptions(model=request.model, engine=request.engine)
+    opts = GenerationOptions(model=request.model, engine=request.engine)
 
     result = await estimations_service.generate_estimation(system_prompt, user_prompt, opts)
 
     return EstimationResponse(
-        text=result.get("text") or result.get("estimation", ""),
+        result=result["result"],
+        cached=bool(result.get("cache_hit", False)),
         prompt_version=prompt_version,
         model=result["model"],
         provider=result["provider"],

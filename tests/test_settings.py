@@ -4,6 +4,7 @@
 import logging
 import logging.handlers
 from os import environ
+from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
@@ -251,3 +252,25 @@ def test_settings_litellm_local_model_cost_map_test_env() -> None:
     """
     settings = Settings(app_env=Environment.TEST)
     assert settings.litellm_local_model_cost_map is True
+
+
+def test_settings_llm_profiles_path_default_and_env_override(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """
+    GIVEN default Settings and an environment variable override for LLM_PROFILES_PATH
+    WHEN Settings is instantiated
+    THEN the default resolves to package llm_profiles.yml and the override reflects the specified Path.
+
+    :param monkeypatch: Pytest monkeypatch fixture.
+    :param tmp_path: Pytest temporary directory fixture.
+    """
+    default_settings = Settings(app_env=Environment.TEST)
+    assert default_settings.llm_profiles_path.name == "llm_profiles.yml"
+    assert default_settings.llm_profiles_path.is_file()
+
+    custom_path = tmp_path / "custom_profiles.yml"
+    monkeypatch.setenv("LLM_PROFILES_PATH", str(custom_path))
+    overridden_settings = Settings(app_env=Environment.TEST)
+    assert overridden_settings.llm_profiles_path == custom_path

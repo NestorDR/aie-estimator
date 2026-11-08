@@ -29,7 +29,8 @@ set VIRTUAL_ENV=.venv
 :: --cache-clear: Clear pytest internal cache prior to running tests.
 :: --basetemp: Route temporary fixture directories to the system TEMP folder.
 :: --cov=streamlit_app: Measure line and branch coverage across the Streamlit UI module.
-uv run --locked --active pytest %* --cache-clear --basetemp="%TEMP%\pytest_runner" --cov=streamlit_app
+:: --cov-fail-under=85: Require overall test coverage of at least 85%.
+uv run --locked --active pytest %* --cache-clear --basetemp="%TEMP%\pytest_runner" --cov=streamlit_app --cov-fail-under=85
 set _EXIT_CODE=%ERRORLEVEL%
 
 :: Post-test cleanup of project root artifacts

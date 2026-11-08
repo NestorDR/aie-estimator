@@ -38,7 +38,7 @@ flowchart TD
         TemplateEngine -->|"System & User Prompts"| Service["EstimationsService\n(generate_estimation)"]
         Service -->|"3. Query cache key\n(SHA-256 digest)"| CacheCheck{"Exact-Match Cache\n(Redis)"}
 
-        CacheCheck -->|"Cache Hit"| ServiceOutput["Result Dictionary\n(cost_usd, usage, text)"]
+        CacheCheck -->|"Cache Hit"| ServiceOutput["Result Dictionary\n(cost_usd, usage, result)"]
         CacheCheck -->|"Cache Miss"| Dispatcher["Execution Engine Dispatcher\n(call_llm)"]
 
         Dispatcher -->|"engine='litellm'"| LiteLLMRouting["LiteLLM Router\n(Profiles, Cost-Routing & Dynamic Backoff)"]
@@ -50,7 +50,7 @@ flowchart TD
     end
 
     ServiceOutput -->|"4. Construct response"| ResponseMapper["Response Mapping\n(EstimationResponse)"]
-    ResponseMapper -->|"5. HTTP 200: EstimationResponse\n(Rendered estimation & telemetry)"| Client
+    ResponseMapper -->|"5. HTTP 200: EstimationResponse\n(Structured result & telemetry)"| Client
 ```
 
 ## Project Structure
@@ -64,6 +64,7 @@ aie-estimator/
 │   └── aie_estimator/
 │       ├── __init__.py
 │       ├── __main__.py                 # Application CLI entry point
+│       ├── model_catalog.py            # Dynamic model catalog resolution and ModelSpec
 │       ├── settings.py                 # Pydantic BaseSettings configuration
 │       ├── server.py                   # FastAPI server setup and lifespan handling
 │       ├── telemetry.py                # OpenTelemetry TracerProvider and structlog context injection
@@ -84,14 +85,13 @@ aie-estimator/
 │       │   ├── __init__.py
 │       │   ├── cache.py                # Deterministic exact-match Redis cache
 │       │   ├── estimations_service.py  # Estimation orchestration and multi-engine coordination
-│       │   ├── evaluation.py           # Output evaluation and scoring
 │       │   ├── exceptions.py           # Service and provider exception hierarchy
 │       │   └── providers/              # Isolated provider integrations and dispatch
-│       │       ├── __init__.py         # Unified call_llm dispatch function
+│       │       ├── __init__.py         # Providers subpackage re-export facade
+│       │       ├── dispatcher.py       # Multi-engine provider dispatch (call_llm)
 │       │       ├── formatting.py       # Response normalization across engines
 │       │       ├── generation_options.py # GenerationOptions, ProviderMode, ReasoningEffort
 │       │       ├── litellm_provider.py # LiteLLM Router integration and model routing
-│       │       ├── model_catalog.py    # Dynamic model catalog resolution and ModelSpec
 │       │       ├── native_providers.py # Direct SDK dispatch for OpenAI and Anthropic
 │       │       └── pricing.py          # Offline pricing table and token cost estimation
 │       └── utils/
@@ -253,7 +253,33 @@ Analyzes project requirements and parameters, returning a structured effort esti
 
 ```json
 {
-  "text": "## Customer Feedback Platform Estimation\n\n### Task breakdown\n| Task | Hours | Cost (EUR) |\n| Webhook API & Handlers | 30 | 1875.00 |\n| Sentiment Analysis Pipeline | 25 | 1562.50 |\n| Slack Notification Integration | 15 | 937.50 |\n| Frontend Dashboard | 35 | 2187.50 |\n| Testing & Deployment | 20 | 1250.00 |\n\n### Totals\n- Total hours: 125\n- Total cost: 7812.50 EUR\n\n### Team\n- 2 Full-Stack Developers\n\n### Duration\n- 3-4 weeks",
+  "result": {
+    "summary": "Customer feedback platform with sentiment analysis and Slack notifications.",
+    "confidence_pct": 85,
+    "phases": [
+      {
+        "name": "Design & Specifications",
+        "duration_weeks": 1,
+        "cost_eur": 2500,
+        "summary": "API contracts, UX flows, and integration architecture."
+      },
+      {
+        "name": "Core Backend & Integrations",
+        "duration_weeks": 2,
+        "cost_eur": 5000,
+        "summary": "Webhook API, sentiment pipeline, and Slack notification service."
+      },
+      {
+        "name": "Frontend & Delivery",
+        "duration_weeks": 1,
+        "cost_eur": 2500,
+        "summary": "Management dashboard, end-to-end tests, and deployment pipeline."
+      }
+    ],
+    "total_duration_weeks": 4,
+    "total_cost_eur": 10000
+  },
+  "cached": false,
   "prompt_version": "v1",
   "model": "openai/gpt-6-luna",
   "provider": "litellm",

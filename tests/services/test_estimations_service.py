@@ -9,13 +9,14 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 # --- App modules ---
-from aie_estimator.services.providers.model_catalog import (
+import aie_estimator.services.estimations_service as estimations_service
+from aie_estimator.schemas.estimations import EstimationResult
+from aie_estimator.services.exceptions import LLMProviderError
+from aie_estimator.services.providers import GenerationOptions
+from aie_estimator.utils.model_constants import (
     DEFAULT_FAST_PROFILE,
     DEFAULT_GPT_LLM,
 )
-from aie_estimator.services import LLMProviderError
-from aie_estimator.services import estimations_service
-from aie_estimator.services.providers import GenerationOptions
 
 
 @pytest.fixture
@@ -42,14 +43,13 @@ async def test_generate_estimation_cache_hit_bypasses_provider(
     """
     GIVEN a cached estimation result matching generation parameters
     WHEN generate_estimation executes
-    THEN cached data is returned with cache_hit=True and provider dispatch is bypassed.
+    THEN cached data is returned with cache_hit=True, result is validated, and provider dispatch is bypassed.
 
     :param sample_transcription: Sample meeting transcript text fixture.
     :param make_estimation_result: Factory fixture creating provider responses.
     :param monkeypatch: Pytest monkeypatch fixture.
     """
     cached_payload = make_estimation_result(
-        estimation="Cached estimation text.",
         model=DEFAULT_GPT_LLM,
         provider="openai",
     )
@@ -63,7 +63,8 @@ async def test_generate_estimation_cache_hit_bypasses_provider(
 
     result = await estimations_service.generate_estimation("System prompt", sample_transcription)
 
-    assert result["text"] == "Cached estimation text."
+    assert isinstance(result["result"], EstimationResult)
+    assert result["result"].total_cost_eur == 20000
     assert result["cache_hit"] is True
     mock_call_llm.assert_not_called()
     mock_cache.set.assert_not_called()
@@ -79,7 +80,7 @@ async def test_generate_estimation_cache_miss_calls_provider_and_stores(
     """
     GIVEN an estimation request with a cache miss
     WHEN generate_estimation executes
-    THEN call_llm receives the prompts and options, cache_hit is False, and the result is cached once.
+    THEN call_llm receives prompts and options, cache_hit is False, and serialized result is cached once.
 
     :param sample_transcription: Sample meeting transcript text fixture.
     :param make_estimation_result: Factory fixture creating provider responses.
@@ -88,7 +89,6 @@ async def test_generate_estimation_cache_miss_calls_provider_and_stores(
     """
     mock_call_llm = AsyncMock(
         return_value=make_estimation_result(
-            estimation="Router estimation output.",
             model=DEFAULT_FAST_PROFILE,
             provider="litellm",
         )
@@ -98,6 +98,7 @@ async def test_generate_estimation_cache_miss_calls_provider_and_stores(
     opts = GenerationOptions(engine="litellm", model=DEFAULT_FAST_PROFILE)
     result = await estimations_service.generate_estimation("System prompt", sample_transcription, opts=opts)
 
+    assert isinstance(result["result"], EstimationResult)
     assert result["provider"] == "litellm"
     assert result["cache_hit"] is False
     mock_call_llm.assert_awaited_once_with(
@@ -106,6 +107,9 @@ async def test_generate_estimation_cache_miss_calls_provider_and_stores(
         opts=opts,
     )
     assert mock_default_cache.set.call_count == 1
+    stored_payload = mock_default_cache.set.call_args[0][1]
+    assert isinstance(stored_payload["result"], dict)
+    assert stored_payload["result"]["total_cost_eur"] == 20000
 
 
 @pytest.mark.anyio
@@ -174,7 +178,6 @@ async def test_generate_estimation_emits_lifecycle_telemetry_events(
     monkeypatch.setattr(estimations_service, "log", mock_log)
 
     mock_result = make_estimation_result(
-        estimation="Lifecycle test estimation output.",
         model=model,
         provider=expected_provider,
         cost_usd=0.0042,
@@ -184,7 +187,7 @@ async def test_generate_estimation_emits_lifecycle_telemetry_events(
     opts = GenerationOptions(engine=engine, model=model)
     result = await estimations_service.generate_estimation("System prompt", sample_transcription, opts=opts)
 
-    assert result["text"] == "Lifecycle test estimation output."
+    assert isinstance(result["result"], EstimationResult)
 
     started_call = next((call for call in mock_log.info.call_args_list if call.args and call.args[0] == "estimation_generation_started"), None)
     assert started_call is not None
@@ -199,4 +202,7 @@ async def test_generate_estimation_emits_lifecycle_telemetry_events(
     assert completed_call.kwargs["model"] == model
     assert isinstance(completed_call.kwargs["latency_ms"], int)
     assert completed_call.kwargs["cost_usd"] == 0.0042
+    assert completed_call.kwargs["confidence_pct"] == 85
+    assert completed_call.kwargs["total_cost_eur"] == 20000
+    assert completed_call.kwargs["phases"] == 2
     assert "usage" in completed_call.kwargs

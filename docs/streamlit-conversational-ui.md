@@ -4,7 +4,7 @@
 
 This document specifies the structured product parameter estimation web interface and exact-match response caching layer implemented in `aie-estimator`.
 
-The web interface is powered by Streamlit (`streamlit_app.py`) and transitions the client presentation layer from legacy conversational chat feeds into a structured parameter product interface. It enables software engineers to configure multi-dimensional project parameters (`description`, `project_type`, `detail_level`, `output_format`), validate inputs client-side, submit typed `EstimationRequest` payloads to `POST /api/v1/estimate`, observe instant static Markdown rendering of the generated estimation and active prompt template version, and inspect turn-anchored execution telemetry in an expandable container.
+The web interface is powered by Streamlit (`streamlit_app.py`) and transitions the client presentation layer from legacy conversational chat feeds into a structured parameter product interface. It enables software engineers to configure multi-dimensional project parameters (`description`, `project_type`, `detail_level`, `output_format`), validate inputs client-side, submit typed `EstimationRequest` payloads to `POST /api/v1/estimate`, observe structured rendering of the generated `EstimationResult` (summary alert, metric cards for total cost, duration, and confidence, and phase breakdown table) and active prompt template version, and inspect turn-anchored execution telemetry in an expandable container.
 
 Complementing the UI, an exact-match caching layer (`src/aie_estimator/services/cache.py`) backed by Redis short-circuits repeated LLM invocations by returning cached estimations with low latency (~1–3 ms) when identical generation parameters and prompt contents are detected.
 
@@ -52,9 +52,11 @@ Streamlit automatically opens the application at `http://localhost:8501`.
    - **Detail level**: Segmented control (`st.segmented_control`) selecting among `summary`, `medium`, or `detailed`.
    - **Output format**: Dropdown (`st.selectbox`) selecting among `phases_table`, `line_items`, or `narrative`.
 3. **Submit Estimation**: Click the primary submit button (`Generate estimation`).
-4. **View Rendered Estimation**:
-   - The estimation body text renders instantly as Markdown in the main viewport.
-   - The active prompt template version is displayed prominently above the estimation text (`Prompt version: v1`).
+4. **View Rendered Structured Estimation**:
+   - The active prompt template version is displayed prominently above the estimation, accompanied by a `Cached` indicator badge when served from Redis (`Prompt version: v1 :material/bolt: Cached`).
+   - The project summary is rendered inside an informative alert (`st.info`), automatically transitioning to a warning indicator (`st.warning`) if confidence is below 30% or if prefixed with `"Out of scope:"`.
+   - Primary estimation metrics render across three responsive columns: **Total cost** in EUR (`€XX,XXX`), **Total duration** in weeks (`X weeks`), and **Confidence** percentage (`XX%`).
+   - The project phase breakdown is presented in a clean tabular view detailing phase names, durations in weeks, EUR costs, and scope summaries.
 
 ![Streamlit Product Estimation Form](assets/session04_streamlit_ui_1_of_2.png)
 ![Streamlit Product Estimation Telemetry and Output](assets/session04_streamlit_ui_2_of_2.png)
@@ -89,7 +91,8 @@ Directly beneath each rendered estimation, an expandable telemetry card (`:mater
 
 When identical estimation parameters and description text are submitted again:
 - The backend returns the cached estimation directly from Redis.
-- The UI reflects the cached response with low latency (~1–3 ms) and zero incremental token expenditure.
+- The UI displays the cached response with low latency (~1–3 ms) and zero incremental token expenditure.
+- The prompt version banner highlights a `Cached` indicator badge.
 
 ---
 
@@ -113,9 +116,13 @@ async def send_estimation_request(
     ...
 ```
 
-### 2. Instant Static Markdown Rendering
+### 2. Structured Estimation Result Rendering
 
-The legacy simulated word-streaming generator has been replaced by instant static rendering (`st.markdown(estimation_data.get("text", ""))`). This provides instantaneous, deterministic report presentation, aligns with batch template prompt generation, and eliminates artificial browser rendering delays.
+The legacy free-text markdown renderer has been replaced by structured `EstimationResult` formatting:
+- Project summary is presented with conditional styling: warning alert (`st.warning`) for low-confidence or out-of-scope estimations, and informational alert (`st.info`) for standard estimations.
+- High-level KPIs are rendered via native `st.metric` widgets (`Total cost`, `Total duration`, and `Confidence`).
+- Phase-level allocations are rendered through an interactive `st.dataframe` detailing Phase name, duration, EUR cost, and summary.
+- If legacy text responses are encountered, the interface gracefully falls back to `st.markdown`.
 
 ### 3. Session State Persistence
 

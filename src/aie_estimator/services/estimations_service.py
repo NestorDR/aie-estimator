@@ -8,6 +8,7 @@ from typing import Any, Final
 import structlog
 
 # --- App modules ---
+from aie_estimator.schemas.estimations import EstimationResult
 from aie_estimator.services.cache import EstimationCache, get_estimation_cache
 from aie_estimator.services.exceptions import LLMProviderError
 from aie_estimator.services.providers import GenerationOptions, call_llm
@@ -21,13 +22,13 @@ async def generate_estimation(
     opts: GenerationOptions | None = None,
 ) -> dict[str, Any]:
     """
-    Coordinate the end-to-end software project estimation workflow using multi-role prompts.
+    Coordinate the end-to-end software project estimation workflow using multirole prompts.
 
     :param system_prompt: Pre-rendered system prompt string containing instructions and calibration examples.
     :param user_prompt: Pre-rendered user prompt string containing the project details.
     :param opts: Optional generation options controlling model selection, engine, and token limits.
 
-    :return: Response dictionary containing estimation text, model metadata, token usage, latency, and cache hit indicator.
+    :return: Response dictionary containing validated EstimationResult, model metadata, token usage, latency, and cache hit indicator.
     :raises LLMProviderError: If any LLM provider invocation encounters an error.
     :raises ValueError: If user_prompt is not provided.
     """
@@ -56,6 +57,8 @@ async def generate_estimation(
     if cached_result is not None:
         cached_result["latency_ms"] = int((time.perf_counter() - t0) * 1000)
         cached_result["cache_hit"] = True
+        if isinstance(cached_result.get("result"), dict):
+            cached_result["result"] = EstimationResult.model_validate(cached_result["result"])
         log.info("estimation_cache_hit", model=model, latency_ms=cached_result["latency_ms"])
         return cached_result
 
@@ -88,13 +91,21 @@ async def generate_estimation(
         )
         raise LLMProviderError(f"LLM call failed: {e}") from e
 
+    raw_result = result.get("result")
+    if isinstance(raw_result, dict):
+        structured_result = EstimationResult.model_validate(raw_result)
+        result["result"] = structured_result
+    elif isinstance(raw_result, EstimationResult):
+        structured_result = raw_result
+    else:
+        raise LLMProviderError(f"Unexpected result type from provider: {type(raw_result)}")
+
     result.setdefault("cost_usd", None)
     result["usage"].setdefault("preprocessing_input_tokens", 0)
     result["usage"].setdefault("preprocessing_output_tokens", 0)
     result["extracted_requirements"] = None
     result["latency_ms"] = int((time.perf_counter() - t0) * 1000)
     result["cache_hit"] = False
-    result["text"] = result.get("estimation", "")
 
     log.info(
         "estimation_generation_completed",
@@ -104,8 +115,15 @@ async def generate_estimation(
         latency_ms=result["latency_ms"],
         cost_usd=result.get("cost_usd"),
         usage=result.get("usage"),
+        confidence_pct=structured_result.confidence_pct,
+        total_cost_eur=structured_result.total_cost_eur,
+        phases=len(structured_result.phases),
     )
 
-    await cache.set(cache_key, result)
+    cache_payload = {
+        **result,
+        "result": structured_result.model_dump(mode="json"),
+    }
+    await cache.set(cache_key, cache_payload)
 
     return result

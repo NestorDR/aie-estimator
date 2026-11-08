@@ -170,8 +170,14 @@ All structured log events across the application are normalized to lowercase `sn
 | `database_pool_failed` | `server.py` | `CRITICAL` | Database connection pool failure during startup |
 | `database_pool_closed` | `server.py` | `INFO` | Database connection pool closed on shutdown |
 | `database_connection_failed` | `server.py` | `ERROR` | Database connection exception during request handling |
-| `provider_call_failed` | `server.py` | `ERROR` | Upstream provider error captured by exception handler |
+| `provider_call_failed` | `server.py`, `services/providers/native_providers.py` | `ERROR` | Upstream provider error captured during invocation or handling |
+| `provider_response_received` | `services/providers/native_providers.py` | `INFO` | Successful completion response received from OpenAI or Anthropic SDK |
+| `provider_temperature_stripped` | `services/providers/native_providers.py` | `WARNING` | Unsupported temperature parameter stripped on 400 Bad Request |
+| `provider_tokens_remapped` | `services/providers/native_providers.py` | `WARNING` | Unsupported max_tokens converted to max_completion_tokens on 400 Bad Request |
+| `provider_retries_exhausted` | `services/providers/native_providers.py` | `ERROR` | Retry attempts exhausted for upstream provider |
 | `provider_response_truncated` | `services/providers/formatting.py` | `WARNING` | LLM response stopped due to `max_tokens` |
+| `litellm_router_call_failed` | `services/providers/litellm_provider.py` | `ERROR` | LiteLLM Router call failed across all candidate models |
+| `litellm_response_received` | `services/providers/litellm_provider.py` | `INFO` | Successful completion response received from LiteLLM Router |
 | `environment_file_loaded` | `settings.py` | `INFO` | Environment file (`.env.<env>`) successfully read |
 | `environment_file_not_found` | `settings.py` | `WARNING` | Environment file missing on startup |
 

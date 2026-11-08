@@ -47,7 +47,21 @@ async def test_send_estimation_request_dispatches_expected_payload(
     :param expected_extra_json: Expected model and engine entries in the JSON payload.
     """
     fake_response = {
-        "text": "## Estimation Breakdown\n- Task 1: 10h",
+        "result": {
+            "summary": "Technical effort breakdown for SaaS portal.",
+            "confidence_pct": 85,
+            "phases": [
+                {
+                    "name": "Phase 1",
+                    "duration_weeks": 2,
+                    "cost_eur": 5000,
+                    "summary": "Design and scaffolding",
+                }
+            ],
+            "total_duration_weeks": 2,
+            "total_cost_eur": 5000,
+        },
+        "cached": False,
         "prompt_version": "v1",
         "model": "reasoner-fast",
         "provider": "openrouter",
@@ -140,10 +154,30 @@ def test_apptest_valid_form_submission_and_telemetry() -> None:
     """
     GIVEN an initialized Streamlit app and a mock estimation response
     WHEN a valid project description is submitted through the primary form
-    THEN the estimation markdown is rendered, prompt version is shown, and telemetry expander is populated.
+    THEN the structured estimation metrics and phases are rendered, prompt version is shown, and telemetry is populated.
     """
     fake_result = {
-        "text": "## Comprehensive Project Estimation\n- Phase 1: 40h\n- Phase 2: 60h",
+        "result": {
+            "summary": "Comprehensive Project Estimation",
+            "confidence_pct": 85,
+            "phases": [
+                {
+                    "name": "Phase 1",
+                    "duration_weeks": 4,
+                    "cost_eur": 10000,
+                    "summary": "Core Backend Architecture",
+                },
+                {
+                    "name": "Phase 2",
+                    "duration_weeks": 6,
+                    "cost_eur": 15000,
+                    "summary": "Frontend Implementation",
+                },
+            ],
+            "total_duration_weeks": 10,
+            "total_cost_eur": 25000,
+        },
+        "cached": False,
         "prompt_version": "v1",
         "model": "reasoner-fast",
         "provider": "openrouter",
@@ -174,17 +208,35 @@ def test_apptest_valid_form_submission_and_telemetry() -> None:
     assert not at.exception
     assert at.session_state.latest_estimation == fake_result
     assert any("Prompt version:" in m.value for m in at.markdown)
-    assert any("Comprehensive Project Estimation" in m.value for m in at.markdown)
+    assert any("Comprehensive Project Estimation" in i.value for i in at.info)
+    assert any(m.label == "Total cost" and "€25,000" in m.value for m in at.metric)
+    assert any(m.label == "Total duration" and "10 weeks" in m.value for m in at.metric)
+    assert any(m.label == "Confidence" and "85%" in m.value for m in at.metric)
+    assert len(at.dataframe) >= 1
 
 
 def test_apptest_session_state_persistence_across_reruns() -> None:
     """
     GIVEN a Streamlit app with prior estimation stored in session state
     WHEN rendered on a fresh rerun without form submission
-    THEN the estimation markdown and telemetry remain displayed in the viewport.
+    THEN the formatted structured estimation and telemetry remain displayed in the viewport.
     """
     persisted_result = {
-        "text": "## Persisted Estimation Output",
+        "result": {
+            "summary": "Persisted Estimation Output",
+            "confidence_pct": 90,
+            "phases": [
+                {
+                    "name": "Phase 1",
+                    "duration_weeks": 5,
+                    "cost_eur": 12000,
+                    "summary": "System build",
+                }
+            ],
+            "total_duration_weeks": 5,
+            "total_cost_eur": 12000,
+        },
+        "cached": True,
         "prompt_version": "v1",
         "model": "gpt-6-luna",
         "provider": "openai",
@@ -199,8 +251,43 @@ def test_apptest_session_state_persistence_across_reruns() -> None:
     at.run()
 
     assert not at.exception
-    assert any("Persisted Estimation Output" in m.value for m in at.markdown)
+    assert any("Persisted Estimation Output" in i.value for i in at.info)
+    assert any("Cached" in m.value for m in at.markdown)
     assert any("Prompt version:" in m.value for m in at.markdown)
+    assert any(m.label == "Total cost" and "€12,000" in m.value for m in at.metric)
+
+
+def test_apptest_low_confidence_out_of_scope_warning() -> None:
+    """
+    GIVEN an estimation result with confidence below 30 or summary prefixed with Out of scope
+    WHEN rendered in the Streamlit application
+    THEN a warning alert is rendered for the summary instead of an info alert.
+    """
+    warning_result = {
+        "result": {
+            "summary": "Out of scope: Requested hardware fabrication is outside CAG capability.",
+            "confidence_pct": 20,
+            "phases": [],
+            "total_duration_weeks": 0,
+            "total_cost_eur": 0,
+        },
+        "cached": False,
+        "prompt_version": "v1",
+        "model": "reasoner-fast",
+        "provider": "openrouter",
+        "cost_usd": 0.001,
+        "usage": {"input_tokens": 100, "output_tokens": 40, "total_tokens": 140},
+    }
+
+    at = AppTest.from_file(_APP_PATH, default_timeout=_DEFAULT_TIMEOUT)
+    at.run()
+
+    at.session_state.latest_estimation = warning_result
+    at.run()
+
+    assert not at.exception
+    assert len(at.warning) > 0
+    assert any("Out of scope:" in w.value for w in at.warning)
 
 
 @pytest.mark.parametrize(

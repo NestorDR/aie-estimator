@@ -1,4 +1,4 @@
-# src/aie_estimator/services/providers/model_catalog.py
+# src/aie_estimator/model_catalog.py
 
 # --- Python Standard Library ---
 from dataclasses import dataclass
@@ -11,14 +11,15 @@ import structlog
 import yaml
 
 # --- App modules ---
+from aie_estimator.settings import get_settings
 from aie_estimator.utils.model_constants import (
     DEFAULT_CLAUDE_LLM,
     DEFAULT_DEEP_PROFILE,
     DEFAULT_FAST_PROFILE,
     DEFAULT_GPT_LLM,
+    LOGICAL_PROFILE_NAMES,
     PROVIDER_PREFIXES,
     UNKNOWN_PROVIDER,
-    _LOGICAL_PROFILE_NAMES,
 )
 
 
@@ -28,7 +29,7 @@ class ModelSpec:
     Metadata specification for supported large language models.
 
     :param provider: Upstream LLM provider identifier ('openai', 'anthropic', 'litellm', etc.).
-    :param is_reasoning: Whether the model supports chain-of-thought reasoning / thinking capabilities.
+    :param is_reasoning: Whether the model supports chain-of-thought reasoning capabilities.
     :param is_profile: Whether this entry represents a logical routing profile rather than a physical model.
     """
 
@@ -68,62 +69,52 @@ def resolve_provider(litellm_params: dict[str, Any]) -> str:
     return UNKNOWN_PROVIDER
 
 
-def get_profiles_config_path() -> Path:
+@lru_cache(maxsize=4)
+def get_model_catalog(profiles_path: Path | str | None = None) -> dict[str, ModelSpec]:
     """
-    Resolve the filesystem path to the llm_profiles.yml configuration file.
+    Parse and assemble the model catalog from an LLM profiles configuration YAML file.
 
-    :return: Absolute Path to the resolved llm_profiles.yml file.
-    """
-    package_config = Path(__file__).resolve().parents[2] / "llm_profiles.yml"
-    if package_config.is_file():
-        return package_config
-
-    project_root_config = Path.cwd() / "llm_profiles.yml"
-    if project_root_config.is_file():
-        return project_root_config
-
-    return package_config
-
-
-@lru_cache(maxsize=1)
-def get_model_catalog() -> dict[str, ModelSpec]:
-    """
-    Parse and assemble the model catalog from llm_profiles.yml.
+    :param profiles_path: Explicit filesystem path override, or None to use Settings.llm_profiles_path.
 
     :return: Mapping of model or profile identifiers to ModelSpec metadata instances.
     """
-    config_path = get_profiles_config_path()
-    if not config_path.is_file():
-        log.warning("model_catalog_file_not_found", config_path=str(config_path))
+    resolved_path = (
+        Path(profiles_path).resolve()
+        if profiles_path is not None
+        else get_settings().llm_profiles_path
+    )
+
+    if not resolved_path.is_file():
+        log.warning("model_catalog_file_not_found", profiles_path=str(resolved_path))
         return dict(_DEFAULT_CATALOG)
 
     try:
-        with config_path.open("r", encoding="utf-8") as file:
+        with resolved_path.open("r", encoding="utf-8") as file:
             data = yaml.safe_load(file) or {}
     except Exception as e:
-        log.exception("model_catalog_read_failed", config_path=str(config_path), error=repr(e))
+        log.exception("model_catalog_read_failed", profiles_path=str(resolved_path), error=repr(e))
         return dict(_DEFAULT_CATALOG)
 
     model_list: list[dict[str, Any]] = data.get("model_list", [])
     if not model_list:
-        log.warning("model_catalog_empty_list", config_path=str(config_path))
+        log.warning("model_catalog_empty_list", profiles_path=str(resolved_path))
         return dict(_DEFAULT_CATALOG)
 
     catalog: dict[str, ModelSpec] = dict(_DEFAULT_CATALOG)
     for entry in model_list:
         model_name: str | None = entry.get("model_name")
         if not model_name:
-            log.warning("model_catalog_model_unnamed", config_path=str(config_path))
+            log.warning("model_catalog_model_unnamed", profiles_path=str(resolved_path))
             continue
 
-        if model_name in _LOGICAL_PROFILE_NAMES:
+        if model_name in LOGICAL_PROFILE_NAMES:
             catalog[model_name] = ModelSpec(provider="litellm", is_reasoning=True, is_profile=True)
             continue
 
         litellm_params: dict[str, Any] = entry.get("litellm_params", {})
         provider = resolve_provider(litellm_params)
         if provider == UNKNOWN_PROVIDER:
-            log.warning("model_catalog_unknown_provider", config_path=str(config_path), litellm_params=litellm_params)
+            log.warning("model_catalog_unknown_provider", profiles_path=str(resolved_path), litellm_params=litellm_params)
             continue
 
         is_reasoning = bool(
@@ -135,29 +126,33 @@ def get_model_catalog() -> dict[str, ModelSpec]:
         catalog[model_name] = ModelSpec(provider=provider, is_reasoning=is_reasoning, is_profile=False)
 
     log.info(
-        "llm_profiles_catalog_loaded",
+        "model_catalog_loaded",
+        profiles_path=str(resolved_path),
         models={name: spec.provider for name, spec in catalog.items()},
     )
 
     return catalog
 
 
-def get_model_provider(model: str) -> str:
+def get_model_provider(model: str, profiles_path: Path | str | None = None) -> str:
     """
     Resolve the upstream provider identifier for a given model or profile name.
 
     :param model: The model or logical profile identifier.
+    :param profiles_path: Explicit filesystem path override, or None to use Settings.llm_profiles_path.
+
     :return: Provider string identifier, or UNKNOWN_PROVIDER if not registered.
     """
-    spec = get_model_catalog().get(model)
+    spec = get_model_catalog(profiles_path=profiles_path).get(model)
     return spec.provider if spec is not None else UNKNOWN_PROVIDER
 
 
-@lru_cache(maxsize=1)
-def get_supported_models() -> tuple[str, ...]:
+def get_supported_models(profiles_path: Path | str | None = None) -> tuple[str, ...]:
     """
     Return all supported model identifiers and logical profile names from the catalog.
 
+    :param profiles_path: Explicit filesystem path override, or None to use Settings.llm_profiles_path.
+
     :return: Tuple containing supported model and profile names.
     """
-    return tuple(get_model_catalog().keys())
+    return tuple(get_model_catalog(profiles_path=profiles_path).keys())

@@ -3,23 +3,23 @@
 # --- Python Standard Library ---
 from collections.abc import Callable, Generator
 from typing import Any
+from unittest.mock import MagicMock
 
 # --- Third Party Libraries ---
+from anthropic import AsyncAnthropic
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from openai import AsyncOpenAI
 import pytest
 
 # --- App modules ---
+from aie_estimator.model_catalog import get_model_catalog
 from aie_estimator.server import Server
 from aie_estimator.services.cache import get_estimation_cache
 from aie_estimator.services.providers.litellm_provider import get_litellm_router
-from aie_estimator.services.providers.model_catalog import (
-    DEFAULT_GPT_LLM,
-    get_model_catalog,
-    get_supported_models,
-)
 from aie_estimator.services.providers.native_providers import get_anthropic_client, get_openai_client
 from aie_estimator.settings import get_settings
+from aie_estimator.utils.model_constants import DEFAULT_GPT_LLM
 
 
 def _clear_all_caches() -> None:
@@ -29,7 +29,6 @@ def _clear_all_caches() -> None:
     get_anthropic_client.cache_clear()
     get_litellm_router.cache_clear()
     get_model_catalog.cache_clear()
-    get_supported_models.cache_clear()
     get_estimation_cache.cache_clear()
 
 
@@ -93,9 +92,29 @@ def make_estimation_result() -> Callable[..., dict[str, Any]]:
     """
 
     def _factory(**overrides: Any) -> dict[str, Any]:
-        # Production still emits both `estimation` and `text`; keep them in sync unless overridden.
+        result_payload = overrides.get("result") or {
+            "summary": "Full-stack web application delivery breakdown.",
+            "confidence_pct": 85,
+            "phases": [
+                {
+                    "name": "Design & Architecture",
+                    "duration_weeks": 2,
+                    "cost_eur": 5000,
+                    "summary": "Technical architecture specification and UX wireframes.",
+                },
+                {
+                    "name": "Core Implementation",
+                    "duration_weeks": 6,
+                    "cost_eur": 15000,
+                    "summary": "Frontend, backend services, database schema, and test automation.",
+                },
+            ],
+            "total_duration_weeks": 8,
+            "total_cost_eur": 20000,
+        }
         body = overrides.get("estimation") or overrides.get("text") or "Project Breakdown:\n- Backend: 40h\nTotal: 40h"
         return {
+            "result": result_payload,
             "estimation": body,
             "text": body,
             "model": DEFAULT_GPT_LLM,
@@ -110,3 +129,28 @@ def make_estimation_result() -> Callable[..., dict[str, Any]]:
         }
 
     return _factory
+
+
+@pytest.fixture
+def mock_async_openai_client() -> MagicMock:
+    """
+    Provide a reusable MagicMock fixture typed to AsyncOpenAI for Instructor compatibility.
+
+    :return: Mocked AsyncOpenAI client instance.
+    """
+    client = MagicMock(spec=AsyncOpenAI)
+    client.chat = MagicMock()
+    client.chat.completions = MagicMock()
+    return client
+
+
+@pytest.fixture
+def mock_async_anthropic_client() -> MagicMock:
+    """
+    Provide a reusable MagicMock fixture typed to AsyncAnthropic for Instructor compatibility.
+
+    :return: Mocked AsyncAnthropic client instance.
+    """
+    client = MagicMock(spec=AsyncAnthropic)
+    client.messages = MagicMock()
+    return client
