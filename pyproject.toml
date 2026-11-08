@@ -9,9 +9,11 @@ dependencies = [
     "anthropic>=2.3.0",
     "fastapi>=0.146.0",
     "httpx>=0.28.1",
+    "instructor>=1.17.0",
     "jinja2>=3.1.6",
     "litellm>=1.83.0",
-    "openai>=3.35.1",
+    # OpenAI>=3.35.0 conflicts with instructor>=1.17.0 regarding `jitter` library versions
+    "openai>=3.0.0,<3.35.0",
     "openinference-instrumentation-litellm>=0.1.20",
     "opentelemetry-api>=1.30.0",
     "opentelemetry-exporter-otlp>=1.30.0",
@@ -87,12 +89,13 @@ ignore = [ # Ignored rules
 ]
 
 [tool.pytest.ini_options]
+# DO NOT add --cov-fail-under here: enforcing threshold in addopts breaks single test file execution.
+# The 85% gate is enforced via CLI (--cov-fail-under=85) or auto/test.cmd during full regression runs.
 # --cov=aie_estimator: Measure line and branch coverage across the core backend package.
 # --cov=streamlit_app: Measure line and branch coverage across the Streamlit UI module.
 # --cov-branch: Measure branch coverage evaluating both True and False conditional branches.
 # --cov-report=term-missing: Print terminal summary table showing line numbers of unexecuted code.
-# --cov-fail-under=85: Fail the test run if coverage is less than 85%.
-addopts = "--cov=aie_estimator --cov-branch --cov-report=term-missing --cov-fail-under=85 --basetemp=.pytest_tmp"
+addopts = "--cov=aie_estimator --cov=streamlit_app --cov-branch --cov-report=term-missing --basetemp=.pytest_tmp"
 # Add root and src to pythonpath for imports
 pythonpath = [".", "src"]
 # Specify test directory and files
