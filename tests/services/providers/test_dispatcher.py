@@ -1,4 +1,4 @@
-# tests/services/test_providers_dispatch.py
+# tests/services/test_dispatcher.py
 
 # --- Python Standard Library ---
 from typing import Any, Final

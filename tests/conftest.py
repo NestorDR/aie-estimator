@@ -13,11 +13,11 @@ from openai import AsyncOpenAI
 import pytest
 
 # --- App modules ---
+from aie_estimator.dependencies import get_settings as get_dep_settings
 from aie_estimator.guardrails.input import get_moderation_client
 from aie_estimator.model_catalog import get_model_catalog
-from aie_estimator.server import Server
-from aie_estimator.services.cache.exact import get_exact_cache
-from aie_estimator.services.cache.semantic import get_semantic_cache
+from aie_estimator.server import create_app
+from aie_estimator.services.cache import get_exact_cache, get_semantic_cache
 from aie_estimator.services.providers.litellm_provider import get_litellm_router
 from aie_estimator.services.providers.native_providers import get_anthropic_client, get_openai_client
 from aie_estimator.settings import get_settings
@@ -27,6 +27,7 @@ from aie_estimator.utils.model_constants import DEFAULT_GPT_LLM
 def _clear_all_caches() -> None:
     """Clear all application @lru_cache singletons between tests."""
     get_settings.cache_clear()
+    get_dep_settings.cache_clear()
     get_openai_client.cache_clear()
     get_anthropic_client.cache_clear()
     get_litellm_router.cache_clear()
@@ -94,11 +95,35 @@ def default_tiered_cache_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_semantic.close = AsyncMock(return_value=None)
 
     monkeypatch.setattr(
-        "aie_estimator.services.estimations_service.get_exact_cache",
+        "aie_estimator.services.cache.exact.get_exact_cache",
         lambda: mock_exact,
     )
     monkeypatch.setattr(
-        "aie_estimator.services.estimations_service.get_semantic_cache",
+        "aie_estimator.services.cache.semantic.get_semantic_cache",
+        lambda: mock_semantic,
+    )
+    monkeypatch.setattr(
+        "aie_estimator.services.cache.get_exact_cache",
+        lambda: mock_exact,
+    )
+    monkeypatch.setattr(
+        "aie_estimator.services.cache.get_semantic_cache",
+        lambda: mock_semantic,
+    )
+    monkeypatch.setattr(
+        "aie_estimator.server.get_exact_cache",
+        lambda: mock_exact,
+    )
+    monkeypatch.setattr(
+        "aie_estimator.server.get_semantic_cache",
+        lambda: mock_semantic,
+    )
+    monkeypatch.setattr(
+        "aie_estimator.dependencies.get_exact_cache",
+        lambda: mock_exact,
+    )
+    monkeypatch.setattr(
+        "aie_estimator.dependencies._get_semantic_cache",
         lambda: mock_semantic,
     )
 
@@ -106,7 +131,7 @@ def default_tiered_cache_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture
 def app(monkeypatch: pytest.MonkeyPatch) -> Generator[FastAPI, None, None]:
     """
-    Instantiate the FastAPI application and clear dependency overrides on teardown.
+    Instantiate the FastAPI application via create_app and clear dependency overrides on teardown.
 
     Neutralizes semantic cache index initialization to eliminate socket connection
     timeouts during offline testing.
@@ -118,10 +143,10 @@ def app(monkeypatch: pytest.MonkeyPatch) -> Generator[FastAPI, None, None]:
         "aie_estimator.services.cache.semantic.EstimationSemanticCache.initialize_index",
         AsyncMock(return_value=None),
     )
-    server = Server()
-    yield server.app
+    test_app = create_app()
+    yield test_app
     # Teardown: ensure dependency overrides do not leak across test cases
-    server.app.dependency_overrides.clear()
+    test_app.dependency_overrides.clear()
 
 
 @pytest.fixture

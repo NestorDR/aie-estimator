@@ -46,7 +46,7 @@ requires = ["uv_build>=0.13.1,<0.14.0"]
 build-backend = "uv_build"
 
 [tool.fastapi]
-entrypoint = "aie_estimator.server:server.app"
+entrypoint = "aie_estimator.server:create_app"
 reload = true
 
 [tool.ruff]

@@ -87,15 +87,19 @@ def test_mirror_secrets_to_environ_does_not_overwrite_existing(monkeypatch: pyte
     assert environ.get("MISTRAL_API_KEY") == "existing-preset-key"
 ```
 
-### 4. Mocking at the Boundary
+### 4. Mocking at the Boundary via Dependency Injection
 
-Replace collaborators with `AsyncMock` and patch the name where it is looked up, not where it is defined:
+Override service dependencies using FastAPI's `dependency_overrides` instead of monkeypatching internal module variables:
 
 ```python
-monkeypatch.setattr(
-    "aie_estimator.routers.estimations_router.estimations_service.generate_estimation",
-    AsyncMock(return_value=result),
-)
+from aie_estimator.dependencies import get_estimation_service
+from aie_estimator.services.estimations_service import EstimationService
+
+mock_service = AsyncMock(spec=EstimationService)
+mock_service.generate_estimation.return_value = result
+
+app.dependency_overrides[get_estimation_service] = lambda: mock_service
+
 payload = {
     "description": "Comprehensive description of inventory management SaaS system.",
     "project_type": "web_saas",

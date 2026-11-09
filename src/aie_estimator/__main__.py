@@ -28,7 +28,8 @@ def main() -> None:
     )
 
     uvicorn.run(
-        app="aie_estimator.server:server.app",
+        app="aie_estimator.server:create_app",
+        factory=True,
         host=settings.server_host,
         port=settings.server_port,
         log_level=settings.log_level.lower(),

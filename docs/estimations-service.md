@@ -29,20 +29,26 @@ For details on parameter normalization and provider mappings, see [docs/reasonin
 
 ## Usage Examples
 
-### 1. Generate Estimation with Estimations Service (Default)
+### 1. Generate Estimation with `EstimationService`
 
 ```python
-from aie_estimator.schemas.estimations import EstimationResult
-from aie_estimator.services.estimations_service import generate_estimation
-from aie_estimator.services.providers import GenerationOptions
+from aie_estimator.schemas.estimations import EstimationRequest, EstimationResult
+from aie_estimator.services.cache import EstimationExactCache
+from aie_estimator.services.estimations_service import EstimationService
 
-# Default options route through LiteLLM Router using reasoner-fast or configured default model
-opts = GenerationOptions()
-result = await generate_estimation(
-    system_prompt="You are an expert estimator.",
-    user_prompt="Client needs an e-commerce backend with Stripe integration...",
-    opts=opts,
+# Initialize service with explicit cache and optional guardrail collaborators
+service = EstimationService(exact_cache=EstimationExactCache())
+
+request = EstimationRequest(
+    description="Client needs an e-commerce backend with Stripe integration...",
+    project_type="web_app",
+    detail_level="medium",
+    output_format="phases_table",
+    model="reasoner-fast",
+    engine="litellm",
 )
+
+result = await service.generate_estimation(request)
 
 structured_result: EstimationResult = result["result"]
 print(structured_result.summary)
@@ -51,29 +57,24 @@ print(result["cost_usd"])  # e.g. 0.00034
 print(result["provider"])  # "litellm" or resolved provider
 ```
 
-### 2. Explicit Engine and Logical Profile Selection
+### 2. Dependency Injection in FastAPI Route Handlers
 
 ```python
-opts = GenerationOptions(
-    engine="litellm",
-    model="reasoner-deep",
-    max_tokens=4000,
-    temperature=0.3,
-    max_retries=3,
-)
-result = await generate_estimation(system_prompt, user_prompt, opts=opts)
-```
+from fastapi import APIRouter, Depends
+from aie_estimator.dependencies import get_estimation_service
+from aie_estimator.schemas.estimations import EstimationRequest, EstimationResponse
+from aie_estimator.services.estimations_service import EstimationService
 
-### 3. Fallback to Legacy Native SDK Execution
+router = APIRouter(prefix="/api/v1")
 
-```python
-# Direct OpenAI Chat Completions API or Anthropic Messages API without LiteLLM Router
-opts = GenerationOptions(
-    engine="native",
-    model="gpt-6-luna",
-    max_tokens=2048,
-)
-result = await generate_estimation(system_prompt, user_prompt, opts=opts)
+
+@router.post("/estimate", response_model=EstimationResponse)
+async def create_estimation(
+    request: EstimationRequest,
+    service: EstimationService = Depends(get_estimation_service),
+) -> EstimationResponse:
+    result = await service.generate_estimation(request)
+    return EstimationResponse(...)
 ```
 
 ### 4. Direct Provider Dispatch via `call_llm`

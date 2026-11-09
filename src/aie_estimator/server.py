@@ -18,8 +18,7 @@ from aie_estimator.guardrails.input import InputGuardrailViolation
 from aie_estimator.logging import configure_logging
 from aie_estimator.model_catalog import get_supported_models
 from aie_estimator.routers import estimations_router, health_router
-from aie_estimator.services.cache.exact import get_exact_cache
-from aie_estimator.services.cache.semantic import get_semantic_cache
+from aie_estimator.services.cache import get_exact_cache, get_semantic_cache
 from aie_estimator.services.exceptions import LLMProviderError
 from aie_estimator.settings import Settings, get_settings
 from aie_estimator.telemetry import instrument_fastapi_app, setup_telemetry
@@ -28,13 +27,17 @@ from aie_estimator.telemetry import instrument_fastapi_app, setup_telemetry
 class Server:
     """FastAPI server configuration and setup."""
 
-    def __init__(self):
-        """Initialize server settings, structured logger, and the FastAPI application."""
-        self.settings: Settings = get_settings()
+    def __init__(self, settings: Settings | None = None) -> None:
+        """
+        Initialize server settings, structured logger, and the FastAPI application.
+
+        :param settings: Optional Settings instance; defaults to singleton from get_settings().
+        """
+        self.settings: Settings = settings if settings is not None else get_settings()
         # Configure logging early to ensure workers spawned directly via ASGI imports have formatted logging
         configure_logging(self.settings)
         self.log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger(__name__)
-        self.app = self._setup_fastapi()
+        self.app: FastAPI = self._setup_fastapi()
 
     def _setup_fastapi(self) -> FastAPI:
         """
@@ -280,5 +283,12 @@ class Server:
         self.log.info("cors_middleware_registered")
 
 
-# Create the server instance
-server = Server()
+def create_app(settings: Settings | None = None) -> FastAPI:
+    """
+    Application factory producing a fully configured FastAPI instance.
+
+    :param settings: Optional Settings configuration instance.
+
+    :return: Configured FastAPI application instance.
+    """
+    return Server(settings=settings).app

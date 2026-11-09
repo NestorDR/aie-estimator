@@ -4,13 +4,13 @@
 from typing import Final
 
 # --- Third Party Libraries ---
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Depends, status
 import structlog
 
 # --- App modules ---
-import aie_estimator.services.estimations_service as estimations_service
+from aie_estimator.dependencies import get_estimation_service
 from aie_estimator.schemas.estimations import EstimationRequest, EstimationResponse
-from aie_estimator.services.providers import GenerationOptions
+from aie_estimator.services.estimations_service import EstimationService
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
 
@@ -27,21 +27,21 @@ router = APIRouter(
     summary="Generate software project estimation",
     description="Analyzes a project description and generates an effort breakdown using prompt templates.",
 )
-async def create_estimation(request: EstimationRequest) -> EstimationResponse:
+async def create_estimation(
+    request: EstimationRequest,
+    service: EstimationService = Depends(get_estimation_service),
+) -> EstimationResponse:
     """
     Generate an estimation from the provided project request parameters.
 
     :param request: Validated estimation request containing project description and preferences.
+    :param service: Injected EstimationService orchestrator.
 
     :return: Generated estimation text with prompt version and telemetry metadata.
     """
-    opts = GenerationOptions(model=request.model, engine=request.engine)
     log.info("estimation_request_received", model=request.model, engine=request.engine)
 
-    result = await estimations_service.generate_estimation(
-        request,
-        opts=opts,
-    )
+    result = await service.generate_estimation(request)
 
     return EstimationResponse(
         result=result["result"],

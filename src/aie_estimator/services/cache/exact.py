@@ -22,7 +22,7 @@ DEFAULT_CACHE_TIMEOUT: Final[float] = 1.0
 CACHE_KEY_PREFIX: Final[str] = "estimation"
 
 
-class ExactEstimationCache:
+class EstimationExactCache:
     """Exact-match Redis cache for LLM software project estimation responses."""
 
     def __init__(self, redis_client: redis.Redis, ttl: int | None = None) -> None:
@@ -43,16 +43,16 @@ class ExactEstimationCache:
         port: int = 6379,
         ttl: int | None = None,
         socket_timeout: float = DEFAULT_CACHE_TIMEOUT,
-    ) -> "ExactEstimationCache":
+    ) -> "EstimationExactCache":
         """
-        Construct an ExactEstimationCache instance from host and port with connection timeouts.
+        Construct an EstimationExactCache instance from host and port with connection timeouts.
 
         :param host: Redis server hostname or IP address.
         :param port: Redis server port number.
         :param ttl: Cache retention TTL in seconds; defaults to Settings.exact_cache_ttl.
         :param socket_timeout: Connection and operation timeout in seconds.
 
-        :return: Configured ExactEstimationCache instance.
+        :return: Configured EstimationExactCache instance.
         """
         client = redis.Redis(
             host=host,
@@ -150,17 +150,16 @@ class ExactEstimationCache:
 
 
 @lru_cache(maxsize=1)
-def get_exact_cache() -> ExactEstimationCache:
+def get_exact_cache() -> EstimationExactCache:
     """
-    Retrieve or initialize the application-wide singleton ExactEstimationCache instance.
+    Retrieve or initialize the application-wide singleton EstimationExactCache instance.
 
-    :return: Authenticated ExactEstimationCache singleton.
+    :return: Authenticated EstimationExactCache singleton.
     """
     settings = get_settings()
     effective_ttl = getattr(settings, "exact_cache_ttl", settings.cache_ttl)
-    return ExactEstimationCache.from_host_port(
+    return EstimationExactCache.from_host_port(
         host=settings.redis_host,
         port=settings.redis_port,
         ttl=effective_ttl,
     )
-

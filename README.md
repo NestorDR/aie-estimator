@@ -22,43 +22,24 @@ The project enforces strict separation of concerns across dedicated application 
 - **Services (`src/aie_estimator/services/`)**: Encapsulates core business logic, CAG prompt assembly, multi-provider LLM dispatch with two-level runtime failover (intra-tier rotation and cross-tier escalation), token cost estimation, and two-tier response caching (Tier 1 exact-match and Tier 2 RediSearch vector similarity).
 - **Prompts (`src/aie_estimator/prompts/`)**: Stores versioned Jinja2 prompt templates (`system.j2`, `user.j2`, `examples.j2`) and loader for estimation prompt rendering.
 - **Settings (`src/aie_estimator/settings.py`)**: Environment-aware configuration and settings management powered by `pydantic-settings`, supporting structured JSON logging, credential isolation via `SecretStr`, and secret synchronization to `os.environ`.
-- **Server (`src/aie_estimator/server.py`)**: Centralizes FastAPI application initialization, lifespan event handlers, router registration, and global exception mapping.
+- **Dependencies (`src/aie_estimator/dependencies.py`)**: Centralized Composition Root managing cached dependency injection factories (`get_settings`, `get_semantic_cache`, `get_estimation_service`) for FastAPI route handlers.
+- **Server (`src/aie_estimator/server.py`)**: Application Factory (`create_app`) and server configuration with lifecycle management and exception mapping.
 
 ### Context-Augmented Generation (CAG) Workflow
 
 ```mermaid
 flowchart TD
-    subgraph ClientLayer ["Client Interface / Caller"]
-        Client(["Streamlit Product Form UI / API Client"])
-    end
+    Client(["Client (Streamlit / API)"]) -->|"1. POST /api/v1/estimate"| Router["FastAPI Router"]
+    Router -->|"2. Dependency Injection"| Service["EstimationService"]
+    Service --> Guardrails["3. Input Guardrails\n(Moderation, Injection, PII)"]
+    Guardrails --> Cache{"4. Two-Tier Cache\n(Exact & Semantic)"}
 
-    Client -->|"1. POST /api/v1/estimate\n(EstimationRequest)"| Router["Router: EstimationsRouter\n(Pydantic Validation & Version Resolution)"]
-    Router -->|"2. Render prompts\n(render_estimation_prompt)"| TemplateEngine["Jinja2 Prompt Engine\n(prompts/loader.py)"]
+    Cache -->|"Cache Miss"| LLM["5. LLM Dispatch\n(Jinja2 CAG Prompts → LiteLLM / Native)"]
+    LLM --> OutputGuard["6. Output Filter & Dual-Write Cache"]
 
-    subgraph ServiceLayer ["LLM Service Layer"]
-        TemplateEngine -->|"System & User Prompts"| Service["EstimationsService\n(generate_estimation)"]
-        Service -->|"3. Input semantic guardrails\n(check_input)"| InputGuard{"Input Guardrails\n(Moderation, Injection, PII)"}
-        InputGuard -->|"Violation"| HTTP400["HTTP 400 Bad Request\n(InputGuardrailViolation)"]
-        HTTP400 --> Client
-        InputGuard -->|"Pass"| ExactCacheCheck{"Tier 1: Exact Cache\n(Redis SHA-256)"}
-        ExactCacheCheck -->|"Cache Hit (~1ms)"| ServiceOutput["Result Dictionary\n(cost_usd, usage, result)"]
-        ExactCacheCheck -->|"Cache Miss"| SemanticCacheCheck{"Tier 2: Semantic Cache\n(RediSearch Vectors)"}
-
-        SemanticCacheCheck -->|"Cache Hit (~80ms)"| ServiceOutput
-        SemanticCacheCheck -->|"Cache Miss"| Dispatcher["Execution Engine Dispatcher\n(call_llm)"]
-
-        Dispatcher -->|"engine='litellm'"| LiteLLMRouting["LiteLLM Router\n(Profiles, Cost-Routing & Dynamic Backoff)"]
-        Dispatcher -->|"engine='native'"| NativeProviders["Native Providers\n(OpenAI & Anthropic SDKs)"]
-        LiteLLMRouting --> OutputFilter["Output Scope Filter\n(enforce_scope_response)"]
-        NativeProviders --> OutputFilter
-        OutputFilter -->|"Store in both caches"| CacheStore[("Redis Exact & Semantic Store")]
-        CacheStore -.->|"Populates for subsequent requests"| ExactCacheCheck
-        CacheStore -.->|"Populates vector index"| SemanticCacheCheck
-        OutputFilter --> ServiceOutput
-    end
-
-    ServiceOutput -->|"4. Construct response"| ResponseMapper["Response Mapping\n(EstimationResponse)"]
-    ResponseMapper -->|"5. HTTP 200: EstimationResponse\n(Structured result & telemetry)"| Client
+    Cache -->|"Cache Hit (~1ms)"| Response["EstimationResponse (HTTP 200)"]
+    OutputGuard --> Response
+    Response -->|"7. Return to Client UI"| ClientDone(["Client (Streamlit / API)"])
 ```
 
 ## Project Structure
@@ -75,7 +56,8 @@ aie-estimator/
 │       ├── model_catalog.py            # Dynamic model catalog resolution and ModelSpec
 │       ├── settings.py                 # Pydantic BaseSettings configuration
 │       ├── logging.py                  # Structured logging and stdlib logging bootstrap
-│       ├── server.py                   # FastAPI server setup and lifespan handling
+│       ├── dependencies.py             # Centralized Composition Root and dependency factories
+│       ├── server.py                   # FastAPI application factory and lifespan handling
 │       ├── telemetry.py                # OpenTelemetry TracerProvider and structlog context injection
 │       ├── llm_profiles.yml            # LiteLLM router profiles, tiers, and telemetry config
 │       ├── .env.example                # Example environment configuration
