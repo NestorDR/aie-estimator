@@ -16,6 +16,7 @@ LOW_CONFIDENCE_THRESHOLD: Final[int] = 30
 
 ProviderMode = Literal["litellm", "native"]
 
+
 class ProjectType(str, Enum):
     """Project domain categories with a basic profile."""
 
@@ -140,15 +141,11 @@ class EstimationResult(BaseModel):
         """
         sum_weeks = sum(phase.duration_weeks for phase in self.phases)
         if sum_weeks != self.total_duration_weeks:
-            raise ValueError(
-                f"total_duration_weeks ({self.total_duration_weeks}) does not match the sum of phases ({sum_weeks})."
-            )
+            raise ValueError(f"total_duration_weeks ({self.total_duration_weeks}) does not match the sum of phases ({sum_weeks}).")
 
         sum_cost = sum(phase.cost_eur for phase in self.phases)
         if sum_cost != self.total_cost_eur:
-            raise ValueError(
-                f"total_cost_eur ({self.total_cost_eur}) does not match the sum of phase costs ({sum_cost})."
-            )
+            raise ValueError(f"total_cost_eur ({self.total_cost_eur}) does not match the sum of phase costs ({sum_cost}).")
         return self
 
     @model_validator(mode="after")
@@ -159,9 +156,7 @@ class EstimationResult(BaseModel):
         :raises ValueError: If confidence is low but the summary omits the out-of-scope prefix.
         """
         if self.confidence_pct < LOW_CONFIDENCE_THRESHOLD and not self.summary.startswith(OUT_OF_SCOPE_PREFIX):
-            raise ValueError(
-                f"confidence_pct < {LOW_CONFIDENCE_THRESHOLD} requires summary to start with '{OUT_OF_SCOPE_PREFIX}'."
-            )
+            raise ValueError(f"confidence_pct < {LOW_CONFIDENCE_THRESHOLD} requires summary to start with '{OUT_OF_SCOPE_PREFIX}'.")
         return self
 
 

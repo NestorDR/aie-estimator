@@ -115,9 +115,7 @@ VALID_PROFILES_YAML = (
     ],
     ids=["missing_file", "corrupted_yaml", "valid_file"],
 )
-def test_model_catalog_loads_config_or_falls_back(
-    tmp_path: Path, file_content: str | None, expect_loaded_model: bool
-) -> None:
+def test_model_catalog_loads_config_or_falls_back(tmp_path: Path, file_content: str | None, expect_loaded_model: bool) -> None:
     """
     GIVEN a missing, corrupted, or valid profiles configuration file
     WHEN get_model_catalog is called with direct profiles_path parameter injection

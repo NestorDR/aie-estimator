@@ -211,4 +211,3 @@ def test_create_estimation_input_guardrail_violation_returns_400(
     assert "detail" in data
     assert data["detail"]["reason"] == "prompt_injection"
     assert "Suspicious instruction-like text" in data["detail"]["message"]
-

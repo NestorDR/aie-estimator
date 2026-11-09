@@ -78,11 +78,7 @@ def get_model_catalog(profiles_path: Path | str | None = None) -> dict[str, Mode
 
     :return: Mapping of model or profile identifiers to ModelSpec metadata instances.
     """
-    resolved_path = (
-        Path(profiles_path).resolve()
-        if profiles_path is not None
-        else get_settings().llm_profiles_path
-    )
+    resolved_path = Path(profiles_path).resolve() if profiles_path is not None else get_settings().llm_profiles_path
 
     if not resolved_path.is_file():
         log.warning("model_catalog_file_not_found", profiles_path=str(resolved_path))

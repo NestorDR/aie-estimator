@@ -15,10 +15,11 @@ import structlog
 
 # --- App modules ---
 from aie_estimator.guardrails.input import InputGuardrailViolation
+from aie_estimator.logging import configure_logging
 from aie_estimator.model_catalog import get_supported_models
 from aie_estimator.routers import estimations_router, health_router
-from aie_estimator.services.exact_cache import get_exact_cache
-from aie_estimator.services.semantic_cache import get_semantic_cache
+from aie_estimator.services.cache.exact import get_exact_cache
+from aie_estimator.services.cache.semantic import get_semantic_cache
 from aie_estimator.services.exceptions import LLMProviderError
 from aie_estimator.settings import Settings, get_settings
 from aie_estimator.telemetry import instrument_fastapi_app, setup_telemetry
@@ -30,6 +31,8 @@ class Server:
     def __init__(self):
         """Initialize server settings, structured logger, and the FastAPI application."""
         self.settings: Settings = get_settings()
+        # Configure logging early to ensure workers spawned directly via ASGI imports have formatted logging
+        configure_logging(self.settings)
         self.log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger(__name__)
         self.app = self._setup_fastapi()
 
@@ -74,11 +77,7 @@ class Server:
             )
 
             model_property = (
-                openapi_schema.get("components", {})
-                .get("schemas", {})
-                .get("EstimationRequest", {})
-                .get("properties", {})
-                .get("model")
+                openapi_schema.get("components", {}).get("schemas", {}).get("EstimationRequest", {}).get("properties", {}).get("model")
             )
             if model_property:
                 model_property["enum"] = [*get_supported_models(), None]

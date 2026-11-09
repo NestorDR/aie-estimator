@@ -40,6 +40,7 @@ Always apply good software engineering practices: **KISS, YAGNI, DRY, SOLID, ACI
   - When asserting exceptions with `pytest.raises`, use concise regular expressions (`match=r'...'`) targeting simple, distinctive keywords (e.g., `match=r'Invalid integer'`, `match=r'cannot be empty'`) rather than expecting full, literal error messages. This prevents tests from being brittle to minor message formatting adjustments while still strictly verifying the intended failure condition.
   - Deduplicate with `@pytest.mark.parametrize` to consolidate symmetric or complementary test functions into single parameterized test functions.
   - Functions across test modules must include explicit type hints.
+  - **Mocking target policy**: Always patch objects where they are looked up, not where they are defined.
   - **Pytest Configuration Policy (`addopts`)**: `pyproject.toml` (`tool.pytest.ini_options.addopts`) MUST NEVER include `--cov-fail-under`.
   - **Single Test File Runs**: Execute directly with `rtk uv run pytest path/to/test_file.py` (which reports local coverage without whole-suite threshold failures) or append `--no-cov` for zero-overhead iterative feedback.
   - **Full Regression Runs**: The 85% coverage gate (`--cov-fail-under=85`) MUST be passed as an explicit CLI flag (e.g. `rtk uv run pytest --cov-fail-under=85`) or via `auto/test.cmd`. Never embed this threshold in `pyproject.toml`.

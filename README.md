@@ -74,6 +74,7 @@ aie-estimator/
 │       ├── __main__.py                 # Application CLI entry point
 │       ├── model_catalog.py            # Dynamic model catalog resolution and ModelSpec
 │       ├── settings.py                 # Pydantic BaseSettings configuration
+│       ├── logging.py                  # Structured logging and stdlib logging bootstrap
 │       ├── server.py                   # FastAPI server setup and lifespan handling
 │       ├── telemetry.py                # OpenTelemetry TracerProvider and structlog context injection
 │       ├── llm_profiles.yml            # LiteLLM router profiles, tiers, and telemetry config
@@ -95,8 +96,10 @@ aie-estimator/
 │       │   └── health_router.py        # GET /health status endpoint
 │       ├── services/
 │       │   ├── __init__.py
-│       │   ├── exact_cache.py          # Deterministic exact-match Redis cache (Tier 1)
-│       │   ├── semantic_cache.py       # Native redis.asyncio RediSearch vector cache (Tier 2)
+│       │   ├── cache/                  # Isolated response caching subsystem
+│       │   │   ├── __init__.py
+│       │   │   ├── exact.py            # Deterministic exact-match Redis cache (Tier 1)
+│       │   │   └── semantic.py         # Native redis.asyncio RediSearch vector cache (Tier 2)
 │       │   ├── estimations_service.py  # Estimation orchestration and multi-engine coordination
 │       │   ├── exceptions.py           # Service and provider exception hierarchy
 │       │   └── providers/              # Isolated provider integrations and dispatch
@@ -155,15 +158,21 @@ aie-estimator/
    ENABLE_FILE_LOGGING=false
    ENABLE_OTEL_TRACING=false
    OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
-   LITELLM_LOCAL_MODEL_COST_MAP=false
    SERVER_HOST=localhost
    SERVER_PORT=8000
    OPENAI_API_KEY=your_openai_api_key_here
    ANTHROPIC_API_KEY=your_anthropic_api_key_here
    LLM_MODEL=reasoner-fast
+   LITELLM_LOCAL_MODEL_COST_MAP=false
+   ACTIVE_PROMPT_VERSION=v1
+   ESTIMATOR_API_BASE_URL=http://localhost:8000
    REDIS_HOST=localhost
    REDIS_PORT=6379
-   CACHE_TTL=86400
+   EXACT_CACHE_TTL=86400
+   EMBEDDING_MODEL=text-embedding-3-small
+   SEMANTIC_CACHE_THRESHOLD=0.85
+   SEMANTIC_CACHE_TTL=86400
+   SEMANTIC_CACHE_LOG_ONLY=false
    ```
 
 ## Running the Application

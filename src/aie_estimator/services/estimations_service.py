@@ -12,10 +12,10 @@ from aie_estimator.guardrails.input import check_input, get_moderation_client
 from aie_estimator.guardrails.output import enforce_scope_response
 from aie_estimator.prompts.loader import render_estimation_prompt, resolve_prompt_version
 from aie_estimator.schemas.estimations import EstimationRequest, EstimationResult
-from aie_estimator.services.exact_cache import ExactEstimationCache, get_exact_cache
+from aie_estimator.services.cache.exact import ExactEstimationCache, get_exact_cache
+from aie_estimator.services.cache.semantic import get_semantic_cache
 from aie_estimator.services.exceptions import LLMProviderError
 from aie_estimator.services.providers import GenerationOptions, call_llm
-from aie_estimator.services.semantic_cache import get_semantic_cache
 from aie_estimator.settings import get_settings
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
@@ -63,10 +63,7 @@ async def generate_estimation(
     exact_cache_key = ExactEstimationCache.make_key(
         request=request,
         prompt_version=version,
-        model=model,
-        max_tokens=opts.max_tokens,
-        reasoning_effort=opts.reasoning_effort,
-        engine=opts.engine,
+        opts=opts,
     )
 
     cached_result = await exact_cache.get(exact_cache_key)

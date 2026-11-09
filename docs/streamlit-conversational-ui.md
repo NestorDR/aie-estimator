@@ -119,8 +119,7 @@ async def send_estimation_request(
     model: str | None = None,
     engine: str = "litellm",
     endpoint: str = estimate_endpoint,
-) -> dict[str, Any]:
-    ...
+) -> dict[str, Any]: ...
 ```
 
 ### 2. Structured Estimation Result Rendering

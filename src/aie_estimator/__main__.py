@@ -8,6 +8,7 @@ import structlog
 import uvicorn
 
 # --- App modules ---
+from aie_estimator.logging import configure_logging
 from aie_estimator.settings import Environment, get_settings
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
@@ -18,8 +19,9 @@ def main() -> None:
     Main entry point for running the application with Uvicorn.
     """
     settings = get_settings()
+    configure_logging(settings)
     log.info(
-        "starting_uvicorn_server",
+        "uvicorn_server_startup_initiated",
         server_host=settings.server_host,
         server_port=settings.server_port,
         app_env=settings.app_env.value,

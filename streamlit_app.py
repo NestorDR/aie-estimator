@@ -29,14 +29,14 @@ estimate_endpoint: Final[str] = f"{api_base_url}/api/v1/estimate"
 
 
 async def send_estimation_request(
-        description: str,
-        project_type: str,
-        detail_level: str,
-        output_format: str,
-        *,
-        model: str | None = None,
-        engine: str = "litellm",
-        endpoint: str = estimate_endpoint,
+    description: str,
+    project_type: str,
+    detail_level: str,
+    output_format: str,
+    *,
+    model: str | None = None,
+    engine: str = "litellm",
+    endpoint: str = estimate_endpoint,
 ) -> dict[str, Any]:
     """
     Dispatch an asynchronous HTTP POST request to the backend estimation endpoint with typed request parameters.
@@ -275,8 +275,7 @@ if runtime.exists():
                             icon=":material/error:",
                         )
                 except httpx.RequestError as exc:
-                    st.error(f"Could not reach the estimator backend at `{estimate_endpoint}`: {exc}",
-                             icon=":material/error:")
+                    st.error(f"Could not reach the estimator backend at `{estimate_endpoint}`: {exc}", icon=":material/error:")
 
     # Render latest estimation output and telemetry from session state
     if st.session_state.latest_estimation:

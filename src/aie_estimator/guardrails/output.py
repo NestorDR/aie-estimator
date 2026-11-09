@@ -46,10 +46,7 @@ def enforce_scope_response(result: EstimationResult) -> EstimationResult:
         confidence_pct=result.confidence_pct,
         original_summary_chars=len(result.summary),
     )
-    new_summary = (
-        f"{OUT_OF_SCOPE_PREFIX} not enough information to estimate confidently. "
-        f"Original model rationale: {result.summary[:400]}"
-    )
+    new_summary = f"{OUT_OF_SCOPE_PREFIX} not enough information to estimate confidently. Original model rationale: {result.summary[:400]}"
     return EstimationResult(
         summary=new_summary[:1200],
         confidence_pct=result.confidence_pct,

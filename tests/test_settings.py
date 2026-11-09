@@ -328,3 +328,31 @@ def test_monkeypatch_environment_mutation_clears_get_settings_cache(
     assert reset_settings is not updated_settings
 
 
+@pytest.mark.parametrize(
+    ("env_var_name", "env_val", "expected_ttl"),
+    [
+        ("EXACT_CACHE_TTL", "3600", 3600),
+        ("CACHE_TTL", "7200", 7200),
+    ],
+    ids=["exact_cache_ttl_primary", "cache_ttl_legacy_alias"],
+)
+def test_settings_exact_cache_ttl_and_alias(
+    monkeypatch: pytest.MonkeyPatch,
+    env_var_name: str,
+    env_val: str,
+    expected_ttl: int,
+) -> None:
+    """
+    GIVEN an environment variable configuring the exact cache TTL via canonical or alias name
+    WHEN Settings is initialized
+    THEN exact_cache_ttl and the backwards-compatible cache_ttl property resolve to expected TTL.
+
+    :param monkeypatch: Pytest monkeypatch fixture.
+    :param env_var_name: Environment variable name (EXACT_CACHE_TTL or CACHE_TTL).
+    :param env_val: String TTL value to configure.
+    :param expected_ttl: Expected integer TTL value.
+    """
+    monkeypatch.setenv(env_var_name, env_val)
+    settings = Settings(app_env=Environment.TEST)
+    assert settings.exact_cache_ttl == expected_ttl
+    assert settings.cache_ttl == expected_ttl

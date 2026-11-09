@@ -216,9 +216,7 @@ def test_estimation_request_description_length_boundaries() -> None:
         "summary_too_short",
     ],
 )
-def test_phase_field_constraints_raise_validation_error(
-    phase_kwargs: dict[str, Any], expected_match: str
-) -> None:
+def test_phase_field_constraints_raise_validation_error(phase_kwargs: dict[str, Any], expected_match: str) -> None:
     """
     GIVEN invalid Phase attribute values violating schema constraints
     WHEN Phase is instantiated
@@ -262,9 +260,7 @@ def test_estimation_result_field_ordering() -> None:
         "costs_mismatch_three_phases",
     ],
 )
-def test_estimation_result_phases_sum_matches_total_validator(
-    phases_costs: list[int], total_cost: int, should_pass: bool
-) -> None:
+def test_estimation_result_phases_sum_matches_total_validator(phases_costs: list[int], total_cost: int, should_pass: bool) -> None:
     """
     GIVEN phase cost breakdown and total_cost_eur
     WHEN EstimationResult is instantiated
@@ -276,10 +272,10 @@ def test_estimation_result_phases_sum_matches_total_validator(
     """
     phases = [
         Phase(
-            name=f"Phase {i+1}",
+            name=f"Phase {i + 1}",
             duration_weeks=2,
             cost_eur=cost,
-            summary=f"Deliverable summary for phase {i+1}.",
+            summary=f"Deliverable summary for phase {i + 1}.",
         )
         for i, cost in enumerate(phases_costs)
     ]
@@ -313,9 +309,7 @@ def test_estimation_result_phases_sum_matches_total_validator(
         "high_confidence_passes",
     ],
 )
-def test_estimation_result_low_confidence_requires_out_of_scope_prefix(
-    confidence_pct: int, summary: str, should_pass: bool
-) -> None:
+def test_estimation_result_low_confidence_requires_out_of_scope_prefix(confidence_pct: int, summary: str, should_pass: bool) -> None:
     """
     GIVEN confidence_pct and project summary narrative
     WHEN EstimationResult is instantiated

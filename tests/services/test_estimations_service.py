@@ -249,11 +249,7 @@ async def test_generate_estimation_emits_lifecycle_telemetry_events(
     assert started_call.kwargs["model"] == model
 
     completed_call = next(
-        (
-            call
-            for call in mock_log.info.call_args_list
-            if call.args and call.args[0] == "estimation_generation_completed"
-        ),
+        (call for call in mock_log.info.call_args_list if call.args and call.args[0] == "estimation_generation_completed"),
         None,
     )
     assert completed_call is not None

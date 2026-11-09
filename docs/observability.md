@@ -159,27 +159,28 @@ All structured log events across the application are normalized to lowercase `sn
 | `estimation_cache_hit` | `services/estimations_service.py` | `INFO` | Response served directly from Redis cache |
 | `estimation_generation_completed` | `services/estimations_service.py` | `INFO` | LLM response generated (emits `latency_ms`, `cost_usd`, `usage`) |
 | `estimation_generation_failed` | `services/estimations_service.py` | `ERROR` | LLM generation raised an unhandled exception |
-| `exact_cache_entry_retrieved` | `services/exact_cache.py` | `INFO` | Key found and deserialized from exact cache store |
-| `exact_cache_entry_missed` | `services/exact_cache.py` | `INFO` | Key not found in exact cache store |
-| `exact_cache_entry_stored` | `services/exact_cache.py` | `INFO` | Response serialized and stored in exact cache with TTL |
-| `exact_cache_deserialization_failed` | `services/exact_cache.py` | `WARNING` | JSON payload deserialization failed from exact cache |
-| `exact_cache_lookup_failed` | `services/exact_cache.py` | `WARNING` | Redis exact lookup command failed |
-| `exact_cache_store_failed` | `services/exact_cache.py` | `WARNING` | Redis exact store command failed |
-| `exact_cache_client_closed` | `services/exact_cache.py` | `INFO` | Redis exact cache client connection closed cleanly |
-| `exact_cache_close_failed` | `services/exact_cache.py` | `WARNING` | Redis exact cache client connection close failed |
-| `semantic_cache_lookup_evaluated` | `services/semantic_cache.py` | `INFO` | Semantic similarity evaluated against nearest neighbor |
-| `semantic_cache_entry_retrieved` | `services/semantic_cache.py` | `INFO` | Nearest neighbor meets or exceeds similarity threshold |
-| `semantic_cache_entry_missed` | `services/semantic_cache.py` | `INFO` | Neighbor below threshold or index empty |
-| `semantic_cache_hit_log_only` | `services/semantic_cache.py` | `INFO` | Threshold met in shadow log-only mode (bypasses cache hit) |
-| `semantic_cache_entry_stored` | `services/semantic_cache.py` | `INFO` | Estimation vector, JSON, and bucket stored in RediSearch |
-| `semantic_cache_lookup_failed` | `services/semantic_cache.py` | `WARNING` | RediSearch vector query failed with transient error |
-| `semantic_cache_store_failed` | `services/semantic_cache.py` | `WARNING` | Redis semantic store command failed |
-| `semantic_cache_client_closed` | `services/semantic_cache.py` | `INFO` | Redis semantic cache client connection closed cleanly |
-| `semantic_cache_close_failed` | `services/semantic_cache.py` | `WARNING` | Redis semantic cache client connection close failed |
-| `semantic_index_created` | `services/semantic_cache.py` | `INFO` | RediSearch vector index initialized on application startup |
-| `semantic_index_exists` | `services/semantic_cache.py` | `DEBUG` | RediSearch vector index already registered |
-| `semantic_index_create_failed` | `services/semantic_cache.py` | `WARNING` | RediSearch index initialization failed |
-| `semantic_embedding_failed` | `services/semantic_cache.py` | `WARNING` | OpenAI text embedding generation failed |
+| `exact_cache_entry_retrieved` | `services/cache/exact.py` | `INFO` | Key found and deserialized from exact cache store |
+| `exact_cache_entry_missed` | `services/cache/exact.py` | `INFO` | Key not found in exact cache store |
+| `exact_cache_entry_stored` | `services/cache/exact.py` | `INFO` | Response serialized and stored in exact cache with TTL |
+| `exact_cache_deserialization_failed` | `services/cache/exact.py` | `WARNING` | JSON payload deserialization failed from exact cache |
+| `exact_cache_lookup_failed` | `services/cache/exact.py` | `WARNING` | Redis exact lookup command failed |
+| `exact_cache_store_failed` | `services/cache/exact.py` | `WARNING` | Redis exact store command failed |
+| `exact_cache_client_closed` | `services/cache/exact.py` | `INFO` | Redis exact cache client connection closed cleanly |
+| `exact_cache_close_failed` | `services/cache/exact.py` | `WARNING` | Redis exact cache client connection close failed |
+| `semantic_cache_lookup_evaluated` | `services/cache/semantic.py` | `INFO` | Semantic similarity evaluated against nearest neighbor |
+| `semantic_cache_entry_retrieved` | `services/cache/semantic.py` | `INFO` | Nearest neighbor meets or exceeds similarity threshold |
+| `semantic_cache_entry_missed` | `services/cache/semantic.py` | `INFO` | Neighbor below threshold or index empty |
+| `semantic_cache_hit_log_only` | `services/cache/semantic.py` | `INFO` | Threshold met in shadow log-only mode (bypasses cache hit) |
+| `semantic_cache_entry_stored` | `services/cache/semantic.py` | `INFO` | Estimation vector, JSON, and bucket stored in RediSearch |
+| `semantic_cache_lookup_failed` | `services/cache/semantic.py` | `WARNING` | RediSearch vector query failed with transient error |
+| `semantic_cache_store_failed` | `services/cache/semantic.py` | `WARNING` | Redis semantic store command failed |
+| `semantic_cache_client_closed` | `services/cache/semantic.py` | `INFO` | Redis semantic cache client connection closed cleanly |
+| `semantic_cache_close_failed` | `services/cache/semantic.py` | `WARNING` | Redis semantic cache client connection close failed |
+| `semantic_index_created` | `services/cache/semantic.py` | `INFO` | RediSearch vector index initialized on application startup |
+| `semantic_index_exists` | `services/cache/semantic.py` | `DEBUG` | RediSearch vector index already registered |
+| `semantic_index_create_failed` | `services/cache/semantic.py` | `WARNING` | RediSearch index initialization failed |
+| `semantic_embedding_failed` | `services/cache/semantic.py` | `WARNING` | OpenAI text embedding generation failed |
+| `uvicorn_server_startup_initiated` | `__main__.py` | `INFO` | CLI invocation starting Uvicorn server |
 | `api_startup_initiated` | `server.py` | `INFO` | Lifespan startup sequence begun |
 | `api_shutdown_completed` | `server.py` | `INFO` | Lifespan shutdown cleanly finished |
 | `database_pool_initialized` | `server.py` | `INFO` | Database connection pool established |
@@ -269,13 +270,13 @@ Logging formatting is configured in `Settings.configure_logging()`:
 | **Production** | Any | `JSONRenderer()` | `JSONRenderer()` |
 | **Test** | `JSON_LOGGING=false` | `ConsoleRenderer(colors=True)` | `ConsoleRenderer(colors=False)` |
 
-### 6. Lazy Telemetry Loading and Test Isolation
+### 6. Telemetry Lifecycle and Test Isolation
 
-Heavy instrumentation dependencies (`openinference.instrumentation.litellm`, `opentelemetry.instrumentation.fastapi`, `opentelemetry.exporter.otlp`) are imported lazily inside `setup_telemetry()` and `instrument_fastapi_app()`. When `enable_otel_tracing=False` (default in dev, prod, and test environments), these packages are never imported, eliminating background network polling, startup latency, and unmocked loopback network sockets.
+OpenTelemetry dependencies (`openinference.instrumentation.litellm`, `opentelemetry.instrumentation.fastapi`, `opentelemetry.exporter.otlp`) are isolated in `telemetry.py`. When `enable_otel_tracing=False` (default in dev, prod, and test environments), `setup_telemetry()` and `instrument_fastapi_app()` return immediately without initializing providers, avoiding background network polling, startup latency, or unmocked loopback network sockets.
 
 ### 7. Third-Party Namespace Suppression
 
-Noisy third-party loggers are pinned to `logging.WARNING` in `Settings.configure_logging()`:
+Noisy third-party loggers are pinned to `logging.WARNING` in `configure_logging()` (`src/aie_estimator/logging.py`):
 - `asyncio`: Suppresses routine event-loop cancellations and selector polling debug lines.
 - `psycopg`: Suppresses low-level connection pool state adjustments.
 - `uvicorn.error`: Pinned to `logging.WARNING` to suppress informational server lifecycle messages (`Started server process`, `Waiting for application startup`, `Application startup complete`), while retaining genuine runtime errors and crashes.

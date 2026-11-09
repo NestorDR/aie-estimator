@@ -101,11 +101,11 @@ def get_litellm_router() -> Router:
 
 
 async def call_litellm_router(
-        user_prompt: str,
-        system_prompt: str | None,
-        opts: GenerationOptions,
-        *,
-        temperature: float | None = None,
+    user_prompt: str,
+    system_prompt: str | None,
+    opts: GenerationOptions,
+    *,
+    temperature: float | None = None,
 ) -> dict[str, Any]:
     """
     Send an asynchronous estimation request through the LiteLLM Router with cost extraction and error handling.

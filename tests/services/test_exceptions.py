@@ -54,4 +54,3 @@ def test_unwrap_exception(input_exception: Exception, expected_unwrapped: type[E
     """
     result = unwrap_exception(input_exception)
     assert isinstance(result, expected_unwrapped)
-

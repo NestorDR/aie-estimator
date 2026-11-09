@@ -81,9 +81,9 @@ def test_setup_telemetry_enabled() -> None:
         otel_exporter_otlp_endpoint="http://localhost:4317",
     )
     with (
-        patch("opentelemetry.exporter.otlp.proto.grpc.trace_exporter.OTLPSpanExporter") as mock_exporter,
-        patch("opentelemetry.sdk.trace.export.BatchSpanProcessor") as mock_processor,
-        patch("openinference.instrumentation.litellm.LiteLLMInstrumentor") as mock_litellm,
+        patch("aie_estimator.telemetry.OTLPSpanExporter") as mock_exporter,
+        patch("aie_estimator.telemetry.BatchSpanProcessor") as mock_processor,
+        patch("aie_estimator.telemetry.LiteLLMInstrumentor") as mock_litellm,
     ):
         provider = setup_telemetry(settings)
         assert provider is not None
@@ -104,7 +104,7 @@ def test_instrument_fastapi_app(enabled: bool) -> None:
     settings = Settings(app_env=Environment.TEST, enable_otel_tracing=enabled)
     mock_app = MagicMock()
 
-    with patch("opentelemetry.instrumentation.fastapi.FastAPIInstrumentor") as mock_instrumentor:
+    with patch("aie_estimator.telemetry.FastAPIInstrumentor") as mock_instrumentor:
         instrument_fastapi_app(mock_app, settings)
         if enabled:
             mock_instrumentor.instrument_app.assert_called_once_with(mock_app)

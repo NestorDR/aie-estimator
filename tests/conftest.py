@@ -16,8 +16,8 @@ import pytest
 from aie_estimator.guardrails.input import get_moderation_client
 from aie_estimator.model_catalog import get_model_catalog
 from aie_estimator.server import Server
-from aie_estimator.services.exact_cache import get_exact_cache
-from aie_estimator.services.semantic_cache import get_semantic_cache
+from aie_estimator.services.cache.exact import get_exact_cache
+from aie_estimator.services.cache.semantic import get_semantic_cache
 from aie_estimator.services.providers.litellm_provider import get_litellm_router
 from aie_estimator.services.providers.native_providers import get_anthropic_client, get_openai_client
 from aie_estimator.settings import get_settings
@@ -115,7 +115,7 @@ def app(monkeypatch: pytest.MonkeyPatch) -> Generator[FastAPI, None, None]:
     :return: Configured FastAPI application instance.
     """
     monkeypatch.setattr(
-        "aie_estimator.services.semantic_cache.EstimationSemanticCache.initialize_index",
+        "aie_estimator.services.cache.semantic.EstimationSemanticCache.initialize_index",
         AsyncMock(return_value=None),
     )
     server = Server()

@@ -4,20 +4,16 @@
 from enum import Enum
 from functools import lru_cache
 import importlib.metadata
-import logging
-import logging.handlers
 from os import environ
 from pathlib import Path
 from typing import Final
 
 # --- Third Party Libraries ---
-from pydantic import SecretStr, ValidationError
+from pydantic import AliasChoices, Field, SecretStr, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import structlog
-from structlog.processors import CallsiteParameter, CallsiteParameterAdder
 
 # --- App modules ---
-from aie_estimator.telemetry import inject_opentelemetry_context
 from aie_estimator.utils.model_constants import DEFAULT_FAST_PROFILE, PROVIDER_PREFIXES
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
@@ -66,7 +62,16 @@ class Settings(BaseSettings):
     # Exact cache settings
     redis_host: str = "localhost"
     redis_port: int = 6379
-    cache_ttl: int = 86400
+    exact_cache_ttl: int = Field(default=86400, validation_alias=AliasChoices("exact_cache_ttl", "cache_ttl"))
+
+    @property
+    def cache_ttl(self) -> int:
+        """
+        Backwards-compatible property alias for exact_cache_ttl.
+
+        :return: Exact cache retention TTL in seconds.
+        """
+        return self.exact_cache_ttl
 
     # Semantic cache settings
     enable_semantic_cache: bool = True
@@ -129,9 +134,6 @@ class Settings(BaseSettings):
             if self.app_env == Environment.TEST:
                 self.litellm_local_model_cost_map = True
 
-            # Configure structlog immediately after base settings initialization
-            self.configure_logging()
-
             # Mirror secret API keys into os.environ for LiteLLM and external SDKs
             self.mirror_secrets_to_environ()
 
@@ -171,77 +173,11 @@ class Settings(BaseSettings):
         """
         Configure unified structlog and standard library logging handlers.
 
-        Sets up console and optional rotating file handlers with structlog formatting,
-        and bridges standard library loggers (Uvicorn, FastAPI) to structlog.
+        Delegates to aie_estimator.logging.configure_logging.
         """
-        log_level = getattr(logging, self.log_level.upper(), logging.INFO)
-        use_json = self.json_logging or (self.app_env == Environment.PROD)
+        from aie_estimator.logging import configure_logging
 
-        shared_processors: list[structlog.types.Processor] = [
-            structlog.contextvars.merge_contextvars,
-            inject_opentelemetry_context,
-            structlog.stdlib.add_log_level,
-            structlog.stdlib.add_logger_name,
-            CallsiteParameterAdder(
-                {
-                    CallsiteParameter.FILENAME,
-                    CallsiteParameter.LINENO,
-                    CallsiteParameter.FUNC_NAME,
-                }
-            ),
-            structlog.processors.TimeStamper(fmt="iso"),
-            structlog.processors.StackInfoRenderer(),
-            structlog.processors.format_exc_info,
-        ]
-
-        structlog.configure(
-            processors=shared_processors + [structlog.stdlib.ProcessorFormatter.wrap_for_formatter],
-            logger_factory=structlog.stdlib.LoggerFactory(),
-            wrapper_class=structlog.stdlib.BoundLogger,
-            context_class=dict,
-            cache_logger_on_first_use=self.app_env == Environment.PROD,
-        )
-
-        console_renderer = structlog.processors.JSONRenderer() if use_json else structlog.dev.ConsoleRenderer(colors=True)
-        console_formatter = structlog.stdlib.ProcessorFormatter(
-            foreign_pre_chain=shared_processors,
-            processors=[structlog.stdlib.ProcessorFormatter.remove_processors_meta, console_renderer],
-        )
-
-        console_handler = logging.StreamHandler()
-        console_handler.setFormatter(console_formatter)
-        handlers: list[logging.Handler] = [console_handler]
-
-        if self.enable_file_logging:
-            log_dir = Path(__file__).resolve().parents[2] / "logs"
-            log_dir.mkdir(parents=True, exist_ok=True)
-            log_file = log_dir / ("app.log" if self.app_env == Environment.PROD else "dev.log")
-
-            file_renderer = structlog.processors.JSONRenderer() if use_json else structlog.dev.ConsoleRenderer(colors=False)
-            file_formatter = structlog.stdlib.ProcessorFormatter(
-                foreign_pre_chain=shared_processors,
-                processors=[structlog.stdlib.ProcessorFormatter.remove_processors_meta, file_renderer],
-            )
-            file_handler = logging.handlers.RotatingFileHandler(
-                filename=log_file,
-                maxBytes=5 * 1024 * 1024,
-                backupCount=3,
-                encoding="utf-8",
-            )
-            file_handler.setFormatter(file_formatter)
-            handlers.append(file_handler)
-
-        root_logger = logging.getLogger()
-        root_logger.handlers.clear()
-        for handler in handlers:
-            root_logger.addHandler(handler)
-        root_logger.setLevel(log_level)
-
-        # Suppress verbose noisy namespaces
-        logging.getLogger("asyncio").setLevel(logging.WARNING)
-        logging.getLogger("psycopg").setLevel(logging.WARNING)
-        logging.getLogger("uvicorn.error").setLevel(logging.WARNING)
-        logging.getLogger("uvicorn.access").setLevel(log_level)
+        configure_logging(self)
 
 
 @lru_cache(maxsize=1)

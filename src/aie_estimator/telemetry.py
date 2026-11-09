@@ -4,12 +4,17 @@
 from typing import TYPE_CHECKING, Any, Final
 
 # --- Third Party Libraries ---
+from openinference.instrumentation.litellm import LiteLLMInstrumentor
 from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 import structlog
 
 # --- App modules ---
 if TYPE_CHECKING:
-    from opentelemetry.sdk.trace import TracerProvider
     from aie_estimator.settings import Settings
 
 _SERVICE_NAME: Final[str] = "aie-estimator"
@@ -26,7 +31,7 @@ def inject_opentelemetry_context(
     :param logger: The wrapped logger instance.
     :param method_name: The name of the logger method invoked.
     :param event_dict: The event dictionary to enrich with trace identifiers.
-    
+
     :return: The enriched event dictionary.
     """
     span = trace.get_current_span()
@@ -37,21 +42,16 @@ def inject_opentelemetry_context(
     return event_dict
 
 
-def setup_telemetry(settings: Settings) -> TracerProvider | None:
+def setup_telemetry(settings: "Settings") -> TracerProvider | None:
     """
     Initialize OpenTelemetry TracerProvider and instrument LiteLLM if enabled.
 
     :param settings: Application settings controlling telemetry configuration.
+
     :return: The initialized TracerProvider instance, or None if tracing is disabled.
     """
     if not settings.enable_otel_tracing:
         return None
-
-    from openinference.instrumentation.litellm import LiteLLMInstrumentor
-    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-    from opentelemetry.sdk.resources import Resource
-    from opentelemetry.sdk.trace import TracerProvider
-    from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
     resource = Resource.create(
         {
@@ -70,7 +70,7 @@ def setup_telemetry(settings: Settings) -> TracerProvider | None:
     return provider
 
 
-def instrument_fastapi_app(app: Any, settings: Settings) -> None:
+def instrument_fastapi_app(app: Any, settings: "Settings") -> None:
     """
     Instrument FastAPI application with OpenTelemetry middleware if enabled.
 
@@ -79,7 +79,5 @@ def instrument_fastapi_app(app: Any, settings: Settings) -> None:
     """
     if not settings.enable_otel_tracing:
         return
-
-    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
     FastAPIInstrumentor.instrument_app(app)
