@@ -164,3 +164,15 @@ When an LLM response violates a model validator (such as phase cost sum mismatch
 
 ### 3. Boundary Validation and OpenAPI Documentation
 `EstimationRequest` uses `@field_validator("model", mode="after")` importing `get_supported_models()` from `src/aie_estimator/model_catalog.py` to validate requested model identifiers at the API boundary, accepting physical model IDs and logical profiles while rejecting placeholders and unknown models with HTTP 422. OpenAPI documentation dropdowns are enriched decoupled from the DTO via FastAPI's `app.openapi` customization in `src/aie_estimator/server.py`.
+
+### 4. Input Guardrail Rejection Contract (HTTP 400)
+When incoming requests pass syntactic Pydantic validation but violate semantic input guardrails (`check_input`), the application server intercepts `InputGuardrailViolation` and returns an HTTP 400 Bad Request error with structured payload:
+```json
+{
+  "detail": {
+    "reason": "prompt_injection",
+    "message": "Suspicious instruction-like text detected: 'ignore previous instructions'"
+  }
+}
+```
+Possible values for `reason` are `"moderation"`, `"prompt_injection"`, and `"pii"`. See [docs/guardrails.md](guardrails.md) for guardrail layer specifications.

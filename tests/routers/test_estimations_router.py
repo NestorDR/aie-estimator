@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 # --- App modules ---
+from aie_estimator.guardrails.input import InputGuardrailViolation
 from aie_estimator.utils.model_constants import DEFAULT_FAST_PROFILE, DEFAULT_GPT_LLM
 
 VALID_PAYLOAD: Final[dict[str, Any]] = {
@@ -197,3 +198,33 @@ def test_create_estimation_reflects_configured_active_prompt_version(
         mock_render.assert_called_once()
         _, call_kwargs = mock_render.call_args
         assert call_kwargs.get("version") == "v2-candidate"
+
+
+def test_create_estimation_input_guardrail_violation_returns_400(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    GIVEN an estimation request that triggers an input guardrail violation
+    WHEN a POST request is sent to /api/v1/estimate
+    THEN HTTP 400 Bad Request is returned with structured reason and message in the detail object.
+
+    :param client: Shared TestClient fixture.
+    :param monkeypatch: Pytest monkeypatch fixture.
+    """
+    mock_generate = AsyncMock(
+        side_effect=InputGuardrailViolation(
+            "Suspicious instruction-like text detected: 'ignore previous instructions'",
+            reason="prompt_injection",
+        )
+    )
+    monkeypatch.setattr("aie_estimator.routers.estimations_router.estimations_service.generate_estimation", mock_generate)
+
+    response = client.post("/api/v1/estimate", json=VALID_PAYLOAD)
+
+    assert response.status_code == 400
+    data = response.json()
+    assert "detail" in data
+    assert data["detail"]["reason"] == "prompt_injection"
+    assert "Suspicious instruction-like text" in data["detail"]["message"]
+

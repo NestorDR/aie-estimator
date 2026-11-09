@@ -254,8 +254,26 @@ if runtime.exists():
                     )
                     st.session_state.latest_estimation = result
                 except httpx.HTTPStatusError as exc:
-                    st.error(f"Service returned {exc.response.status_code}: {exc.response.text}",
-                             icon=":material/error:")
+                    if exc.response.status_code == 400:
+                        try:
+                            error_payload = exc.response.json()
+                            detail = error_payload.get("detail", {})
+                            if isinstance(detail, dict) and "reason" in detail and "message" in detail:
+                                reason = detail["reason"]
+                                message = detail["message"]
+                                st.error(
+                                    f"Request blocked by input guardrail ({reason}): {message}",
+                                    icon=":material/security:",
+                                )
+                            else:
+                                st.error(f"Service returned 400: {exc.response.text}", icon=":material/error:")
+                        except Exception:
+                            st.error(f"Service returned 400: {exc.response.text}", icon=":material/error:")
+                    else:
+                        st.error(
+                            f"Service returned {exc.response.status_code}: {exc.response.text}",
+                            icon=":material/error:",
+                        )
                 except httpx.RequestError as exc:
                     st.error(f"Could not reach the estimator backend at `{estimate_endpoint}`: {exc}",
                              icon=":material/error:")
@@ -299,7 +317,7 @@ if runtime.exists():
                     }
                     for phase in phases
                 ]
-                st.dataframe(phases_table, width="stretch", hide_index=True)
+                st.table(phases_table, hide_index=True, alt="Phase breakdown table")
         elif "text" in estimation_data:
             st.markdown(estimation_data.get("text", ""))
 

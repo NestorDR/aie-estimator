@@ -138,6 +138,16 @@ This guarantees GDPR compliance and ensures unsupported parameters (e.g., passin
 - **Upstream Priority**: Dynamic costs returned by LiteLLM Router (`response._hidden_params["response_cost"]`) take precedence.
 - **Fallback Calculation**: When `cost_usd is None` (such as direct native SDK invocations or unmetered routes), the service delegates to `estimate_cost(model, input_tokens, output_tokens)` from `src/aie_estimator/services/providers/pricing.py`.
 - **Model Identifier Resolution**: `estimate_cost` normalizes vendor-prefixed identifiers (e.g. "openai/gpt-6-luna") matching against `MODEL_COSTS` keys.
+
+### 8. End-to-End Estimation Lifecycle with Semantic Guardrails
+`generate_estimation` follows an ordered pipeline that embeds semantic validation before cache lookup and before cache storage:
+- **Input Guardrails**: Evaluates `check_input(user_prompt)` against OpenAI `omni-moderation-latest`, prompt injection heuristics, and PII patterns (email, IBAN, credit card, phone). Aborts immediately with `InputGuardrailViolation` (HTTP 400).
+- **Exact-Match Cache Lookup**: Computes deterministic SHA-256 key via `EstimationCache.make_key`. Cache hits return immediately with `cache_hit=True`.
+- **Provider Dispatch**: Calls `call_llm` to execute structured extraction with Instructor.
+- **Output Guardrail Filter**: Enforces `enforce_scope_response`, converting unflagged low-confidence results (`confidence_pct < 30`) into standardized out-of-scope responses (`total_cost_eur=0`, single "Not estimated" phase).
+- **Validated Cache Persistence**: Only successfully validated and filtered payloads are persisted to Redis.
+
+For in-depth details on the guardrails architecture, see [docs/guardrails.md](guardrails.md).
 - **Unconfigured Models**: If a model is not found in `MODEL_COSTS`, `estimate_cost` returns `None`. The resulting response omits `cost_usd`, and the Streamlit UI displays `Cost: N/A`.
 
 ### 8. Runtime Resilience and Engine Comparison
@@ -204,6 +214,12 @@ Applies exclusively to `engine="litellm"`:
 - **Intra-Tier Provider Rotation**: If a provider in a logical profile (e.g. `reasoner-fast`) fails or times out after its `num_retries: 2`, LiteLLM rotates traffic to the next lowest-cost healthy candidate in the profile with valid credentials.
 - **Cross-Tier Failover Escalation**: When all Tier 1 candidates are exhausted, LiteLLM triggers `router_settings.fallbacks` (`reasoner-fast -> reasoner-deep`), escalating execution to the frontier reasoning pool.
 - **Terminal Error Normalization**: If all candidates fail across both tiers, the provider unwraps the exception via `unwrap_exception`, emits `litellm_router_call_failed`, and raises `LLMProviderError` chained to the original cause (`from e`).
+
+### 10. Semantic Guardrails Execution Pipeline
+
+`estimations_service.generate_estimation` coordinates input semantic validation (`check_input`) and output filtering (`enforce_scope_response`):
+1. **Pre-Cache Input Semantic Guardrails**: `await check_input(user_prompt, openai_client=get_moderation_client())` runs before exact-match cache lookup. If moderation flags content, prompt injection is detected, or PII is found, it raises `InputGuardrailViolation(reason=...)` which FastAPI maps to HTTP 400 Bad Request. This prevents malicious prompts or PII from querying or polluting the cache.
+2. **Post-Extraction Output Scope Filter**: After `call_llm` returns a validated `EstimationResult`, `enforce_scope_response(structured_result)` normalizes low-confidence estimations (`confidence_pct < 30`) without an explicit out-of-scope summary into a safe placeholder response before writing to cache and returning. For complete architectural details, see [docs/guardrails.md](guardrails.md).
 
 
 

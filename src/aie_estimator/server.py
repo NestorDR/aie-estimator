@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 import structlog
 
 # --- App modules ---
+from aie_estimator.guardrails.input import InputGuardrailViolation
 from aie_estimator.model_catalog import get_supported_models
 from aie_estimator.routers import estimations_router, health_router
 from aie_estimator.services.cache import get_estimation_cache
@@ -158,6 +159,26 @@ class Server:
 
         :param app: FastAPI application instance to register exception handlers on.
         """
+
+        @app.exception_handler(InputGuardrailViolation)
+        async def input_guardrail_exception_handler(request: Request, e: InputGuardrailViolation) -> JSONResponse:
+            """
+            Handle input guardrail rejections and return structured HTTP 400 responses.
+
+            :param request: Incoming HTTP request blocked by guardrails.
+            :param e: InputGuardrailViolation instance.
+
+            :return: JSONResponse containing rejection reason and message.
+            """
+            self.log.info(
+                "estimation_blocked_by_input_guardrail",
+                reason=e.reason,
+                message=e.message,
+            )
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"detail": {"reason": e.reason, "message": e.message}},
+            )
 
         @app.exception_handler(RequestValidationError)
         async def validation_exception_handler(request: Request, e: RequestValidationError) -> JSONResponse:

@@ -13,6 +13,7 @@ from openai import AsyncOpenAI
 import pytest
 
 # --- App modules ---
+from aie_estimator.guardrails.input import get_moderation_client
 from aie_estimator.model_catalog import get_model_catalog
 from aie_estimator.server import Server
 from aie_estimator.services.cache import get_estimation_cache
@@ -30,6 +31,7 @@ def _clear_all_caches() -> None:
     get_litellm_router.cache_clear()
     get_model_catalog.cache_clear()
     get_estimation_cache.cache_clear()
+    get_moderation_client.cache_clear()
 
 
 @pytest.fixture(autouse=True)

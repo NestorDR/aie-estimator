@@ -18,6 +18,7 @@ The project enforces strict separation of concerns across dedicated application 
 
 - **Schemas (`src/aie_estimator/schemas`)**: Defines domain data schemas and Pydantic models (`EstimationRequest`, `EstimationResponse`) for request payload validation and response contracts.
 - **Routers (`src/aie_estimator/routers/`)**: Defines HTTP routes, endpoint documentation, status codes, and request/response handling.
+- **Guardrails (`src/aie_estimator/guardrails/`)**: Enforces defense-in-depth semantic validation across input (`check_input`: OpenAI `omni-moderation-latest`, prompt injection heuristics, and PII heuristics) and output (`enforce_scope_response`: filter policy normalizing low-confidence estimations).
 - **Services (`src/aie_estimator/services/`)**: Encapsulates core business logic, CAG prompt assembly, multi-provider LLM dispatch with two-level runtime failover (intra-tier rotation and cross-tier escalation), token cost estimation, and deterministic response caching.
 - **Prompts (`src/aie_estimator/prompts/`)**: Stores versioned Jinja2 prompt templates (`system.j2`, `user.j2`, `examples.j2`) and loader for estimation prompt rendering.
 - **Settings (`src/aie_estimator/settings.py`)**: Environment-aware configuration and settings management powered by `pydantic-settings`, supporting structured JSON logging, credential isolation via `SecretStr`, and secret synchronization to `os.environ`.
@@ -36,17 +37,21 @@ flowchart TD
 
     subgraph ServiceLayer ["LLM Service Layer"]
         TemplateEngine -->|"System & User Prompts"| Service["EstimationsService\n(generate_estimation)"]
-        Service -->|"3. Query cache key\n(SHA-256 digest)"| CacheCheck{"Exact-Match Cache\n(Redis)"}
+        Service -->|"3. Input semantic guardrails\n(check_input)"| InputGuard{"Input Guardrails\n(Moderation, Injection, PII)"}
+        InputGuard -->|"Violation"| HTTP400["HTTP 400 Bad Request\n(InputGuardrailViolation)"]
+        HTTP400 --> Client
+        InputGuard -->|"Pass"| CacheCheck{"Exact-Match Cache\n(Redis)"}
 
         CacheCheck -->|"Cache Hit"| ServiceOutput["Result Dictionary\n(cost_usd, usage, result)"]
         CacheCheck -->|"Cache Miss"| Dispatcher["Execution Engine Dispatcher\n(call_llm)"]
 
         Dispatcher -->|"engine='litellm'"| LiteLLMRouting["LiteLLM Router\n(Profiles, Cost-Routing & Dynamic Backoff)"]
         Dispatcher -->|"engine='native'"| NativeProviders["Native Providers\n(OpenAI & Anthropic SDKs)"]
-        LiteLLMRouting -->|"Store response"| CacheStore[("Redis Cache Store")]
-        NativeProviders -->|"Store response"| CacheStore
+        LiteLLMRouting --> OutputFilter["Output Scope Filter\n(enforce_scope_response)"]
+        NativeProviders --> OutputFilter
+        OutputFilter -->|"Store sanitized response"| CacheStore[("Redis Cache Store")]
         CacheStore -.->|"Populates for subsequent requests"| CacheCheck
-        CacheStore --> ServiceOutput
+        OutputFilter --> ServiceOutput
     end
 
     ServiceOutput -->|"4. Construct response"| ResponseMapper["Response Mapping\n(EstimationResponse)"]
@@ -70,6 +75,10 @@ aie-estimator/
 │       ├── telemetry.py                # OpenTelemetry TracerProvider and structlog context injection
 │       ├── llm_profiles.yml            # LiteLLM router profiles, tiers, and telemetry config
 │       ├── .env.example                # Example environment configuration
+│       ├── guardrails/                 # Defense-in-depth semantic validation
+│       │   ├── __init__.py
+│       │   ├── input.py                # Moderation API, prompt injection, and PII heuristics
+│       │   └── output.py               # Output scope filter and low-confidence normalization
 │       ├── prompts/                    # Jinja2 prompt templates and loader
 │       │   ├── __init__.py
 │       │   ├── loader.py
@@ -362,6 +371,7 @@ Detailed architecture guides and technical documentation are maintained in the [
 
 - [API Schemas & Data Contracts](docs/api-schemas.md): Request and response payload schemas, field validation rules, token accounting, and Level-1 structural evaluation scoring.
 - [Prompt Template Engine](docs/prompt-engine.md): Modular Jinja2 prompt composition, system/user template layouts, few-shot examples injection, and decoupled versioning.
+- [Guardrails & Semantic Validation](docs/guardrails.md): Multi-layer semantic validation across input (content moderation, prompt injection heuristics, PII scanning) and output (low-confidence normalization).
 - [Estimations Service Architecture & Provider Subpackage](docs/estimations-service.md): Deep dive into estimations orchestration, provider isolation, LiteLLM Router, native SDKs, retry backoff, and exception handling.
 - [Model Catalog & Request Validation](docs/model-catalog.md): Centralized model catalog, supported OpenAI/Anthropic models, reasoning metadata, and boundary validation.
 - [Reasoning Profiles & Dynamic Routing](docs/reasoning-profiles.md): LiteLLM router profiles, qualitative reasoning effort tiers, cost-optimized dynamic fallback, two-level runtime failover, and credential filtering.

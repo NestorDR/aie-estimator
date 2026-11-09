@@ -105,6 +105,7 @@ python_files = ["test_*.py"]
 [tool.pytest_env]
 APP_ENV = "test"
 LLM_MODEL = "reasoner-fast"
+OPENAI_API_KEY = ""
 # When litellm is invoked, its internal pricing module (litellm.litellm_core_utils.get_model_cost_map) defaults to downloading the latest pricing dictionary over HTTP from:
 # https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json
 # In sandboxed test runners, offline CI/CD, or restricted networks:

@@ -94,6 +94,13 @@ When identical estimation parameters and description text are submitted again:
 - The UI displays the cached response with low latency (~1–3 ms) and zero incremental token expenditure.
 - The prompt version banner highlights a `Cached` indicator badge.
 
+### 7. Input Semantic Guardrail Error Handling
+
+When user input triggers semantic guardrails at the backend (content moderation violation, prompt injection pattern, or personal data detection):
+- The backend rejects the request with HTTP 400 Bad Request and structured `detail` payload (`reason` and `message`).
+- The Streamlit interface intercepts the HTTP 400 status code and displays an actionable security alert (`st.error`) with the `:material/security:` icon: `Request blocked by input guardrail ({reason}): {message}`.
+- Form inputs are preserved so the user can amend the description without retyping. See [docs/guardrails.md](guardrails.md) for full guardrail specifications.
+
 ---
 
 ## Technical Considerations
@@ -121,7 +128,7 @@ async def send_estimation_request(
 The legacy free-text markdown renderer has been replaced by structured `EstimationResult` formatting:
 - Project summary is presented with conditional styling: warning alert (`st.warning`) for low-confidence or out-of-scope estimations, and informational alert (`st.info`) for standard estimations.
 - High-level KPIs are rendered via native `st.metric` widgets (`Total cost`, `Total duration`, and `Confidence`).
-- Phase-level allocations are rendered through an interactive `st.dataframe` detailing Phase name, duration, EUR cost, and summary.
+- Phase-level allocations are rendered through a native HTML table (`st.table`) detailing Phase name, duration, EUR cost, and full narrative summary with multi-line text wrapping.
 - If legacy text responses are encountered, the interface gracefully falls back to `st.markdown`.
 
 ### 3. Session State Persistence
