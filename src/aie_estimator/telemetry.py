@@ -26,6 +26,7 @@ def inject_opentelemetry_context(
     :param logger: The wrapped logger instance.
     :param method_name: The name of the logger method invoked.
     :param event_dict: The event dictionary to enrich with trace identifiers.
+    
     :return: The enriched event dictionary.
     """
     span = trace.get_current_span()

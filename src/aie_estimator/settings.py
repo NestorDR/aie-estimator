@@ -63,10 +63,16 @@ class Settings(BaseSettings):
     litellm_local_model_cost_map: bool = True
     llm_profiles_path: Path = Path(__file__).resolve().parent / "llm_profiles.yml"
 
-    # Cache settings
+    # Exact cache settings
     redis_host: str = "localhost"
     redis_port: int = 6379
     cache_ttl: int = 86400
+
+    # Semantic cache settings
+    enable_semantic_cache: bool = True
+    semantic_cache_threshold: float = 0.92
+    semantic_cache_log_only: bool = False
+    semantic_cache_ttl: int = 86400
 
     # Configure env file handling
     model_config = SettingsConfigDict(

@@ -21,7 +21,6 @@ from aie_estimator.schemas.estimations import (
     OutputFormat,
     ProjectType,
 )
-from aie_estimator.settings import get_settings
 
 
 def test_render_estimation_prompt_user_description_interpolation() -> None:
@@ -257,12 +256,9 @@ def test_resolve_prompt_version_fallback_to_settings(monkeypatch: pytest.MonkeyP
 
     :param monkeypatch: Pytest monkeypatch fixture.
     """
-    get_settings.cache_clear()
     assert resolve_prompt_version(None) == "v1"
     assert resolve_prompt_version("") == "v1"
 
     monkeypatch.setenv("ACTIVE_PROMPT_VERSION", "invalid_v")
-    get_settings.cache_clear()
     with pytest.raises(ValueError, match=r"Invalid prompt version 'invalid_v'"):
         resolve_prompt_version()
-    get_settings.cache_clear()

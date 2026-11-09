@@ -19,7 +19,7 @@ The project enforces strict separation of concerns across dedicated application 
 - **Schemas (`src/aie_estimator/schemas`)**: Defines domain data schemas and Pydantic models (`EstimationRequest`, `EstimationResponse`) for request payload validation and response contracts.
 - **Routers (`src/aie_estimator/routers/`)**: Defines HTTP routes, endpoint documentation, status codes, and request/response handling.
 - **Guardrails (`src/aie_estimator/guardrails/`)**: Enforces defense-in-depth semantic validation across input (`check_input`: OpenAI `omni-moderation-latest`, prompt injection heuristics, and PII heuristics) and output (`enforce_scope_response`: filter policy normalizing low-confidence estimations).
-- **Services (`src/aie_estimator/services/`)**: Encapsulates core business logic, CAG prompt assembly, multi-provider LLM dispatch with two-level runtime failover (intra-tier rotation and cross-tier escalation), token cost estimation, and deterministic response caching.
+- **Services (`src/aie_estimator/services/`)**: Encapsulates core business logic, CAG prompt assembly, multi-provider LLM dispatch with two-level runtime failover (intra-tier rotation and cross-tier escalation), token cost estimation, and two-tier response caching (Tier 1 exact-match and Tier 2 RediSearch vector similarity).
 - **Prompts (`src/aie_estimator/prompts/`)**: Stores versioned Jinja2 prompt templates (`system.j2`, `user.j2`, `examples.j2`) and loader for estimation prompt rendering.
 - **Settings (`src/aie_estimator/settings.py`)**: Environment-aware configuration and settings management powered by `pydantic-settings`, supporting structured JSON logging, credential isolation via `SecretStr`, and secret synchronization to `os.environ`.
 - **Server (`src/aie_estimator/server.py`)**: Centralizes FastAPI application initialization, lifespan event handlers, router registration, and global exception mapping.
@@ -40,17 +40,20 @@ flowchart TD
         Service -->|"3. Input semantic guardrails\n(check_input)"| InputGuard{"Input Guardrails\n(Moderation, Injection, PII)"}
         InputGuard -->|"Violation"| HTTP400["HTTP 400 Bad Request\n(InputGuardrailViolation)"]
         HTTP400 --> Client
-        InputGuard -->|"Pass"| CacheCheck{"Exact-Match Cache\n(Redis)"}
+        InputGuard -->|"Pass"| ExactCacheCheck{"Tier 1: Exact Cache\n(Redis SHA-256)"}
+        ExactCacheCheck -->|"Cache Hit (~1ms)"| ServiceOutput["Result Dictionary\n(cost_usd, usage, result)"]
+        ExactCacheCheck -->|"Cache Miss"| SemanticCacheCheck{"Tier 2: Semantic Cache\n(RediSearch Vectors)"}
 
-        CacheCheck -->|"Cache Hit"| ServiceOutput["Result Dictionary\n(cost_usd, usage, result)"]
-        CacheCheck -->|"Cache Miss"| Dispatcher["Execution Engine Dispatcher\n(call_llm)"]
+        SemanticCacheCheck -->|"Cache Hit (~80ms)"| ServiceOutput
+        SemanticCacheCheck -->|"Cache Miss"| Dispatcher["Execution Engine Dispatcher\n(call_llm)"]
 
         Dispatcher -->|"engine='litellm'"| LiteLLMRouting["LiteLLM Router\n(Profiles, Cost-Routing & Dynamic Backoff)"]
         Dispatcher -->|"engine='native'"| NativeProviders["Native Providers\n(OpenAI & Anthropic SDKs)"]
         LiteLLMRouting --> OutputFilter["Output Scope Filter\n(enforce_scope_response)"]
         NativeProviders --> OutputFilter
-        OutputFilter -->|"Store sanitized response"| CacheStore[("Redis Cache Store")]
-        CacheStore -.->|"Populates for subsequent requests"| CacheCheck
+        OutputFilter -->|"Store in both caches"| CacheStore[("Redis Exact & Semantic Store")]
+        CacheStore -.->|"Populates for subsequent requests"| ExactCacheCheck
+        CacheStore -.->|"Populates vector index"| SemanticCacheCheck
         OutputFilter --> ServiceOutput
     end
 
@@ -92,7 +95,8 @@ aie-estimator/
 │       │   └── health_router.py        # GET /health status endpoint
 │       ├── services/
 │       │   ├── __init__.py
-│       │   ├── cache.py                # Deterministic exact-match Redis cache
+│       │   ├── exact_cache.py          # Deterministic exact-match Redis cache (Tier 1)
+│       │   ├── semantic_cache.py       # Native redis.asyncio RediSearch vector cache (Tier 2)
 │       │   ├── estimations_service.py  # Estimation orchestration and multi-engine coordination
 │       │   ├── exceptions.py           # Service and provider exception hierarchy
 │       │   └── providers/              # Isolated provider integrations and dispatch
@@ -376,6 +380,7 @@ Detailed architecture guides and technical documentation are maintained in the [
 - [Model Catalog & Request Validation](docs/model-catalog.md): Centralized model catalog, supported OpenAI/Anthropic models, reasoning metadata, and boundary validation.
 - [Reasoning Profiles & Dynamic Routing](docs/reasoning-profiles.md): LiteLLM router profiles, qualitative reasoning effort tiers, cost-optimized dynamic fallback, two-level runtime failover, and credential filtering.
 - [Structured Product UI & Exact-Match Cache](docs/streamlit-conversational-ui.md): Streamlit product form interface, instant static Markdown rendering, execution telemetry container, deterministic Redis exact-match caching, and graceful degradation.
+- [Semantic Response Caching](docs/semantic-response-caching.md): Tier 2 native RediSearch vector similarity caching, cosine distance thresholds, shadow mode calibration, and offline test isolation.
 - [Observability, Logging & Distributed Tracing](docs/observability.md): Unified structlog pipeline, standardized event taxonomy, OpenTelemetry context injection, Arize Phoenix container setup, and DuckDB storage mechanics.
 - [Testing Guidelines](docs/testing.md): Test suite organization, pytest fixtures, and coverage expectations.
 

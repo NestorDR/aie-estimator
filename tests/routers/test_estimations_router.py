@@ -3,7 +3,7 @@
 # --- Python Standard Library ---
 from collections.abc import Callable
 from typing import Any, Final
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 # --- Third Party Libraries ---
 from fastapi.testclient import TestClient
@@ -63,42 +63,33 @@ def test_create_estimation_valid_request_returns_200(
     )
     monkeypatch.setattr("aie_estimator.routers.estimations_router.estimations_service.generate_estimation", mock_generate)
 
-    with patch("aie_estimator.routers.estimations_router.render_estimation_prompt") as mock_render:
-        mock_render.return_value = ("System instructions", "User project description")
+    response = client.post("/api/v1/estimate", json=VALID_PAYLOAD)
 
-        response = client.post("/api/v1/estimate", json=VALID_PAYLOAD)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["result"]["total_cost_eur"] == 20000
+    assert data["result"]["total_duration_weeks"] == 8
+    assert data["result"]["confidence_pct"] == 85
+    assert len(data["result"]["phases"]) == 2
+    assert data["cached"] is False
+    assert data["prompt_version"] == "v1"
+    assert data["model"] == DEFAULT_GPT_LLM
+    assert data["provider"] == "openai"
+    assert data["cost_usd"] == 0.0025
+    assert data["usage"] == {
+        "input_tokens": 120,
+        "output_tokens": 60,
+        "total_tokens": 180,
+        "preprocessing_input_tokens": 0,
+        "preprocessing_output_tokens": 0,
+    }
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["result"]["total_cost_eur"] == 20000
-        assert data["result"]["total_duration_weeks"] == 8
-        assert data["result"]["confidence_pct"] == 85
-        assert len(data["result"]["phases"]) == 2
-        assert data["cached"] is False
-        assert data["prompt_version"] == "v1"
-        assert data["model"] == DEFAULT_GPT_LLM
-        assert data["provider"] == "openai"
-        assert data["cost_usd"] == 0.0025
-        assert data["usage"] == {
-            "input_tokens": 120,
-            "output_tokens": 60,
-            "total_tokens": 180,
-            "preprocessing_input_tokens": 0,
-            "preprocessing_output_tokens": 0,
-        }
-
-        # Verify render_estimation_prompt was called with resolved active version "v1"
-        mock_render.assert_called_once()
-        _, call_kwargs = mock_render.call_args
-        assert call_kwargs.get("version") == "v1"
-
-        # Verify llm_service was called with rendered prompts
-        mock_generate.assert_called_once()
-        gen_args, gen_kwargs = mock_generate.call_args
-        called_system = gen_kwargs.get("system_prompt") or (gen_args[0] if gen_args else None)
-        called_user = gen_kwargs.get("user_prompt") or (gen_args[1] if len(gen_args) > 1 else None)
-        assert called_system == "System instructions"
-        assert called_user == "User project description"
+    # Verify generate_estimation was called with parsed EstimationRequest and options
+    mock_generate.assert_called_once()
+    call_args, call_kwargs = mock_generate.call_args
+    passed_request = call_args[0] if call_args else call_kwargs.get("request")
+    assert passed_request.description == VALID_PAYLOAD["description"]
+    assert passed_request.project_type.value == VALID_PAYLOAD["project_type"]
 
 
 @pytest.mark.parametrize(
@@ -157,7 +148,8 @@ def test_create_estimation_request_options_pass_through(
     assert {key: data[key] for key in expected_response} == expected_response
 
     mock_generate.assert_called_once()
-    passed_opts = mock_generate.call_args.args[2]
+    call_args, call_kwargs = mock_generate.call_args
+    passed_opts = call_kwargs.get("opts") or (call_args[1] if len(call_args) > 1 else None)
     assert passed_opts.engine == expected_engine
     assert passed_opts.model == payload_override.get("model", passed_opts.model)
 
@@ -168,36 +160,28 @@ def test_create_estimation_reflects_configured_active_prompt_version(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    GIVEN a custom active prompt version resolved by resolve_prompt_version
+    GIVEN a custom active prompt version returned by estimations_service
     WHEN a POST request is processed by /api/v1/estimate
-    THEN the rendered prompt and response metadata reflect that configured active version.
+    THEN the response metadata reflects that configured active version.
 
     :param client: Shared TestClient fixture.
     :param make_estimation_result: Estimation result factory fixture.
     :param monkeypatch: Pytest monkeypatch fixture.
     """
-    mock_generate = AsyncMock(
-        return_value=make_estimation_result(
-            estimation="Result with active version v2 candidate.",
-            model=DEFAULT_GPT_LLM,
-            provider="openai",
-        )
+    res = make_estimation_result(
+        estimation="Result with active version v2 candidate.",
+        model=DEFAULT_GPT_LLM,
+        provider="openai",
     )
+    res["prompt_version"] = "v2-candidate"
+    mock_generate = AsyncMock(return_value=res)
     monkeypatch.setattr("aie_estimator.routers.estimations_router.estimations_service.generate_estimation", mock_generate)
-    monkeypatch.setattr("aie_estimator.routers.estimations_router.resolve_prompt_version", lambda: "v2-candidate")
 
-    with patch("aie_estimator.routers.estimations_router.render_estimation_prompt") as mock_render:
-        mock_render.return_value = ("System prompt v2", "User prompt v2")
+    response = client.post("/api/v1/estimate", json=VALID_PAYLOAD)
 
-        response = client.post("/api/v1/estimate", json=VALID_PAYLOAD)
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["prompt_version"] == "v2-candidate"
-
-        mock_render.assert_called_once()
-        _, call_kwargs = mock_render.call_args
-        assert call_kwargs.get("version") == "v2-candidate"
+    assert response.status_code == 200
+    data = response.json()
+    assert data["prompt_version"] == "v2-candidate"
 
 
 def test_create_estimation_input_guardrail_violation_returns_400(

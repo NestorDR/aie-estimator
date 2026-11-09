@@ -3,7 +3,7 @@
 # --- Python Standard Library ---
 from collections.abc import Callable, Generator
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 # --- Third Party Libraries ---
 from anthropic import AsyncAnthropic
@@ -16,7 +16,8 @@ import pytest
 from aie_estimator.guardrails.input import get_moderation_client
 from aie_estimator.model_catalog import get_model_catalog
 from aie_estimator.server import Server
-from aie_estimator.services.cache import get_estimation_cache
+from aie_estimator.services.exact_cache import get_exact_cache
+from aie_estimator.services.semantic_cache import get_semantic_cache
 from aie_estimator.services.providers.litellm_provider import get_litellm_router
 from aie_estimator.services.providers.native_providers import get_anthropic_client, get_openai_client
 from aie_estimator.settings import get_settings
@@ -30,7 +31,8 @@ def _clear_all_caches() -> None:
     get_anthropic_client.cache_clear()
     get_litellm_router.cache_clear()
     get_model_catalog.cache_clear()
-    get_estimation_cache.cache_clear()
+    get_exact_cache.cache_clear()
+    get_semantic_cache.cache_clear()
     get_moderation_client.cache_clear()
 
 
@@ -46,13 +48,76 @@ def clean_settings_cache() -> Generator[None, None, None]:
     _clear_all_caches()
 
 
+@pytest.fixture(autouse=True)
+def auto_sync_settings_on_env_mutation(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
+    """
+    Wrap monkeypatch.setenv and monkeypatch.delenv to automatically flush settings and dependent singletons.
+
+    :param monkeypatch: Pytest MonkeyPatch fixture.
+    :return: None.
+    """
+    original_setenv = monkeypatch.setenv
+    original_delenv = monkeypatch.delenv
+
+    def _wrapped_setenv(name: str, value: str, prepend: str | None = None) -> None:
+        original_setenv(name, value, prepend=prepend)
+        _clear_all_caches()
+
+    def _wrapped_delenv(name: str, raising: bool = True) -> None:
+        original_delenv(name, raising=raising)
+        _clear_all_caches()
+
+    monkeypatch.setenv = _wrapped_setenv
+    monkeypatch.delenv = _wrapped_delenv
+    yield
+
+
+@pytest.fixture(autouse=True)
+def default_tiered_cache_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Default Tier 1 exact cache and Tier 2 semantic cache to disconnected/miss states.
+
+    Prevents unintended physical Redis socket communication or external embedding
+    calls during service and router testing.
+
+    :param monkeypatch: Pytest monkeypatch fixture.
+    """
+    mock_exact = AsyncMock()
+    mock_exact.get = AsyncMock(return_value=None)
+    mock_exact.set = AsyncMock(return_value=None)
+    mock_exact.close = AsyncMock(return_value=None)
+
+    mock_semantic = AsyncMock()
+    mock_semantic.lookup = AsyncMock(return_value=None)
+    mock_semantic.store = AsyncMock(return_value=None)
+    mock_semantic.initialize_index = AsyncMock(return_value=None)
+    mock_semantic.close = AsyncMock(return_value=None)
+
+    monkeypatch.setattr(
+        "aie_estimator.services.estimations_service.get_exact_cache",
+        lambda: mock_exact,
+    )
+    monkeypatch.setattr(
+        "aie_estimator.services.estimations_service.get_semantic_cache",
+        lambda: mock_semantic,
+    )
+
+
 @pytest.fixture
-def app() -> Generator[FastAPI, None, None]:
+def app(monkeypatch: pytest.MonkeyPatch) -> Generator[FastAPI, None, None]:
     """
     Instantiate the FastAPI application and clear dependency overrides on teardown.
 
+    Neutralizes semantic cache index initialization to eliminate socket connection
+    timeouts during offline testing.
+
+    :param monkeypatch: Pytest monkeypatch fixture.
     :return: Configured FastAPI application instance.
     """
+    monkeypatch.setattr(
+        "aie_estimator.services.semantic_cache.EstimationSemanticCache.initialize_index",
+        AsyncMock(return_value=None),
+    )
     server = Server()
     yield server.app
     # Teardown: ensure dependency overrides do not leak across test cases
@@ -143,6 +208,7 @@ def mock_async_openai_client() -> MagicMock:
     client = MagicMock(spec=AsyncOpenAI)
     client.chat = MagicMock()
     client.chat.completions = MagicMock()
+    client.embeddings = AsyncMock()
     return client
 
 

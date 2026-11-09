@@ -1,4 +1,4 @@
-# src/aie_estimator/services/cache.py
+# src/aie_estimator/services/exact_cache.py
 
 # --- Python Standard Library ---
 from functools import lru_cache
@@ -12,6 +12,7 @@ from redis.exceptions import RedisError
 import structlog
 
 # --- App modules ---
+from aie_estimator.schemas.estimations import EstimationRequest
 from aie_estimator.settings import get_settings
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
@@ -20,7 +21,7 @@ DEFAULT_CACHE_TIMEOUT: Final[float] = 1.0
 CACHE_KEY_PREFIX: Final[str] = "estimation"
 
 
-class EstimationCache:
+class ExactEstimationCache:
     """Exact-match Redis cache for LLM software project estimation responses."""
 
     def __init__(self, redis_client: redis.Redis, ttl: int | None = None) -> None:
@@ -40,16 +41,16 @@ class EstimationCache:
         port: int = 6379,
         ttl: int | None = None,
         socket_timeout: float = DEFAULT_CACHE_TIMEOUT,
-    ) -> "EstimationCache":
+    ) -> "ExactEstimationCache":
         """
-        Construct an EstimationCache instance from host and port with connection timeouts.
+        Construct an ExactEstimationCache instance from host and port with connection timeouts.
 
         :param host: Redis server hostname or IP address.
         :param port: Redis server port number.
         :param ttl: Cache retention TTL in seconds; defaults to Settings.cache_ttl.
         :param socket_timeout: Connection and operation timeout in seconds.
 
-        :return: Configured EstimationCache instance.
+        :return: Configured ExactEstimationCache instance.
         """
         client = redis.Redis(
             host=host,
@@ -63,8 +64,8 @@ class EstimationCache:
     @staticmethod
     def make_key(
         *,
-        system_prompt: str,
-        user_message: str,
+        request: EstimationRequest,
+        prompt_version: str,
         model: str,
         max_tokens: int,
         reasoning_effort: str | None = None,
@@ -72,10 +73,10 @@ class EstimationCache:
         engine: str = "litellm",
     ) -> str:
         """
-        Generate a deterministic SHA-256 cache key from all parameters influencing LLM output.
+        Generate a deterministic SHA-256 cache key from typed request and generation options.
 
-        :param system_prompt: Complete rendered system prompt including role and CAG examples.
-        :param user_message: Input transcription or preprocessed requirements text.
+        :param request: Validated EstimationRequest domain object.
+        :param prompt_version: Active prompt template version.
         :param model: Model identifier used for inference.
         :param max_tokens: Maximum token limit for the response.
         :param reasoning_effort: Qualitative reasoning effort tier ('low', 'medium', 'high') or None.
@@ -86,13 +87,16 @@ class EstimationCache:
         """
         payload = json.dumps(
             {
+                "description": request.description,
+                "detail_level": request.detail_level.value,
                 "engine": engine,
                 "max_tokens": max_tokens,
                 "model": model,
+                "output_format": request.output_format.value,
                 "preprocessing": preprocessing,
+                "project_type": request.project_type.value,
+                "prompt_version": prompt_version,
                 "reasoning_effort": reasoning_effort,
-                "system_prompt": system_prompt,
-                "user_message": user_message,
             },
             sort_keys=True,
         )
@@ -110,20 +114,20 @@ class EstimationCache:
         try:
             cached = await self.redis.get(key)
         except RedisError as e:
-            log.warning("cache_operation_failed", operation="get", error=repr(e))
+            log.warning("exact_cache_lookup_failed", error=repr(e))
             return None
 
         if cached and isinstance(cached, (str, bytes, bytearray)):
             try:
                 data = json.loads(cached)
                 if isinstance(data, dict):
-                    log.info("cache_entry_retrieved", key_prefix=key[:24])
+                    log.info("exact_cache_entry_retrieved", key_prefix=key[:24])
                     return data
             except json.JSONDecodeError as e:
-                log.warning("cache_deserialization_failed", error=repr(e))
+                log.warning("exact_cache_deserialization_failed", error=repr(e))
                 return None
 
-        log.info("cache_entry_missed", key_prefix=key[:24])
+        log.info("exact_cache_entry_missed", key_prefix=key[:24])
         return None
 
     async def set(self, key: str, response: dict[str, Any], ttl: int | None = None) -> None:
@@ -137,9 +141,9 @@ class EstimationCache:
         effective_ttl = ttl if ttl is not None else self.ttl
         try:
             await self.redis.set(key, json.dumps(response), ex=effective_ttl)
-            log.info("cache_entry_stored", key_prefix=key[:24], ttl=effective_ttl)
+            log.info("exact_cache_entry_stored", key_prefix=key[:24], ttl=effective_ttl)
         except RedisError as e:
-            log.warning("cache_operation_failed", operation="set", error=repr(e))
+            log.warning("exact_cache_store_failed", error=repr(e))
 
     async def close(self) -> None:
         """
@@ -147,21 +151,22 @@ class EstimationCache:
         """
         try:
             await self.redis.aclose()
-            log.info("cache_client_closed")
+            log.info("exact_cache_client_closed")
         except RedisError as e:
-            log.warning("cache_operation_failed", operation="close", error=repr(e))
+            log.warning("exact_cache_close_failed", error=repr(e))
 
 
 @lru_cache(maxsize=1)
-def get_estimation_cache() -> EstimationCache:
+def get_exact_cache() -> ExactEstimationCache:
     """
-    Retrieve or initialize the application-wide singleton EstimationCache instance.
+    Retrieve or initialize the application-wide singleton ExactEstimationCache instance.
 
-    :return: Authenticated EstimationCache singleton.
+    :return: Authenticated ExactEstimationCache singleton.
     """
     settings = get_settings()
-    return EstimationCache.from_host_port(
+    return ExactEstimationCache.from_host_port(
         host=settings.redis_host,
         port=settings.redis_port,
         ttl=settings.cache_ttl,
     )
+

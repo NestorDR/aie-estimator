@@ -9,7 +9,6 @@ import structlog
 
 # --- App modules ---
 import aie_estimator.services.estimations_service as estimations_service
-from aie_estimator.prompts.loader import render_estimation_prompt, resolve_prompt_version
 from aie_estimator.schemas.estimations import EstimationRequest, EstimationResponse
 from aie_estimator.services.providers import GenerationOptions
 
@@ -36,18 +35,18 @@ async def create_estimation(request: EstimationRequest) -> EstimationResponse:
 
     :return: Generated estimation text with prompt version and telemetry metadata.
     """
-    prompt_version = resolve_prompt_version()
-    log.info("estimation_request_received", prompt_version=prompt_version, model=request.model)
-
-    system_prompt, user_prompt = render_estimation_prompt(request, version=prompt_version)
     opts = GenerationOptions(model=request.model, engine=request.engine)
+    log.info("estimation_request_received", model=request.model, engine=request.engine)
 
-    result = await estimations_service.generate_estimation(system_prompt, user_prompt, opts)
+    result = await estimations_service.generate_estimation(
+        request,
+        opts=opts,
+    )
 
     return EstimationResponse(
         result=result["result"],
         cached=bool(result.get("cache_hit", False)),
-        prompt_version=prompt_version,
+        prompt_version=result.get("prompt_version", "v1"),
         model=result["model"],
         provider=result["provider"],
         cost_usd=result.get("cost_usd"),

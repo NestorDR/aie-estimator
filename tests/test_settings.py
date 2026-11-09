@@ -14,7 +14,7 @@ import pytest
 import structlog
 
 # --- App modules ---
-from aie_estimator.settings import Environment, Settings
+from aie_estimator.settings import Environment, Settings, get_settings
 
 
 @pytest.mark.parametrize(
@@ -274,3 +274,57 @@ def test_settings_llm_profiles_path_default_and_env_override(
     monkeypatch.setenv("LLM_PROFILES_PATH", str(custom_path))
     overridden_settings = Settings(app_env=Environment.TEST)
     assert overridden_settings.llm_profiles_path == custom_path
+
+
+def test_settings_semantic_cache_defaults_and_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    GIVEN default Settings and environment variable overrides for semantic caching
+    WHEN Settings is instantiated
+    THEN defaults match expected values and overrides update attributes correctly.
+
+    :param monkeypatch: Pytest monkeypatch fixture.
+    """
+    default_settings = Settings(app_env=Environment.TEST)
+    assert default_settings.enable_semantic_cache is True
+    assert default_settings.semantic_cache_threshold == 0.92
+    assert default_settings.semantic_cache_log_only is False
+    assert default_settings.semantic_cache_ttl == 86400
+
+    monkeypatch.setenv("ENABLE_SEMANTIC_CACHE", "false")
+    monkeypatch.setenv("SEMANTIC_CACHE_THRESHOLD", "0.88")
+    monkeypatch.setenv("SEMANTIC_CACHE_LOG_ONLY", "true")
+    monkeypatch.setenv("SEMANTIC_CACHE_TTL", "3600")
+
+    custom_settings = Settings(app_env=Environment.TEST)
+    assert custom_settings.enable_semantic_cache is False
+    assert custom_settings.semantic_cache_threshold == 0.88
+    assert custom_settings.semantic_cache_log_only is True
+    assert custom_settings.semantic_cache_ttl == 3600
+
+
+def test_monkeypatch_environment_mutation_clears_get_settings_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    GIVEN cached get_settings singleton
+    WHEN environment variable is mutated or deleted via monkeypatch
+    THEN get_settings cache is automatically invalidated without manual cache_clear.
+
+    :param monkeypatch: Pytest monkeypatch fixture.
+    """
+    initial_settings = get_settings()
+    assert initial_settings.active_prompt_version == "v1"
+
+    monkeypatch.setenv("ACTIVE_PROMPT_VERSION", "v2")
+    updated_settings = get_settings()
+    assert updated_settings.active_prompt_version == "v2"
+    assert updated_settings is not initial_settings
+
+    monkeypatch.delenv("ACTIVE_PROMPT_VERSION", raising=False)
+    reset_settings = get_settings()
+    assert reset_settings.active_prompt_version == "v1"
+    assert reset_settings is not updated_settings
+
+

@@ -17,7 +17,8 @@ import structlog
 from aie_estimator.guardrails.input import InputGuardrailViolation
 from aie_estimator.model_catalog import get_supported_models
 from aie_estimator.routers import estimations_router, health_router
-from aie_estimator.services.cache import get_estimation_cache
+from aie_estimator.services.exact_cache import get_exact_cache
+from aie_estimator.services.semantic_cache import get_semantic_cache
 from aie_estimator.services.exceptions import LLMProviderError
 from aie_estimator.settings import Settings, get_settings
 from aie_estimator.telemetry import instrument_fastapi_app, setup_telemetry
@@ -107,9 +108,11 @@ class Server:
             #     raise RuntimeError("Database pool initialization failed: create_pool returned a falsy value.")
 
             app.state.settings = self.settings
-            # app.state.db_pool = db_pool
 
-            # self.log.info("database_pool_initialized")
+            # Idempotently initialize the RediSearch semantic vector index on application startup.
+            if self.settings.enable_semantic_cache:
+                semantic_cache = get_semantic_cache()
+                await semantic_cache.initialize_index()
 
             yield  # Application runs here
 
@@ -127,8 +130,11 @@ class Server:
             if db_pool:
                 await db_pool.close()
                 self.log.info("database_pool_closed")
-            cache = get_estimation_cache()
-            await cache.close()
+            exact_cache = get_exact_cache()
+            await exact_cache.close()
+            if self.settings.enable_semantic_cache:
+                semantic_cache = get_semantic_cache()
+                await semantic_cache.close()
             self.log.info("api_shutdown_completed")
 
     def _register_routers(self, app: FastAPI) -> None:

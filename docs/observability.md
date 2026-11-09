@@ -159,11 +159,27 @@ All structured log events across the application are normalized to lowercase `sn
 | `estimation_cache_hit` | `services/estimations_service.py` | `INFO` | Response served directly from Redis cache |
 | `estimation_generation_completed` | `services/estimations_service.py` | `INFO` | LLM response generated (emits `latency_ms`, `cost_usd`, `usage`) |
 | `estimation_generation_failed` | `services/estimations_service.py` | `ERROR` | LLM generation raised an unhandled exception |
-| `cache_entry_retrieved` | `services/cache.py` | `INFO` | Key found and deserialized from cache store |
-| `cache_entry_missed` | `services/cache.py` | `INFO` | Key not found in cache store |
-| `cache_entry_stored` | `services/cache.py` | `INFO` | Response serialized and stored with TTL |
-| `cache_operation_failed` | `services/cache.py` | `WARNING` | Redis command failed with transient error |
-| `cache_client_closed` | `services/cache.py` | `INFO` | Redis asynchronous client connection closed cleanly |
+| `exact_cache_entry_retrieved` | `services/exact_cache.py` | `INFO` | Key found and deserialized from exact cache store |
+| `exact_cache_entry_missed` | `services/exact_cache.py` | `INFO` | Key not found in exact cache store |
+| `exact_cache_entry_stored` | `services/exact_cache.py` | `INFO` | Response serialized and stored in exact cache with TTL |
+| `exact_cache_deserialization_failed` | `services/exact_cache.py` | `WARNING` | JSON payload deserialization failed from exact cache |
+| `exact_cache_lookup_failed` | `services/exact_cache.py` | `WARNING` | Redis exact lookup command failed |
+| `exact_cache_store_failed` | `services/exact_cache.py` | `WARNING` | Redis exact store command failed |
+| `exact_cache_client_closed` | `services/exact_cache.py` | `INFO` | Redis exact cache client connection closed cleanly |
+| `exact_cache_close_failed` | `services/exact_cache.py` | `WARNING` | Redis exact cache client connection close failed |
+| `semantic_cache_lookup_evaluated` | `services/semantic_cache.py` | `INFO` | Semantic similarity evaluated against nearest neighbor |
+| `semantic_cache_entry_retrieved` | `services/semantic_cache.py` | `INFO` | Nearest neighbor meets or exceeds similarity threshold |
+| `semantic_cache_entry_missed` | `services/semantic_cache.py` | `INFO` | Neighbor below threshold or index empty |
+| `semantic_cache_hit_log_only` | `services/semantic_cache.py` | `INFO` | Threshold met in shadow log-only mode (bypasses cache hit) |
+| `semantic_cache_entry_stored` | `services/semantic_cache.py` | `INFO` | Estimation vector, JSON, and bucket stored in RediSearch |
+| `semantic_cache_lookup_failed` | `services/semantic_cache.py` | `WARNING` | RediSearch vector query failed with transient error |
+| `semantic_cache_store_failed` | `services/semantic_cache.py` | `WARNING` | Redis semantic store command failed |
+| `semantic_cache_client_closed` | `services/semantic_cache.py` | `INFO` | Redis semantic cache client connection closed cleanly |
+| `semantic_cache_close_failed` | `services/semantic_cache.py` | `WARNING` | Redis semantic cache client connection close failed |
+| `semantic_index_created` | `services/semantic_cache.py` | `INFO` | RediSearch vector index initialized on application startup |
+| `semantic_index_exists` | `services/semantic_cache.py` | `DEBUG` | RediSearch vector index already registered |
+| `semantic_index_create_failed` | `services/semantic_cache.py` | `WARNING` | RediSearch index initialization failed |
+| `semantic_embedding_failed` | `services/semantic_cache.py` | `WARNING` | OpenAI text embedding generation failed |
 | `api_startup_initiated` | `server.py` | `INFO` | Lifespan startup sequence begun |
 | `api_shutdown_completed` | `server.py` | `INFO` | Lifespan shutdown cleanly finished |
 | `database_pool_initialized` | `server.py` | `INFO` | Database connection pool established |
