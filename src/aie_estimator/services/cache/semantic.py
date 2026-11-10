@@ -4,6 +4,7 @@
 import asyncio
 from functools import lru_cache
 import hashlib
+import re
 import struct
 from typing import Final
 
@@ -28,6 +29,18 @@ SEMANTIC_KEY_PREFIX: Final[str] = "estimation:semantic"
 EMBEDDING_MODEL: Final[str] = "text-embedding-3-small"
 EMBEDDING_DIMENSIONS: Final[int] = 1536
 DEFAULT_SOCKET_TIMEOUT: Final[float] = 1.0
+_TAG_SPECIAL_CHARS: Final[re.Pattern[str]] = re.compile(r"([,.<>{}\[\]\"':;!@#$%^&*()\-+=~|/\\\s])")
+
+
+def escape_tag(value: str) -> str:
+    """
+    Escape RediSearch tag punctuation so the value is matched as one literal tag.
+    Inside a RediSearch tag filter ({...}), punctuation such as `:` `.` `-` and spaces must be backslash-escaped.
+
+    :param value: Raw tag value (e.g. the semantic cache bucket).
+    :return: Value with special characters backslash-escaped.
+    """
+    return _TAG_SPECIAL_CHARS.sub(r"\\\1", value)
 
 
 def vector_to_bytes(vector: list[float]) -> bytes:
@@ -74,13 +87,13 @@ class EstimationSemanticCache:
     """
 
     def __init__(
-        self,
-        redis_client: redis.Redis,
-        openai_client: AsyncOpenAI | None = None,
-        threshold: float | None = None,
-        ttl: int | None = None,
-        log_only: bool | None = None,
-        index_name: str = DEFAULT_INDEX_NAME,
+            self,
+            redis_client: redis.Redis,
+            openai_client: AsyncOpenAI | None = None,
+            threshold: float | None = None,
+            ttl: int | None = None,
+            log_only: bool | None = None,
+            index_name: str = DEFAULT_INDEX_NAME,
     ) -> None:
         """
         Initialize the semantic vector cache with Redis connection, OpenAI client, and thresholds.
@@ -160,11 +173,15 @@ class EstimationSemanticCache:
         """
         Construct the deterministic bucket key from request options and prompt version.
 
+        Preferred underscore-separated format to avoid RediSearch tag parsing issues with special characters.
+        Inside a RediSearch tag filter ({...}), punctuation such as `:` `.` `-` and spaces must be backslash-escaped.
+
         :param request: Validated user estimation request.
         :param prompt_version: Active prompt template version (e.g. 'v1').
-        :return: Colon-separated bucket identifier string.
+
+        :return: Underscore-separated bucket identifier string.
         """
-        return f"{prompt_version}:{request.project_type.value}:{request.detail_level.value}:{request.output_format.value}"
+        return f"{prompt_version}_{request.project_type.value}_{request.detail_level.value}_{request.output_format.value}"
 
     async def get_embedding(self, text: str) -> list[float] | None:
         """
@@ -185,9 +202,9 @@ class EstimationSemanticCache:
             return None
 
     async def lookup(
-        self,
-        request: EstimationRequest,
-        prompt_version: str,
+            self,
+            request: EstimationRequest,
+            prompt_version: str,
     ) -> EstimationResult | None:
         """
         Search the semantic vector cache for a previously cached response matching the request intent.
@@ -215,7 +232,7 @@ class EstimationSemanticCache:
             return None
 
         # Build RediSearch KNN vector query targeting the bucket partition.
-        query_str = f"(@bucket:{{{bucket}}})=>[KNN 1 @embedding $vec AS vector_distance]"
+        query_str = f"(@bucket:{{{escape_tag(bucket)}}})=>[KNN 1 @embedding $vec AS vector_distance]"
         query = Query(query_str).sort_by("vector_distance").return_fields("result_json", "vector_distance").dialect(2)
 
         try:
@@ -270,10 +287,10 @@ class EstimationSemanticCache:
         return EstimationResult.model_validate_json(top_hit.result_json)
 
     async def store(
-        self,
-        request: EstimationRequest,
-        result: EstimationResult,
-        prompt_version: str,
+            self,
+            request: EstimationRequest,
+            result: EstimationResult,
+            prompt_version: str,
     ) -> None:
         """
         Persist a validated estimation result, its bucket tag, and its vector embedding in Redis.
