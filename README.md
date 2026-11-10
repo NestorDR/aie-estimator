@@ -135,7 +135,7 @@ aie-estimator/
     Edit `src/aie_estimator/.env.dev` and configure your API keys:
    ```ini
    APP_ENV=dev
-   LOG_LEVEL=INFO
+ LOG_LEVEL=INFO
    JSON_LOGGING=false
    ENABLE_FILE_LOGGING=false
    ENABLE_OTEL_TRACING=false
@@ -150,8 +150,9 @@ aie-estimator/
    ESTIMATOR_API_BASE_URL=http://localhost:8000
    REDIS_HOST=localhost
    REDIS_PORT=6379
+   ENABLE_EXACT_CACHE=true   
    EXACT_CACHE_TTL=86400
-   EMBEDDING_MODEL=text-embedding-3-small
+   ENABLE_SEMANTIC_CACHE=true
    SEMANTIC_CACHE_THRESHOLD=0.85
    SEMANTIC_CACHE_TTL=86400
    SEMANTIC_CACHE_LOG_ONLY=false
@@ -365,6 +366,7 @@ Verify local setup against the baseline project criteria:
 Detailed architecture guides and technical documentation are maintained in the [`docs/`](docs/) directory:
 
 - [API Schemas & Data Contracts](docs/api-schemas.md): Request and response payload schemas, field validation rules, token accounting, and Level-1 structural evaluation scoring.
+- [Dependency Injection & Application Factory](docs/dependency-injection-and-app-factory.md): Centralized Composition Root, dependency injection factories, and FastAPI route handler integration.
 - [Prompt Template Engine](docs/prompt-engine.md): Modular Jinja2 prompt composition, system/user template layouts, few-shot examples injection, and decoupled versioning.
 - [Guardrails & Semantic Validation](docs/guardrails.md): Multi-layer semantic validation across input (content moderation, prompt injection heuristics, PII scanning) and output (low-confidence normalization).
 - [Estimations Service Architecture & Provider Subpackage](docs/estimations-service.md): Deep dive into estimations orchestration, provider isolation, LiteLLM Router, native SDKs, retry backoff, and exception handling.
