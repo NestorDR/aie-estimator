@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 # --- App modules ---
 from aie_estimator.dependencies import (
     get_estimation_service,
+    get_exact_cache,
     get_semantic_cache,
     get_settings,
 )
@@ -26,6 +27,33 @@ def test_get_settings_cached() -> None:
     settings_1 = get_settings()
     settings_2 = get_settings()
     assert settings_1 is settings_2
+
+
+def test_get_exact_cache_enabled() -> None:
+    """
+    GIVEN settings with exact cache enabled
+    WHEN get_exact_cache is invoked
+    THEN it returns the initialized exact cache instance.
+    """
+    mock_exact = MagicMock(spec=EstimationExactCache)
+    settings = Settings(openai_api_key="test-key", enable_exact_cache=True)
+    with patch("aie_estimator.dependencies._get_exact_cache", return_value=mock_exact) as mock_getter:
+        result = get_exact_cache(settings)
+        mock_getter.assert_called_once()
+        assert result is mock_exact
+
+
+def test_get_exact_cache_disabled() -> None:
+    """
+    GIVEN settings with exact cache disabled
+    WHEN get_exact_cache is invoked
+    THEN it returns None without calling the underlying factory.
+    """
+    settings = Settings(openai_api_key="test-key", enable_exact_cache=False)
+    with patch("aie_estimator.dependencies._get_exact_cache") as mock_getter:
+        result = get_exact_cache(settings)
+        mock_getter.assert_not_called()
+        assert result is None
 
 
 def test_get_semantic_cache_enabled() -> None:

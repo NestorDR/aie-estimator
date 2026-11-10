@@ -34,7 +34,7 @@ class EstimationExactCache:
         """
         settings = get_settings()
         self.redis: redis.Redis = redis_client
-        self.ttl: int = ttl if ttl is not None else getattr(settings, "exact_cache_ttl", settings.cache_ttl)
+        self.ttl: int = ttl if ttl is not None else settings.exact_cache_ttl
 
     @classmethod
     def from_host_port(
@@ -157,7 +157,7 @@ def get_exact_cache() -> EstimationExactCache:
     :return: Authenticated EstimationExactCache singleton.
     """
     settings = get_settings()
-    effective_ttl = getattr(settings, "exact_cache_ttl", settings.cache_ttl)
+    effective_ttl = settings.exact_cache_ttl
     return EstimationExactCache.from_host_port(
         host=settings.redis_host,
         port=settings.redis_port,

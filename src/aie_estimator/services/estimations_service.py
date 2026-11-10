@@ -30,18 +30,18 @@ class EstimationService:
 
     def __init__(
         self,
-        exact_cache: EstimationExactCache,
+        exact_cache: EstimationExactCache | None = None,
         semantic_cache: EstimationSemanticCache | None = None,
         moderation_client: AsyncOpenAI | None = None,
     ) -> None:
         """
         Initialize the EstimationService with caching and content moderation collaborators.
 
-        :param exact_cache: Tier 1 exact-match hash cache instance.
+        :param exact_cache: Optional Tier 1 exact-match hash cache instance.
         :param semantic_cache: Optional Tier 2 semantic vector cache instance.
         :param moderation_client: Optional AsyncOpenAI client used for moderation guardrails.
         """
-        self.exact_cache: Final[EstimationExactCache] = exact_cache
+        self.exact_cache: Final[EstimationExactCache | None] = exact_cache
         self.semantic_cache: Final[EstimationSemanticCache | None] = semantic_cache
         self.moderation_client: Final[AsyncOpenAI | None] = moderation_client
 
@@ -83,21 +83,23 @@ class EstimationService:
         provider = opts.provider
 
         # Tier 1: Exact-match cache lookup.
-        exact_cache_key = EstimationExactCache.make_key(
-            request=request,
-            prompt_version=version,
-            opts=opts,
-        )
+        exact_cache_key = None
+        if self.exact_cache is not None:
+            exact_cache_key = EstimationExactCache.make_key(
+                request=request,
+                prompt_version=version,
+                opts=opts,
+            )
 
-        cached_result = await self.exact_cache.get(exact_cache_key)
-        if cached_result is not None:
-            cached_result["latency_ms"] = int((time.perf_counter() - t0) * 1000)
-            cached_result["cache_hit"] = True
-            cached_result["prompt_version"] = version
-            if isinstance(cached_result.get("result"), dict):
-                cached_result["result"] = EstimationResult.model_validate(cached_result["result"])
-            log.info("estimation_cache_hit", kind="exact", model=model, latency_ms=cached_result["latency_ms"])
-            return cached_result
+            cached_result = await self.exact_cache.get(exact_cache_key)
+            if cached_result is not None:
+                cached_result["latency_ms"] = int((time.perf_counter() - t0) * 1000)
+                cached_result["cache_hit"] = True
+                cached_result["prompt_version"] = version
+                if isinstance(cached_result.get("result"), dict):
+                    cached_result["result"] = EstimationResult.model_validate(cached_result["result"])
+                log.info("estimation_cache_hit", kind="exact", model=model, latency_ms=cached_result["latency_ms"])
+                return cached_result
 
         # Tier 2: Semantic vector cache lookup (evaluated on exact-match miss).
         if self.semantic_cache is not None:
@@ -196,7 +198,8 @@ class EstimationService:
             **result,
             "result": structured_result.model_dump(mode="json"),
         }
-        await self.exact_cache.set(exact_cache_key, cache_payload)
+        if self.exact_cache is not None and exact_cache_key is not None:
+            await self.exact_cache.set(exact_cache_key, cache_payload)
 
         if self.semantic_cache is not None:
             await self.semantic_cache.store(request, structured_result, version)

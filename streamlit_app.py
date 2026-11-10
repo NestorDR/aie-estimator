@@ -156,11 +156,10 @@ if runtime.exists():
 
         settings = get_settings()
         configured_model = settings.llm_model
-        cache_ttl_seconds = settings.cache_ttl
-
         st.markdown(f"**Configured model:** `{configured_model}`")
         st.markdown("**Resilience tier:** `Tier 1 (cost-based failover to Tier 2)`")
-        st.markdown(f"**Cache TTL:** `{cache_ttl_seconds}s`")
+        st.markdown(f"**Exact Cache TTL:** `{settings.exact_cache_ttl}s`")
+        st.markdown(f"**Semantic Cache TTL:** `{settings.semantic_cache_ttl}s`")
 
         st.header("Generation parameters")
         with st.container(border=True):

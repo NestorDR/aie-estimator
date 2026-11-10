@@ -246,7 +246,7 @@ def test_get_exact_cache_builds_client_from_settings(monkeypatch: pytest.MonkeyP
         app_env=Environment.TEST,
         redis_host="cache.local",
         redis_port=6380,
-        cache_ttl=1800,
+        exact_cache_ttl=1800,
     )
     monkeypatch.setattr("aie_estimator.services.cache.exact.get_settings", lambda: test_settings)
 

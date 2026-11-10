@@ -14,7 +14,7 @@ from aie_estimator.guardrails.input import get_moderation_client
 from aie_estimator.services.cache import (
     EstimationExactCache,
     EstimationSemanticCache,
-    get_exact_cache,
+    get_exact_cache as _get_exact_cache,
     get_semantic_cache as _get_semantic_cache,
 )
 from aie_estimator.services.estimations_service import EstimationService
@@ -31,6 +31,20 @@ def get_settings() -> Settings:
     :return: Authenticated Settings singleton instance.
     """
     return _get_settings()
+
+
+def get_exact_cache(
+    settings: Settings = Depends(get_settings),
+) -> EstimationExactCache | None:
+    """
+    Resolve the Tier 1 exact-match hash cache instance.
+
+    :param settings: Injected application configuration settings.
+    :return: Configured EstimationExactCache instance.
+    """
+    if not settings.enable_exact_cache:
+        return None
+    return _get_exact_cache()
 
 
 def get_semantic_cache(
@@ -52,7 +66,7 @@ def get_semantic_cache(
 
 
 def get_estimation_service(
-    exact_cache: EstimationExactCache = Depends(get_exact_cache),
+    exact_cache: EstimationExactCache | None = Depends(get_exact_cache),
     semantic_cache: EstimationSemanticCache | None = Depends(get_semantic_cache),
     moderation_client: AsyncOpenAI | None = Depends(get_moderation_client),
 ) -> EstimationService:

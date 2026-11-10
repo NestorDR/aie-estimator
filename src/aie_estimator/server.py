@@ -132,11 +132,16 @@ class Server:
             if db_pool:
                 await db_pool.close()
                 self.log.info("database_pool_closed")
-            exact_cache = get_exact_cache()
-            await exact_cache.close()
+            if self.settings.enable_exact_cache:
+                exact_cache = get_exact_cache()
+                if exact_cache:
+                    await exact_cache.close()
+                    self.log.info("cache_closed cache=exact")
             if self.settings.enable_semantic_cache:
                 semantic_cache = get_semantic_cache()
-                await semantic_cache.close()
+                if semantic_cache:
+                    await semantic_cache.close()
+                    self.log.info("cache_closed cache=semantic")
             self.log.info("api_shutdown_completed")
 
     def _register_routers(self, app: FastAPI) -> None:

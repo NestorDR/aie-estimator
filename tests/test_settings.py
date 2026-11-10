@@ -145,35 +145,110 @@ def test_configure_logging_captures_callsite_parameters(capsys: pytest.CaptureFi
 
 
 @pytest.mark.parametrize(
-    ("key_attribute", "env_variable", "test_value"),
+    ("attr_name", "expected_default"),
     [
-        ("scaleway_api_key", "SCALEWAY_API_KEY", "test-scaleway-key"),
+        ("enable_exact_cache", True),
+        ("exact_cache_ttl", 86400),
+        ("enable_semantic_cache", True),
+        ("semantic_cache_threshold", 0.92),
+        ("semantic_cache_log_only", False),
+        ("semantic_cache_ttl", 86400),
+        ("redis_host", "localhost"),
+        ("redis_port", 6379),
+        ("active_prompt_version", "v1"),
+        ("enable_otel_tracing", False),
     ],
-    ids=["scaleway_key"],
+    ids=[
+        "enable_exact_cache",
+        "exact_cache_ttl",
+        "enable_semantic_cache",
+        "semantic_cache_threshold",
+        "semantic_cache_log_only",
+        "semantic_cache_ttl",
+        "redis_host",
+        "redis_port",
+        "active_prompt_version",
+        "enable_otel_tracing",
+    ],
 )
-def test_settings_additional_api_keys_initialization(
-    key_attribute: str,
-    env_variable: str,
-    test_value: str,
+def test_settings_default_values(attr_name: str, expected_default: Any) -> None:
+    """
+    GIVEN default Settings initialization under test environment
+    WHEN an instance is created without explicit parameter overrides
+    THEN each configuration attribute resolves to its canonical default value.
+
+    :param attr_name: Name of the Settings attribute to verify.
+    :param expected_default: Expected default value.
+    """
+    settings = Settings(app_env=Environment.TEST)
+    assert getattr(settings, attr_name) == expected_default
+
+
+@pytest.mark.parametrize(
+    ("env_var", "env_val", "attr_name", "expected_val"),
+    [
+        # Exact cache
+        ("ENABLE_EXACT_CACHE", "false", "enable_exact_cache", False),
+        ("ENABLE_EXACT_CACHE", "true", "enable_exact_cache", True),
+        ("EXACT_CACHE_TTL", "3600", "exact_cache_ttl", 3600),
+        # Semantic cache
+        ("ENABLE_SEMANTIC_CACHE", "false", "enable_semantic_cache", False),
+        ("SEMANTIC_CACHE_THRESHOLD", "0.88", "semantic_cache_threshold", 0.88),
+        ("SEMANTIC_CACHE_LOG_ONLY", "true", "semantic_cache_log_only", True),
+        ("SEMANTIC_CACHE_TTL", "7200", "semantic_cache_ttl", 7200),
+        # Redis connection
+        ("REDIS_HOST", "redis.internal", "redis_host", "redis.internal"),
+        ("REDIS_PORT", "6380", "redis_port", 6380),
+        # General & Telemetry
+        ("ACTIVE_PROMPT_VERSION", "v2", "active_prompt_version", "v2"),
+        ("ENABLE_OTEL_TRACING", "true", "enable_otel_tracing", True),
+        ("ENABLE_OTEL_TRACING", "false", "enable_otel_tracing", False),
+        # Multi-provider API keys
+        ("SCALEWAY_API_KEY", "test-scaleway-key", "scaleway_api_key", "test-scaleway-key"),
+        ("NEBIUS_API_KEY", "test-nebius-key", "nebius_api_key", "test-nebius-key"),
+    ],
+    ids=[
+        "enable_exact_cache_false",
+        "enable_exact_cache_true",
+        "exact_cache_ttl",
+        "enable_semantic_cache_false",
+        "semantic_cache_threshold",
+        "semantic_cache_log_only_true",
+        "semantic_cache_ttl",
+        "redis_host",
+        "redis_port",
+        "active_prompt_version",
+        "enable_otel_tracing_true",
+        "enable_otel_tracing_false",
+        "scaleway_api_key",
+        "nebius_api_key",
+    ],
+)
+def test_settings_environment_variable_overrides(
     monkeypatch: pytest.MonkeyPatch,
+    env_var: str,
+    env_val: str,
+    attr_name: str,
+    expected_val: Any,
 ) -> None:
     """
-    GIVEN an environment variable for a multi-provider LLM API key
+    GIVEN an environment variable override
     WHEN Settings is initialized
-    THEN the key is loaded as a SecretStr with the corresponding secret value.
+    THEN the target attribute is correctly populated with the converted value.
 
-    :param key_attribute: Attribute name on Settings instance.
-    :param env_variable: Environment variable name.
-    :param test_value: Raw secret string value.
     :param monkeypatch: Pytest monkeypatch fixture.
+    :param env_var: Environment variable name.
+    :param env_val: String value set in the environment.
+    :param attr_name: Settings attribute name to check.
+    :param expected_val: Expected parsed value or secret string value.
     """
-    monkeypatch.setenv(env_variable, test_value)
+    monkeypatch.setenv(env_var, env_val)
     settings = Settings(app_env=Environment.TEST)
-    loaded_secret: SecretStr | None = getattr(settings, key_attribute)
-
-    assert loaded_secret is not None
-    assert isinstance(loaded_secret, SecretStr)
-    assert loaded_secret.get_secret_value() == test_value
+    actual_val = getattr(settings, attr_name)
+    if isinstance(actual_val, SecretStr):
+        assert actual_val.get_secret_value() == expected_val
+    else:
+        assert actual_val == expected_val
 
 
 def test_mirror_secrets_to_environ_sets_missing_variables(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -217,33 +292,6 @@ def test_mirror_secrets_to_environ_does_not_overwrite_existing(monkeypatch: pyte
     assert environ.get("MISTRAL_API_KEY") == "existing-preset-key"
 
 
-@pytest.mark.parametrize(
-    ("env_val", "expected_bool"),
-    [
-        ("true", True),
-        ("false", False),
-    ],
-    ids=["true", "false"],
-)
-def test_settings_otel_tracing_configuration(
-    monkeypatch: pytest.MonkeyPatch,
-    env_val: str,
-    expected_bool: bool,
-) -> None:
-    """
-    GIVEN an environment variable override for ENABLE_OTEL_TRACING
-    WHEN Settings is initialized
-    THEN enable_otel_tracing is parsed correctly into a boolean.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    :param env_val: String representation of the boolean value.
-    :param expected_bool: Expected boolean outcome in Settings.
-    """
-    monkeypatch.setenv("ENABLE_OTEL_TRACING", env_val)
-    settings = Settings(app_env=Environment.TEST)
-    assert settings.enable_otel_tracing is expected_bool
-
-
 def test_settings_litellm_local_model_cost_map_test_env() -> None:
     """
     GIVEN an instantiation of Settings with app_env=Environment.TEST
@@ -276,34 +324,6 @@ def test_settings_llm_profiles_path_default_and_env_override(
     assert overridden_settings.llm_profiles_path == custom_path
 
 
-def test_settings_semantic_cache_defaults_and_overrides(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    GIVEN default Settings and environment variable overrides for semantic caching
-    WHEN Settings is instantiated
-    THEN defaults match expected values and overrides update attributes correctly.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    """
-    default_settings = Settings(app_env=Environment.TEST)
-    assert default_settings.enable_semantic_cache is True
-    assert default_settings.semantic_cache_threshold == 0.92
-    assert default_settings.semantic_cache_log_only is False
-    assert default_settings.semantic_cache_ttl == 86400
-
-    monkeypatch.setenv("ENABLE_SEMANTIC_CACHE", "false")
-    monkeypatch.setenv("SEMANTIC_CACHE_THRESHOLD", "0.88")
-    monkeypatch.setenv("SEMANTIC_CACHE_LOG_ONLY", "true")
-    monkeypatch.setenv("SEMANTIC_CACHE_TTL", "3600")
-
-    custom_settings = Settings(app_env=Environment.TEST)
-    assert custom_settings.enable_semantic_cache is False
-    assert custom_settings.semantic_cache_threshold == 0.88
-    assert custom_settings.semantic_cache_log_only is True
-    assert custom_settings.semantic_cache_ttl == 3600
-
-
 def test_monkeypatch_environment_mutation_clears_get_settings_cache(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -326,33 +346,3 @@ def test_monkeypatch_environment_mutation_clears_get_settings_cache(
     reset_settings = get_settings()
     assert reset_settings.active_prompt_version == "v1"
     assert reset_settings is not updated_settings
-
-
-@pytest.mark.parametrize(
-    ("env_var_name", "env_val", "expected_ttl"),
-    [
-        ("EXACT_CACHE_TTL", "3600", 3600),
-        ("CACHE_TTL", "7200", 7200),
-    ],
-    ids=["exact_cache_ttl_primary", "cache_ttl_legacy_alias"],
-)
-def test_settings_exact_cache_ttl_and_alias(
-    monkeypatch: pytest.MonkeyPatch,
-    env_var_name: str,
-    env_val: str,
-    expected_ttl: int,
-) -> None:
-    """
-    GIVEN an environment variable configuring the exact cache TTL via canonical or alias name
-    WHEN Settings is initialized
-    THEN exact_cache_ttl and the backwards-compatible cache_ttl property resolve to expected TTL.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    :param env_var_name: Environment variable name (EXACT_CACHE_TTL or CACHE_TTL).
-    :param env_val: String TTL value to configure.
-    :param expected_ttl: Expected integer TTL value.
-    """
-    monkeypatch.setenv(env_var_name, env_val)
-    settings = Settings(app_env=Environment.TEST)
-    assert settings.exact_cache_ttl == expected_ttl
-    assert settings.cache_ttl == expected_ttl

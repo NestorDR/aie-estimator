@@ -553,3 +553,32 @@ async def test_estimation_service_without_semantic_cache() -> None:
 
     with pytest.raises(ValueError, match=r"request\.description must be provided"):
         await service.generate_estimation(empty_request)
+
+
+@pytest.mark.anyio
+async def test_estimation_service_without_exact_cache(
+    sample_estimation_request: EstimationRequest,
+    make_estimation_result: Callable[..., dict[str, Any]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    GIVEN an EstimationService initialized without exact cache (exact_cache=None)
+    WHEN generate_estimation is called
+    THEN it bypasses Tier 1 cache and dispatches to the LLM workflow without error.
+    """
+    mock_semantic = AsyncMock()
+    mock_semantic.lookup = AsyncMock(return_value=None)
+    mock_semantic.store = AsyncMock(return_value=None)
+
+    service = EstimationService(exact_cache=None, semantic_cache=mock_semantic)
+
+    sample_payload = make_estimation_result()
+    mock_call_llm = AsyncMock(return_value=sample_payload)
+    monkeypatch.setattr("aie_estimator.services.estimations_service.call_llm", mock_call_llm)
+
+    result = await service.generate_estimation(request=sample_estimation_request, prompt_version="v1")
+
+    assert result["cache_hit"] is False
+    mock_call_llm.assert_awaited_once()
+    mock_semantic.lookup.assert_awaited_once()
+    mock_semantic.store.assert_awaited_once()

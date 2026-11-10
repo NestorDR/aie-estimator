@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Final
 
 # --- Third Party Libraries ---
-from pydantic import AliasChoices, Field, SecretStr, ValidationError
+from pydantic import SecretStr, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import structlog
 
@@ -59,19 +59,13 @@ class Settings(BaseSettings):
     litellm_local_model_cost_map: bool = True
     llm_profiles_path: Path = Path(__file__).resolve().parent / "llm_profiles.yml"
 
-    # Exact cache settings
+    # Cache settings
     redis_host: str = "localhost"
     redis_port: int = 6379
-    exact_cache_ttl: int = Field(default=86400, validation_alias=AliasChoices("exact_cache_ttl", "cache_ttl"))
 
-    @property
-    def cache_ttl(self) -> int:
-        """
-        Backwards-compatible property alias for exact_cache_ttl.
-
-        :return: Exact cache retention TTL in seconds.
-        """
-        return self.exact_cache_ttl
+    # Exact cache settings
+    enable_exact_cache: bool = True
+    exact_cache_ttl: int = 86400
 
     # Semantic cache settings
     enable_semantic_cache: bool = True
