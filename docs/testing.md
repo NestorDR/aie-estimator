@@ -2,41 +2,18 @@
 
 ## Overview
 
-Guide for writing, organizing, and validating tests in `aie-estimator`. The main sections state the conventions new tests must follow.
+[`pyproject.toml`](file:///c:/Development/Repos/ai-engineering/aie-estimator/pyproject.toml) configures pytest for `aie-estimator` (`testpaths = ["tests"]`, `pythonpath = [".", "src"]`). Test modules mirror the source tree under [`tests/`](file:///c:/Development/Repos/ai-engineering/aie-estimator/tests/).
 
-When a convention changes, update the rule here first, then bring existing tests into line.
-
-### Structure and Configuration
-
-- **Configuration**: `[tool.pytest.ini_options]` in `pyproject.toml` (`testpaths = ["tests"]`, `python_files = ["test_*.py"]`, `pythonpath = [".", "src"]`). No editable install is required.
-- **Execution**: `rtk uv run pytest` with `APP_ENV=test` set (omit `rtk` if it is unavailable). See [Environment Isolation](#3-environment-isolation).
-
-### Test Layout
-
-Test modules mirror the source tree, one test module per source module. For example, `src/aie_estimator/services/cache.py` → `tests/services/test_cache.py`, and `streamlit_app.py` → `tests/test_streamlit_app.py`.
-
-- A new source module ships with its test module in the same change.
-- Test each behavior at the lowest layer that owns it: exhaustive validation in schema tests, one representative case per error mapping in router tests.
-- Name tests after unit, condition, and outcome (e.g. `test_cache_get_miss_returns_none`).
-
-### Fixtures
-
-- **Placement**: fixtures shared by several test modules go in `tests/conftest.py`; otherwise keep them module-local or in a package-level `conftest.py`.
-- **No orphans**: every shared fixture must have at least one consumer.
-- **Factories over repetition**: when the same payload or mock shape repeats across tests, provide it through a factory fixture (see [Pattern 6](#6-factory-fixtures)) instead of inline dictionaries or module constants.
-- **Autouse only for isolation**:
-  - `clean_settings_cache` in `tests/conftest.py` clears application `lru_cache` singletons before and after each test.
-  - `auto_sync_settings_on_env_mutation` intercepts `monkeypatch.setenv` and `monkeypatch.delenv` to automatically synchronize `get_settings()` and clear registered singletons whenever an environment variable is modified during test execution.
-  - `default_tiered_cache_isolation` defaults Tier 1 exact cache and Tier 2 semantic cache to disconnected/miss states across unit and router tests.
-  - `app` neutralizes `EstimationSemanticCache.initialize_index` so FastAPI test client startup does not block on physical Redis socket connection attempts in offline environments.
-
-Core shared fixtures are `app` (FastAPI app with override teardown and neutralized startup sockets), `client` (`TestClient` running lifespan handlers), and `sample_transcription`. See `tests/conftest.py` for the full list.
+Core shared fixtures are defined in [`tests/conftest.py`](file:///c:/Development/Repos/ai-engineering/aie-estimator/tests/conftest.py):
+- `app`: Instantiates the FastAPI application via `create_app()` and clears dependency overrides on teardown.
+- `client`: `TestClient` executing application startup and shutdown lifespan handlers.
+- `clean_settings_cache` (autouse): Clears application `@lru_cache` singletons before and after each test.
+- `auto_sync_settings_on_env_mutation` (autouse): Flushes `get_settings` and dependent singletons whenever environment variables are mutated via `monkeypatch`.
+- `default_tiered_cache_isolation` (autouse): Sets Tier 1 exact cache and Tier 2 semantic cache to default miss states across unit and router tests.
 
 ---
 
 ## Usage Examples
-
-Excerpts from existing tests showing the reference style. Imports and docstrings are trimmed except where they illustrate the convention.
 
 ### 1. Parametrization with Explicit `ids`
 
@@ -46,12 +23,7 @@ Excerpts from existing tests showing the reference style. Imports and docstrings
     [(None, None), ("9.9.9-test", "9.9.9-test")],
     ids=["default_settings", "dependency_override"],
 )
-def test_get_health(
-    app: FastAPI,
-    client: TestClient,
-    override_version: str | None,
-    expected_version: str | None,
-) -> None:
+def test_get_health(app: FastAPI, client: TestClient, override_version: str | None, expected_version: str | None) -> None:
     """
     GIVEN an application instance and an optional settings dependency override
     WHEN a GET request is sent to the /health endpoint
@@ -62,7 +34,6 @@ def test_get_health(
     :param override_version: Custom version string for dependency override, or None for default.
     :param expected_version: Expected version string in response body, or None to assert present.
     """
-    ...
 ```
 
 ### 2. Concise Exception Assertions
@@ -74,159 +45,54 @@ with pytest.raises(ValidationError, match=r"valid integer"):
 
 ### 3. Environment Overrides
 
-Use `monkeypatch`, never direct `os.environ` assignment. The `auto_sync_settings_on_env_mutation` fixture guarantees that calls to `monkeypatch.setenv()` and `monkeypatch.delenv()` automatically clear `get_settings()` and dependent singletons without manual `cache_clear()` boilerplate:
-
 ```python
-def test_mirror_secrets_to_environ_does_not_overwrite_existing(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MISTRAL_API_KEY", "existing-preset-key")
-
-    settings = Settings(app_env=Environment.TEST)
-    settings.mistral_api_key = SecretStr("new-attempted-key")
-    settings.mirror_secrets_to_environ()
-
-    assert environ.get("MISTRAL_API_KEY") == "existing-preset-key"
+def test_environment_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_ENV", "test")
+    settings = Settings()
+    assert settings.app_env == Environment.TEST
 ```
 
 ### 4. Mocking at the Boundary via Dependency Injection
 
-Override service dependencies using FastAPI's `dependency_overrides` instead of monkeypatching internal module variables:
-
 ```python
+from unittest.mock import AsyncMock
 from aie_estimator.dependencies import get_estimation_service
 from aie_estimator.services.estimations_service import EstimationService
 
 mock_service = AsyncMock(spec=EstimationService)
-mock_service.generate_estimation.return_value = result
-
+mock_service.generate_estimation.return_value = sample_response
 app.dependency_overrides[get_estimation_service] = lambda: mock_service
-
-payload = {
-    "description": "Comprehensive description of inventory management SaaS system.",
-    "project_type": "web_saas",
-    "detail_level": "medium",
-    "output_format": "phases_table",
-}
-response = client.post("/api/v1/estimate", json=payload)
-assert response.status_code == 200
 ```
 
-### 5. Async Tests
-
-Write coroutine tests as `async def` with `@pytest.mark.anyio` (asyncio backend, hence `[asyncio]` in test ids). Avoid `asyncio.run(...)` inside sync tests.
+### 5. Async Tests with AnyIO
 
 ```python
 @pytest.mark.anyio
-async def test_cache_get_miss_returns_none() -> None:
+async def test_cache_miss_returns_none() -> None:
     mock_redis = AsyncMock()
     mock_redis.get.return_value = None
-
-    assert await EstimationCache(mock_redis).get("estimation:missing") is None
+    assert await EstimationExactCache(mock_redis).get("estimation:missing") is None
 ```
 
-### 6. Factory Fixtures
-
-Target pattern for repeated payloads: defaults plus keyword overrides, so each test states only the fields it asserts on.
-
-```python
-@pytest.fixture
-def make_estimation_result() -> Callable[..., dict[str, Any]]:
-    def _factory(**overrides: Any) -> dict[str, Any]:
-        return {"estimation": "Total: 40h", "model": DEFAULT_GPT_LLM, "provider": "openai", **overrides}
-
-    return _factory
-```
-
-### 7. Logging Without File Writes
-
-Tests that enable file logging patch the file handler and directory creation, and clear root handlers afterwards:
-
-```python
-with (
-    patch("logging.handlers.RotatingFileHandler", autospec=True),
-    patch("pathlib.Path.mkdir"),
-):
-    try:
-        Settings(app_env=Environment.DEV, enable_file_logging=True).configure_logging()
-        ...
-    finally:
-        logging.getLogger().handlers.clear()
-```
-
-### 8. CLI Execution
+### 6. CLI Execution
 
 ```powershell
-rtk uv run pytest --cache-clear --cov-fail-under=85  # full regression suite with coverage gate
-rtk uv run pytest tests/routers/test_health_router.py  # single test file with local coverage
-rtk uv run pytest -k "dependency_override"
-rtk uv run pytest --no-cov  # fastest zero-overhead iterative feedback
+rtk uv run pytest --cov-fail-under=85   # Full regression suite with coverage gate
+rtk uv run pytest tests/routers/test_health_router.py  # Single test file with local coverage
+rtk uv run pytest --no-cov             # Zero-overhead iterative feedback
 ```
-
-`auto\test.cmd` wraps the suite run and cleans up test artifacts (manual use only).
-
-Prefix supported terminal commands with `rtk`; if it is unavailable, run the base command. Use the context-mode MCP tools or Antigravity native search for codebase discovery, not `grep` or `Select-String`.
-
----
-
-## Coverage
-
-- **Target**: 85% combined line + branch coverage, measured across both `aie_estimator` and `streamlit_app` (`addopts` in `pyproject.toml`: `--cov=aie_estimator --cov=streamlit_app --cov-branch --cov-report=term-missing --basetemp=.pytest_tmp`).
-- **No regressions**: a change must not lower total coverage; new modules ship with tests for their public functions and error branches.
-- **Bug fixes** include a regression test that fails before the fix.
-- **Exclusions** (`# pragma: no cover`) are limited to entry-point glue and carry a reason comment.
-- **Priorities**: business logic first, then error branches and exception handlers, then UI code (extract testable functions rather than testing Streamlit rendering).
-- **Enforcement**: `--cov-fail-under=85` is enforced via CLI during full regression runs or via `auto/test.cmd`. Single test file runs execute directly without being aborted by the whole-suite threshold; append `--no-cov` for zero-overhead iterative feedback.
-
----
-
-## Quality Gates
-
-| Gate | Status |
-| :--- | :--- |
-| Ruff lint (`E,F,B,R,S,N`) on tests | Active |
-| Ruff test-oriented rules (`PT`, `ANN`, `ARG`, `SIM`, `I`, `UP`) | Planned |
-| `APP_ENV=test` pinned for the suite (`pytest-env` or autouse fixture) plus a `.env.test` | Active |
-| Coverage threshold (`--cov-fail-under=85`) | Active |
-| Random test order (`pytest-randomly`) to expose state leaks | Planned |
-| Property-based tests (Hypothesis) for functions with invariants, e.g. cache-key determinism | Planned |
-| Mutation testing pilot (Cosmic Ray on Windows; mutmut needs WSL) | Planned |
-
-Update the status when a gate is adopted and add any resulting rule to the sections above. Keep the pre-commit ruff `rev` aligned with the ruff version in `uv.lock`.
 
 ---
 
 ## Technical Considerations
 
-### 1. Test Design Rules
-
-- **GIVEN-WHEN-THEN**: Every test function docstring must explicitly follow GIVEN (preconditions), WHEN (action), THEN (assertions) followed by Sphinx `:param` definitions.
-- **Parametric Deduplication**: Consolidate symmetric branches with `@pytest.mark.parametrize`. Always specify `ids` to prevent unreadable `[None-None]` auto-generated identifiers, enable `-k` filtering, and clarify CI failure diagnostics.
-- **Concise Exception Regexes**: Assert exceptions with `pytest.raises(Exc, match=r'...')` using minimal distinctive keywords to prevent brittleness against minor formatting revisions.
-- **Type Annotations**: All fixtures, test parameters, and return types require explicit type hints.
-- **One Behavior per Test**: split tests whose THEN clause joins unrelated outcomes.
-- **No Real I/O**: tests never call real LLM providers, Redis, or the network.
-
-### 2. Runtime Isolation Mechanics
-
-- **Lifespan Execution**: the `client` fixture uses `with TestClient(app)` so startup/shutdown handlers run.
-- **Lifespan Socket Neutralization**: the `app` fixture patches `EstimationSemanticCache.initialize_index` to an async no-op, preventing blocking socket connection timeouts against inactive Redis instances.
-- **Cache Isolation**: `clean_settings_cache` flushes application `lru_cache` singletons before and after each test.
-- **Settings Synchronization**: `auto_sync_settings_on_env_mutation` flushes `get_settings` and dependent singletons immediately whenever `monkeypatch.setenv` or `monkeypatch.delenv` is executed.
-- **Tiered Cache Isolation**: `default_tiered_cache_isolation` configures Tier 1 exact cache and Tier 2 semantic cache to return safe miss states by default across all service and router tests.
-- **Override Teardown**: the `app` fixture clears `dependency_overrides` on teardown.
-
-### 3. Environment Isolation
-
-`Settings` resolves the environment from its `app_env` argument, then `APP_ENV`, then defaults to `dev`. It loads `src/aie_estimator/.env.<env>`, configures logging, and mirrors API keys into `os.environ`. Without `APP_ENV=test`, tests therefore pick up the developer's `.env.dev`: real keys enter the test process and file logging, if enabled there, writes to `logs/dev.log`.
-
-- Run the suite with `APP_ENV=test` until the pinning gate is active.
-- Tests that construct `Settings` for `dev` or `prod` disable or patch file logging (Pattern 7).
-- Use `tmp_path` for any file the code under test creates.
-- Tests must never produce `logs/dev.log`.
-
-### 4. Windows 11 & Python 3.14 Async Execution Policy
-
-Python 3.14 on Windows defaults to `asyncio.WindowsProactorEventLoopPolicy` (`ProactorEventLoop`), which uses Windows I/O Completion Ports (IOCP) and local loopback sockets via `WSASocketW` for inter-thread and asynchronous notification.
-
-- **Process Sandbox Boundary**: Under restricted process sandboxes (such as the default Antigravity sandbox mode without bypass), Windows restricts local loopback interface binding (`127.0.0.1` / `::1`) and named pipe / IOCP handle operations. This causes asynchronous event loops (and Streamlit `AppTest` worker threads) to block indefinitely without raising an exception.
-- **Execution Policy**: When executing test suites (`rtk uv run pytest` or `uv run pytest`) or running Python scripts invoking async event loops on Windows, always pass `BypassSandbox: true` to grant unconstrained process token permissions.
-- **AnyIO Configuration**: AnyIO coroutine tests marked with `@pytest.mark.anyio` run on the `asyncio` backend by default, inheriting this proactor execution policy.
+1. **Test Design Conventions**:
+   - Every test docstring follows GIVEN-WHEN-THEN structure with Sphinx `:param` definitions.
+   - Assert exceptions with `pytest.raises(Exc, match=r'...')` using concise, distinctive keywords.
+   - Tests never make real network or I/O calls to LLM providers or Redis.
+2. **Runtime Isolation Mechanics**:
+   - `clean_settings_cache` and `auto_sync_settings_on_env_mutation` in [`tests/conftest.py`](file:///c:/Development/Repos/ai-engineering/aie-estimator/tests/conftest.py) ensure zero state leakage between tests.
+   - `app` fixture neutralizes `EstimationSemanticCache.initialize_index` so lifespan startup does not block on physical Redis sockets in offline environments.
+3. **Environment Isolation**: The suite runs under `APP_ENV=test` configured in `[tool.pytest_env]` in [`pyproject.toml`](file:///c:/Development/Repos/ai-engineering/aie-estimator/pyproject.toml). Tests must never produce `logs/dev.log`.
+4. **Coverage Policy**: Minimum 85% line and branch coverage across `aie_estimator` and `streamlit_app`. `--cov-fail-under` is enforced via CLI during full regression runs and must not be placed in `pyproject.toml` `addopts`.
+5. **Windows 11 & Python 3.14 Async Execution Policy**: Python 3.14's `ProactorEventLoop` uses Windows I/O Completion Ports (IOCP) and local loopback sockets restricted by standard process sandboxes. When executing test suites or async scripts on Windows, always pass `BypassSandbox: true`.
