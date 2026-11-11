@@ -4,9 +4,9 @@
 
 The observability architecture in `aie-estimator` combines structured logging, standardized lifecycle events, and distributed tracing:
 
-1. **Structured Logging**: Powered by [structlog](https://www.structlog.org/) and bridged to the Python standard library `logging` subsystem in [`src/aie_estimator/logging.py`](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/logging.py), providing formatted ANSI console output for development and structured JSON output for production.
+1. **Structured Logging**: Powered by [structlog](https://www.structlog.org/) and bridged to the Python standard library `logging` subsystem in [`src/aie_estimator/logging.py`](../src/aie_estimator/logging.py), providing formatted ANSI console output for development and structured JSON output for production.
 2. **Lifecycle Event Taxonomy**: Standardizes application and domain event names under the `<entity>_<action>_<phase>` convention.
-3. **Distributed Tracing & LLM Observability**: Uses OpenTelemetry and OpenInference in [`src/aie_estimator/telemetry.py`](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/telemetry.py) to instrument FastAPI and LiteLLM, exporting spans over gRPC (`:4317`) to an [Arize Phoenix](https://docs.arize.com/phoenix) container backed by embedded DuckDB.
+3. **Distributed Tracing & LLM Observability**: Uses OpenTelemetry and OpenInference in [`src/aie_estimator/telemetry.py`](../src/aie_estimator/telemetry.py) to instrument FastAPI and LiteLLM, exporting spans over gRPC (`:4317`) to an [Arize Phoenix](https://docs.arize.com/phoenix) container backed by embedded DuckDB.
 
 ---
 
@@ -45,8 +45,8 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 
 ## Technical Considerations
 
-1. **Event Naming Taxonomy**: Event names use `<entity>_<action>_<phase>` snake_case format (e.g. `estimation_request_received`, `exact_cache_entry_retrieved`, `semantic_cache_lookup_evaluated`, `litellm_router_call_failed`). Consult individual modules in [`src/aie_estimator/`](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/) for domain-specific event tokens.
-2. **Trace-Log Correlation**: `inject_opentelemetry_context` in [`src/aie_estimator/telemetry.py`](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/telemetry.py) injects active `trace_id` and `span_id` hex strings into structlog event dictionaries when tracing is active.
+1. **Event Naming Taxonomy**: Event names use `<entity>_<action>_<phase>` snake_case format (e.g. `estimation_request_received`, `exact_cache_entry_retrieved`, `semantic_cache_lookup_evaluated`, `litellm_router_call_failed`). Consult individual modules in [`src/aie_estimator/`](../src/aie_estimator/) for domain-specific event tokens.
+2. **Trace-Log Correlation**: `inject_opentelemetry_context` in [`src/aie_estimator/telemetry.py`](../src/aie_estimator/telemetry.py) injects active `trace_id` and `span_id` hex strings into structlog event dictionaries when tracing is active.
 3. **Storage Architecture**: Arize Phoenix uses embedded DuckDB inside the container at `/root/.phoenix` (persisted to `./volumes/phoenix_data`), performing vectorized columnar queries over trace spans without requiring an external database cluster.
-4. **Third-Party Log Suppression**: `configure_logging()` in [`src/aie_estimator/logging.py`](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/logging.py) suppresses noisy third-party loggers (`asyncio`, `psycopg`, `uvicorn.error`) to `WARNING`, while preserving HTTP access logs in `uvicorn.access`.
-5. **Lifecycle Isolation**: Telemetry initialization in [`src/aie_estimator/telemetry.py`](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/telemetry.py) short-circuits immediately when `ENABLE_OTEL_TRACING=false`, eliminating background network polling and unmocked loopback socket overhead during testing.
+4. **Third-Party Log Suppression**: `configure_logging()` in [`src/aie_estimator/logging.py`](../src/aie_estimator/logging.py) suppresses noisy third-party loggers (`asyncio`, `psycopg`, `uvicorn.error`) to `WARNING`, while preserving HTTP access logs in `uvicorn.access`.
+5. **Lifecycle Isolation**: Telemetry initialization in [`src/aie_estimator/telemetry.py`](../src/aie_estimator/telemetry.py) short-circuits immediately when `ENABLE_OTEL_TRACING=false`, eliminating background network polling and unmocked loopback socket overhead during testing.

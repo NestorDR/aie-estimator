@@ -2,9 +2,9 @@
 
 ## Overview
 
-[`pyproject.toml`](file:///c:/Development/Repos/ai-engineering/aie-estimator/pyproject.toml) configures pytest for `aie-estimator` (`testpaths = ["tests"]`, `pythonpath = [".", "src"]`). Test modules mirror the source tree under [`tests/`](file:///c:/Development/Repos/ai-engineering/aie-estimator/tests/).
+[`pyproject.toml`](../pyproject.toml) configures pytest for `aie-estimator` (`testpaths = ["tests"]`, `pythonpath = [".", "src"]`). Test modules mirror the source tree under [`tests/`](../tests/).
 
-Core shared fixtures are defined in [`tests/conftest.py`](file:///c:/Development/Repos/ai-engineering/aie-estimator/tests/conftest.py):
+Core shared fixtures are defined in [`tests/conftest.py`](../tests/conftest.py):
 - `app`: Instantiates the FastAPI application via `create_app()` and clears dependency overrides on teardown.
 - `client`: `TestClient` executing application startup and shutdown lifespan handlers.
 - `clean_settings_cache` (autouse): Clears application `@lru_cache` singletons before and after each test.
@@ -91,8 +91,8 @@ rtk uv run pytest --no-cov             # Zero-overhead iterative feedback
    - Assert exceptions with `pytest.raises(Exc, match=r'...')` using concise, distinctive keywords.
    - Tests never make real network or I/O calls to LLM providers or Redis.
 2. **Runtime Isolation Mechanics**:
-   - `clean_settings_cache` and `auto_sync_settings_on_env_mutation` in [`tests/conftest.py`](file:///c:/Development/Repos/ai-engineering/aie-estimator/tests/conftest.py) ensure zero state leakage between tests.
+   - `clean_settings_cache` and `auto_sync_settings_on_env_mutation` in [`tests/conftest.py`](../tests/conftest.py) ensure zero state leakage between tests.
    - `app` fixture neutralizes `EstimationSemanticCache.initialize_index` so lifespan startup does not block on physical Redis sockets in offline environments.
-3. **Environment Isolation**: The suite runs under `APP_ENV=test` configured in `[tool.pytest_env]` in [`pyproject.toml`](file:///c:/Development/Repos/ai-engineering/aie-estimator/pyproject.toml). Tests must never produce `logs/dev.log`.
+3. **Environment Isolation**: The suite runs under `APP_ENV=test` configured in `[tool.pytest_env]` in [`pyproject.toml`](../pyproject.toml). Tests must never produce `logs/dev.log`.
 4. **Coverage Policy**: Minimum 85% line and branch coverage across `aie_estimator` and `streamlit_app`. `--cov-fail-under` is enforced via CLI during full regression runs and must not be placed in `pyproject.toml` `addopts`.
 5. **Windows 11 & Python 3.14 Async Execution Policy**: Python 3.14's `ProactorEventLoop` uses Windows I/O Completion Ports (IOCP) and local loopback sockets restricted by standard process sandboxes. When executing test suites or async scripts on Windows, always pass `BypassSandbox: true`.

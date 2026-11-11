@@ -12,13 +12,13 @@ Your responsibilities:
 ## 2. About project
 
 Welcome to an AI Engineering Learning Project based on the online course in Spanish [AI Engineering](https://lidr.notion.site/ai-engineering) 
-Next class: [Session 4 of November 5, 2026](https://lidr.notion.site/ai-engineering?p=313a4393278181c1865fe13a12939acc&pm=s)
+Next class: Session 5 of November 12, 2026
 
 ## 3. Code Style and Conventions
 Always apply good software engineering practices: **KISS, YAGNI, DRY, SOLID, ACID, design patterns, Pythonic style, and explicit is better than implicit** to ensure maintainability, readability, and reusability.
 
 ### Specific Code Rules
-- **First line of modules**: each module must start with its full relative path inside a comment. (e.g. `# src/01_foundations/sesion-01-ejercicios-alumno_1.py`).
+- **First line of modules**: each module must start with its full relative path inside a comment. (e.g. `# src/aie_estimator/routers/estimations_router.py`).
 - **Top-level imports**: imports MUST be at the top of the module separated in three groups with a blank line between each group, in the order: `# --- Python Standard Library ---`; `# --- Third Party Libraries ---`; `# --- App modules ---`. If any of the groups are empty, remove the corresponding separator heading `# --- ... ---`.
 - **Package `__init__.py` and Re-export Policy**:
   - **Default to Minimal/Empty `__init__.py`**: Internal subpackages (`schemas`, `routers`, `prompts`, `utils`, `services`) must keep their `__init__.py` empty (containing only the required module path comment). Do not add blanket convenience re-exports. Consumers must import symbols directly from the concrete module (e.g. `from aie_estimator.schemas.estimations import EstimationRequest`).
@@ -52,14 +52,14 @@ Always apply good software engineering practices: **KISS, YAGNI, DRY, SOLID, ACI
 - **Feature Documentation**: 
   - After implementing any new feature, create or update the corresponding Markdown documentation in `docs/<feature-name>.md`.
   - Maintain the style of existing documentation.
-  - Structure must be self-contained and include at minimum: **Overview**, **Usage Examples**, and **Technical Considerations**.
-  - Synchronize all existing documentation files affected by the change.
+  - Structure must include **Overview**, **Usage Examples**, and **Technical Considerations**. Keep docs concise by referencing source files and symbols using repository-relative links (never machine-local `file:///` URIs) rather than duplicating code, field tables, or verbose diagrams; limit **Usage Examples** to minimal caller invocations or payloads, and focus **Technical Considerations** on architectural decisions, invariants, and non-obvious behaviors.
+  - Synchronize all existing documentation files affected by the change. `README.md` retains the high-level CAG Mermaid workflow diagram and a package-level directory tree (omitting individual files inside `src/aie_estimator/` subpackages).
 
 ## 5. Developer Workflows and CLI Commands
 - **Forbidden Commands**: 
   - Never execute `.cmd` or `.ps1` scripts inside the `auto/` directory. These are reserved for manual developer execution.
 - **Context & Tool Optimization**:
-  - **Think in Code**: During exploratory tasks (such as `/opsx-explore`), do not read multiple files into context sequentially. Prefer writing and executing targeted scripts via `ctx_execute` to parse files locally and output only distilled summaries.
+  - **Think in Code**: During exploratory tasks (such as `/opsx-explore`), do not read multiple files into context sequentially. Prefer writing and executing targeted scripts via `ctx_execute` to parse files locally and output only distilled summaries. On Windows, reconfigure stdout (`sys.stdout.reconfigure(encoding="utf-8")`) in Python inspection scripts that print file contents to avoid `cp1252` `UnicodeEncodeError`.
   - **Terminal Output**: Adhere to the RTK guidelines for CLI commands to keep context usage minimal during test and build runs. On Windows, always invoke linters and tools via `uv run` (e.g. `rtk uv run ruff check`, `rtk uv run pytest`) to ensure binaries installed in virtual environments are resolved correctly.
 - **LiteLLM Cost Map Policy**: LiteLLM is permanently configured to use its bundled local cost map via `Settings` and `[tool.pytest_env]`. Never execute ad-hoc scripts that fetch remote pricing or inject import-time `os.environ` hacks. Always run test suites via `rtk uv run pytest`.
 - **Windows Async Execution Mode**: When executing test suites (`rtk uv run pytest` or `uv run pytest`) or running ad-hoc Python scripts that invoke `asyncio` event loops or Streamlit AppTest on Windows, always pass `BypassSandbox: true`. Python 3.14's default `asyncio.ProactorEventLoop` requires Windows I/O Completion Ports (IOCP) and local loopback socket creation (`WSASocket`) that are restricted by the standard process sandbox, causing async processes to hang indefinitely.
@@ -86,7 +86,7 @@ Deliver technical text without rhetorical padding. Adhere strictly to these omis
 - `src/aie_estimator/services/estimations_service.py`: Orchestration service for estimation generation, requirements extraction, and caching.
 - `src/aie_estimator/services/providers/litellm_provider.py`: LiteLLM Router integration, reasoning parameter dispatch, and cost extraction.
 - `src/aie_estimator/services/providers/native_providers.py`: Native provider dispatch for OpenAI and Anthropic SDKs.
-- `src/aie_estimator/services/cache.py`: Exact-match Redis caching service.
+- `src/aie_estimator/services/cache/`: Tier 1 exact-match (`exact.py`) and Tier 2 RediSearch semantic (`semantic.py`) Redis caching services.
 - `auto/`: Windows command automation scripts (`dev.cmd`, `stl.cmd`, `dc.cmd`, `lint.cmd`, `test.cmd`, `update.cmd`, `cleanup.cmd`).
 - `docker/`: Multi-stage production `Dockerfile` and Docker Compose definitions (`docker-compose.dev.yml`, `docker-compose.prod.yml`).
 - `pyproject.toml`: Dependency management and build configuration (`uv_build`, `ruff`, `pytest`).

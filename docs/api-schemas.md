@@ -2,15 +2,15 @@
 
 ## Overview
 
-[`src/aie_estimator/schemas/estimations.py`](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/schemas/estimations.py) defines the domain data models and validation perimeter for the estimation service using Pydantic v2.
+[`src/aie_estimator/schemas/estimations.py`](../src/aie_estimator/schemas/estimations.py) defines the domain data models and validation perimeter for the estimation service using Pydantic v2.
 
 The schema contract governs the core phases of the estimation lifecycle:
-1. **Request Intake ([`EstimationRequest`](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/schemas/estimations.py))**: Validates project descriptions (20–2000 characters), domain classifications (`ProjectType`, `DetailLevel`, `OutputFormat`), provider mode (`engine="litellm"` or `"native"`), and target models validated against the catalog.
-2. **Structured Response Contract ([`EstimationResult`](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/schemas/estimations.py) & [`Phase`](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/schemas/estimations.py))**: Enforces phase breakdowns, duration, cost, and invariants (`phases_sum_matches_total`, `low_confidence_requires_out_of_scope_prefix`).
-3. **Execution Instrumentation ([`TokenUsage`](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/schemas/estimations.py))**: Tracks input, output, and preprocessing tokens along with calculated execution cost (`cost_usd`).
-4. **Response Delivery ([`EstimationResponse`](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/schemas/estimations.py))**: Standardized envelope containing the structured result, active prompt version, cache status, resolved model, provider attribution, and token telemetry.
+1. **Request Intake ([`EstimationRequest`](../src/aie_estimator/schemas/estimations.py))**: Validates project descriptions (20–2000 characters), domain classifications (`ProjectType`, `DetailLevel`, `OutputFormat`), provider mode (`engine="litellm"` or `"native"`), and target models validated against the catalog.
+2. **Structured Response Contract ([`EstimationResult`](../src/aie_estimator/schemas/estimations.py) & [`Phase`](../src/aie_estimator/schemas/estimations.py))**: Enforces phase breakdowns, duration, cost, and invariants (`phases_sum_matches_total`, `low_confidence_requires_out_of_scope_prefix`).
+3. **Execution Instrumentation ([`TokenUsage`](../src/aie_estimator/schemas/estimations.py))**: Tracks input, output, and preprocessing tokens along with calculated execution cost (`cost_usd`).
+4. **Response Delivery ([`EstimationResponse`](../src/aie_estimator/schemas/estimations.py))**: Standardized envelope containing the structured result, active prompt version, cache status, resolved model, provider attribution, and token telemetry.
 
-Consult [`src/aie_estimator/schemas/estimations.py`](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/schemas/estimations.py) for complete field constraints, type annotations, and validator logic.
+Consult [`src/aie_estimator/schemas/estimations.py`](../src/aie_estimator/schemas/estimations.py) for complete field constraints, type annotations, and validator logic.
 
 ---
 
@@ -72,7 +72,7 @@ Consult [`src/aie_estimator/schemas/estimations.py`](file:///c:/Development/Repo
 
 ## Technical Considerations
 
-1. **Autoregressive Field Ordering**: In [`EstimationResult`](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/schemas/estimations.py), `phases` precedes `total_duration_weeks` and `total_cost_eur`. This forces the LLM to generate individual phase estimates before computing aggregates, eliminating arithmetic hallucinations.
+1. **Autoregressive Field Ordering**: In [`EstimationResult`](../src/aie_estimator/schemas/estimations.py), `phases` precedes `total_duration_weeks` and `total_cost_eur`. This forces the LLM to generate individual phase estimates before computing aggregates, eliminating arithmetic hallucinations.
 2. **Schema Invariant Enforcement**: Instructor captures Pydantic validation errors (such as phase cost sum mismatch) and automatically re-prompts the model up to `max_retries`.
-3. **Boundary Validation & OpenAPI**: [`EstimationRequest`](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/schemas/estimations.py) validates the `model` field against `get_supported_models()` from [`src/aie_estimator/model_catalog.py`](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/model_catalog.py). OpenAPI documentation dropdowns are enriched dynamically via `Server._setup_openapi()` in [`src/aie_estimator/server.py`](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/server.py).
-4. **Input Guardrail Violation Mapping**: Semantic violations detected by `check_input` raise `InputGuardrailViolation`, mapped to HTTP 400 with structured detail (`reason`: `"moderation"`, `"prompt_injection"`, or `"pii"`). See [`docs/guardrails.md`](file:///c:/Development/Repos/ai-engineering/aie-estimator/docs/guardrails.md).
+3. **Boundary Validation & OpenAPI**: [`EstimationRequest`](../src/aie_estimator/schemas/estimations.py) validates the `model` field against `get_supported_models()` from [`src/aie_estimator/model_catalog.py`](../src/aie_estimator/model_catalog.py). OpenAPI documentation dropdowns are enriched dynamically via `Server._setup_openapi()` in [`src/aie_estimator/server.py`](../src/aie_estimator/server.py).
+4. **Input Guardrail Violation Mapping**: Semantic violations detected by `check_input` raise `InputGuardrailViolation`, mapped to HTTP 400 with structured detail (`reason`: `"moderation"`, `"prompt_injection"`, or `"pii"`). See [`docs/guardrails.md`](guardrails.md).

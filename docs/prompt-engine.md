@@ -2,12 +2,12 @@
 
 ## Overview
 
-The prompt template engine in [`src/aie_estimator/prompts/loader.py`](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/prompts/loader.py) externalizes LLM prompt composition from Python service logic into versioned Jinja2 templates under [`src/aie_estimator/prompts/<use_case>/<version>/`](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/prompts/estimation/v1/):
+The prompt template engine in [`src/aie_estimator/prompts/loader.py`](../src/aie_estimator/prompts/loader.py) externalizes LLM prompt composition from Python service logic into versioned Jinja2 templates under [`src/aie_estimator/prompts/<use_case>/<version>/`](../src/aie_estimator/prompts/estimation/v1/):
 - `system.j2`: System instructions defining consultant role, hourly rates, format conditionals, JSON constraints, and dynamic inclusion of reference examples.
 - `user.j2`: User message block wrapping the project description in `<project_description>` XML tags.
 - `examples.j2`: Canonical few-shot reference estimations used as calibration anchors.
 
-Prompt versions (`v1/`, `v2/`) iterate independently behind stable REST API endpoints (`/api/v1`). The active production prompt version is configured via `active_prompt_version` in [`src/aie_estimator/settings.py`](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/settings.py).
+Prompt versions (`v1/`, `v2/`) iterate independently behind stable REST API endpoints (`/api/v1`). The active production prompt version is configured via `active_prompt_version` in [`src/aie_estimator/settings.py`](../src/aie_estimator/settings.py).
 
 ---
 
@@ -47,7 +47,7 @@ validated_version = validate_prompt_version("v1")
 
 ## Technical Considerations
 
-1. **Strict Undefined Variables**: The Jinja2 environment in [`src/aie_estimator/prompts/loader.py`](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/prompts/loader.py) uses `StrictUndefined`, halting immediately with `UndefinedError` if any template context variable is missing.
+1. **Strict Undefined Variables**: The Jinja2 environment in [`src/aie_estimator/prompts/loader.py`](../src/aie_estimator/prompts/loader.py) uses `StrictUndefined`, halting immediately with `UndefinedError` if any template context variable is missing.
 2. **Whitespace Trimming**: Configured with `trim_blocks=True` and `lstrip_blocks=True` to strip control block newlines, ensuring deterministic whitespace across model providers.
 3. **Dynamic Version Ingestion**: `system.j2` includes canonical calibration examples via dynamic version evaluation (`{% include "estimation/" ~ version ~ "/examples.j2" %}`), preventing hardcoded path coupling when authoring new versions.
 4. **Completeness Validation**: `list_prompt_versions()` verifies that all three required template files (`system.j2`, `user.j2`, `examples.j2`) exist, preventing runtime `TemplateNotFound` errors on partially drafted versions.

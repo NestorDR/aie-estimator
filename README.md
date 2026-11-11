@@ -1,29 +1,24 @@
 # AIE Estimator
 
-FastAPI backend service for automated software engineering effort estimation using Context-Augmented Generation (CAG) queryable via a structured product form interface based on Streamlit.
+FastAPI backend service for automated software engineering effort estimation using Context-Augmented Generation (CAG), paired with a Streamlit product form interface.
 
 ## About
 
-This is my personal repository where I am coding the project while following the [LIDR AI Engineering program](https://lidr.notion.site/ai-engineering). It explores production Generative AI: Context-Augmented Generation (CAG), advanced RAG, multi-agent workflows, LLMOps, and evaluation with Python, FastAPI, and leading LLMs, starting with an automated software engineering effort estimator.
+Personal repository following the [LIDR AI Engineering program](https://lidr.notion.site/ai-engineering), exploring production Generative AI: Context-Augmented Generation (CAG), multi-provider LLM routing, guardrails, semantic caching, and observability with Python, FastAPI, and leading LLMs.
 
 ## Overview
 
-AIE Estimator processes software project descriptions and domain parameters to generate structured project estimates—including task breakdowns, estimated hours, team compositions, and delivery timelines.
-
-Rather than relying on retrieval-augmented generation (RAG) with vector databases, the service uses a Context-Augmented Generation (CAG) architecture. Historical reference estimations are directly injected into the LLM system prompt as few-shot context, grounding model output in established project patterns with minimal operational complexity.
+AIE Estimator processes software project descriptions and domain parameters (`project_type`, `detail_level`, `output_format`) to produce structured effort estimates—task phases, durations, EUR costs, and confidence scores. Historical reference estimations are injected into versioned Jinja2 system prompts as few-shot CAG context, eliminating vector database retrieval for core context assembly.
 
 ## Architecture
 
-The project enforces strict separation of concerns across dedicated application layers:
-
-- **Schemas (`src/aie_estimator/schemas`)**: Defines domain data schemas and Pydantic models (`EstimationRequest`, `EstimationResponse`) for request payload validation and response contracts.
-- **Routers (`src/aie_estimator/routers/`)**: Defines HTTP routes, endpoint documentation, status codes, and request/response handling.
-- **Guardrails (`src/aie_estimator/guardrails/`)**: Enforces defense-in-depth semantic validation across input (`check_input`: OpenAI `omni-moderation-latest`, prompt injection heuristics, and PII heuristics) and output (`enforce_scope_response`: filter policy normalizing low-confidence estimations).
-- **Services (`src/aie_estimator/services/`)**: Encapsulates core business logic, CAG prompt assembly, multi-provider LLM dispatch with two-level runtime failover (intra-tier rotation and cross-tier escalation), token cost estimation, and two-tier response caching (Tier 1 exact-match and Tier 2 RediSearch vector similarity).
-- **Prompts (`src/aie_estimator/prompts/`)**: Stores versioned Jinja2 prompt templates (`system.j2`, `user.j2`, `examples.j2`) and loader for estimation prompt rendering.
-- **Settings (`src/aie_estimator/settings.py`)**: Environment-aware configuration and settings management powered by `pydantic-settings`, supporting structured JSON logging, credential isolation via `SecretStr`, and secret synchronization to `os.environ`.
-- **Dependencies (`src/aie_estimator/dependencies.py`)**: Centralized Composition Root managing cached dependency injection factories (`get_settings`, `get_exact_cache`, `get_semantic_cache`, `get_estimation_service`) for FastAPI route handlers.
-- **Server (`src/aie_estimator/server.py`)**: Application Factory (`create_app`) and server configuration with lifecycle management and exception mapping.
+- **Schemas** ([`src/aie_estimator/schemas/`](src/aie_estimator/schemas/)): Pydantic v2 contracts (`EstimationRequest`, `EstimationResponse`, `EstimationResult`).
+- **Routers** ([`src/aie_estimator/routers/`](src/aie_estimator/routers/)): HTTP routes (`POST /api/v1/estimate`, `GET /health`, `GET /`).
+- **Guardrails** ([`src/aie_estimator/guardrails/`](src/aie_estimator/guardrails/)): Input validation (`omni-moderation-latest`, prompt injection, PII heuristics) and low-confidence output normalization.
+- **Services** ([`src/aie_estimator/services/`](src/aie_estimator/services/)): Estimation orchestration, two-tier Redis caching (Tier 1 exact SHA-256, Tier 2 RediSearch vector similarity), and multi-provider dispatch with intra-tier rotation and cross-tier failover.
+- **Prompts** ([`src/aie_estimator/prompts/`](src/aie_estimator/prompts/)): Versioned Jinja2 templates (`system.j2`, `user.j2`, `examples.j2`) and loader.
+- **Configuration & Composition** ([`settings.py`](src/aie_estimator/settings.py), [`dependencies.py`](src/aie_estimator/dependencies.py), [`server.py`](src/aie_estimator/server.py)): `pydantic-settings` environment management, cached dependency injection factories, and FastAPI application factory (`create_app`).
+- **Frontend** ([`streamlit_app.py`](streamlit_app.py)): Structured Streamlit estimation form and telemetry viewer.
 
 ### Context-Augmented Generation (CAG) Workflow
 
@@ -62,39 +57,15 @@ aie-estimator/
 │       ├── llm_profiles.yml            # LiteLLM router profiles, tiers, and telemetry config
 │       ├── .env.example                # Example environment configuration
 │       ├── guardrails/                 # Defense-in-depth semantic validation
-│       │   ├── __init__.py
-│       │   ├── input.py                # Moderation API, prompt injection, and PII heuristics
-│       │   └── output.py               # Output scope filter and low-confidence normalization
 │       ├── prompts/                    # Jinja2 prompt templates and loader
-│       │   ├── __init__.py
-│       │   ├── loader.py
-│       │   └── estimation/v1/          # Modular prompt components (system, user, examples)
-│       ├── schemas/
-│       │   ├── __init__.py
-│       │   └── estimations.py          # EstimationRequest and EstimationResponse schemas
-│       ├── routers/
-│       │   ├── __init__.py
-│       │   ├── estimations_router.py   # POST /api/v1/estimate endpoint
-│       │   └── health_router.py        # GET /health status endpoint
-│       ├── services/
-│       │   ├── __init__.py
-│       │   ├── cache/                  # Isolated response caching subsystem
-│       │   │   ├── __init__.py
-│       │   │   ├── exact.py            # Deterministic exact-match Redis cache (Tier 1)
-│       │   │   └── semantic.py         # Native redis.asyncio RediSearch vector cache (Tier 2)
-│       │   ├── estimations_service.py  # Estimation orchestration and multi-engine coordination
-│       │   ├── exceptions.py           # Service and provider exception hierarchy
-│       │   └── providers/              # Isolated provider integrations and dispatch
-│       │       ├── __init__.py         # Providers subpackage re-export facade
-│       │       ├── dispatcher.py       # Multi-engine provider dispatch (call_llm)
-│       │       ├── formatting.py       # Response normalization across engines
-│       │       ├── generation_options.py # GenerationOptions, ProviderMode, ReasoningEffort
-│       │       ├── litellm_provider.py # LiteLLM Router integration and model routing
-│       │       ├── native_providers.py # Direct SDK dispatch for OpenAI and Anthropic
-│       │       └── pricing.py          # Offline pricing table and token cost estimation
-│       └── utils/
-│           ├── __init__.py
-│           └── model_constants.py      # Canonical default model and profile constants
+│       │   └── estimation/             # Software Engineering Estimation
+│       │       └── v1/                 # Prompt template Version 1
+│       ├── schemas/                    # Pydantic request/response contracts
+│       ├── routers/                    # FastAPI HTTP route handlers
+│       ├── services/                   # Core business logic, caching, and provider dispatch
+│       │   ├── cache/                  # Two-tier Redis response caching (exact & semantic)
+│       │   └── providers/              # LiteLLM Router and native SDK integrations
+│       └── utils/                      # Canonical model and profile constants
 ├── tests/                              # Unit and integration test suites
 ├── .dockerignore
 ├── .gitignore
@@ -108,266 +79,85 @@ aie-estimator/
 
 ## Requirements
 
-- Python >= 3.14
-- [`uv`](https://docs.astral.sh/uv/) package manager
-- Docker Desktop / Docker Compose (for Redis cache, Arize Phoenix observability, and containerized deployments)
-- OpenAI API key (`OPENAI_API_KEY`), Anthropic API key (`ANTHROPIC_API_KEY`), or Gemini API key (`GEMINI_API_KEY`)
+- Python >= 3.14 and [`uv`](https://docs.astral.sh/uv/)
+- Docker / Docker Compose (for Redis cache, Redis Insight, and Arize Phoenix)
+- Provider API keys (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, etc.)
 
 ## Installation & Setup
 
-1. **Clone the repository:**
+1. Clone the repository and install dependencies:
    ```bash
    git clone <repository-url>
    cd aie-estimator
-   ```
-
-2. **Install dependencies:**
-   ```bash
    uv sync
    ```
 
-3. **Configure environment variables:**
-   Copy the example environment file to the target environment configuration:
-   ```bash
-   cp src/aie_estimator/.env.example src/aie_estimator/.env.dev
-   ```
-
-    Edit `src/aie_estimator/.env.dev` and configure your API keys:
-   ```ini
-   APP_ENV=dev
-   LOG_LEVEL=INFO
-   JSON_LOGGING=false
-   ENABLE_FILE_LOGGING=false
-   ENABLE_OTEL_TRACING=false
-   OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
-   SERVER_HOST=localhost
-   SERVER_PORT=8000
-   OPENAI_API_KEY=your_openai_api_key_here
-   ANTHROPIC_API_KEY=your_anthropic_api_key_here
-   LLM_MODEL=reasoner-fast
-   LITELLM_LOCAL_MODEL_COST_MAP=false
-   ACTIVE_PROMPT_VERSION=v1
-   ESTIMATOR_API_BASE_URL=http://localhost:8000
-   REDIS_HOST=localhost
-   REDIS_PORT=6379
-   ENABLE_EXACT_CACHE=true   
-   EXACT_CACHE_TTL=86400
-   ENABLE_SEMANTIC_CACHE=true
-   SEMANTIC_CACHE_THRESHOLD=0.85
-   SEMANTIC_CACHE_TTL=86400
-   SEMANTIC_CACHE_LOG_ONLY=false
-   ```
+2. Create `src/aie_estimator/.env.dev` from [`src/aie_estimator/.env.example`](src/aie_estimator/.env.example) and configure your API keys and runtime flags (`APP_ENV`, `LLM_MODEL`, `REDIS_HOST`, `ENABLE_OTEL_TRACING`, etc.).
 
 ## Running the Application
 
-### 1. Docker Compose Environments
+### Docker Compose Infrastructure
 
-Start the detached Docker Compose services from the project root using `auto\dc.cmd <dev|prod>`:
+Start infrastructure services from the project root using [`auto/dc.cmd`](auto/dc.cmd):
 
-- **Development (Redis Cache, Redis Insight & Arize Phoenix Observability Stack)**:
-  Builds and launches Redis (`localhost:6379`), Redis Insight (UI on `http://localhost:5540`) and Arize Phoenix (UI on `http://localhost:6006`, OTLP on `4317/4318`) using `docker/docker-compose.dev.yml` and `src/aie_estimator/.env.dev`:
+- **Development** (Redis `:6379`, Redis Insight `:5540`, Arize Phoenix `:6006`, OTLP `:4317`/`4318` via [`docker/docker-compose.dev.yml`](docker/docker-compose.dev.yml)):
   ```cmd
   auto\dc.cmd dev
   ```
-  Browse cached estimations (keys `estimation:<sha256>`) in [Redis Insight](https://redis.io/insight/) at `http://localhost:5540`, or via `auto\redis_keys.cmd`.
-
-- **Production (Containerized FastAPI + Redis + Arize Phoenix Stack)**:
-  Builds the multi-stage production image (`docker/Dockerfile`) and launches it along with Redis and Arize Phoenix on the production environment using `docker/docker-compose.prod.yml` and `src/aie_estimator/.env.prod`:
+- **Production** (Multi-stage FastAPI image + Redis + Arize Phoenix via [`docker/docker-compose.prod.yml`](docker/docker-compose.prod.yml)):
   ```cmd
   auto\dc.cmd prod
   ```
 
-### 2. Local Development Services
+### Local Development Services
 
-#### FastAPI Backend Service
-
-Launch the FastAPI backend in the active console:
-
-```cmd
-auto\dev.cmd
-```
-
-Or directly via `uv`:
+Start the FastAPI backend (`http://localhost:8000`) and Streamlit UI (`http://localhost:8501`) in separate terminals:
 
 ```bash
+# Terminal 1: FastAPI backend (or `auto\dev.cmd`)
 uv run aie-estimator
-# or
-uv run uvicorn aie_estimator.server:create_app --factory --reload --host localhost --port 8000
-```
 
-The API service starts on `http://localhost:8000`.
-
-#### Streamlit Product Estimation Interface
-
-With the FastAPI service running, launch the structured product estimation form in a separate terminal:
-
-```cmd
-auto\stl.cmd
-```
-
-Or directly via `uv`:
-
-```bash
+# Terminal 2: Streamlit UI (or `auto\stl.cmd`)
 uv run streamlit run streamlit_app.py
 ```
-
-The product estimation interface opens in your browser at `http://localhost:8501`:
 
 ![Streamlit Product Estimation Form](docs/assets/session04_streamlit_ui_1_of_2.png)
 ![Streamlit Product Estimation Telemetry and Output](docs/assets/session04_streamlit_ui_2_of_2.png)
 
-## API Documentation & Endpoints
+## API Endpoints
 
-Interactive documentation is available at:
-- **Swagger UI**: `http://localhost:8000/docs`
-- **ReDoc**: `http://localhost:8000/redoc`
-
-### Endpoints Summary
+Interactive documentation is available at `http://localhost:8000/docs` (Swagger UI) and `http://localhost:8000/redoc` (ReDoc).
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `GET` | `/` | Root service status and version information |
-| `GET` | `/health` | Health check endpoint returning API operational status |
-| `POST` | `/api/v1/estimate` | Generates a structured software project effort estimation from project parameters |
+| `GET` | `/` | Service status and version information |
+| `GET` | `/health` | Health check endpoint (`{"status": "healthy", "version": "0.1.0"}`) |
+| `POST` | `/api/v1/estimate` | Generates a structured project effort estimation |
 
----
-
-### `POST /api/v1/estimate`
-
-Analyzes project requirements and parameters, returning a structured effort estimation breakdown.
-
-#### Request Schema
-
-```json
-{
-  "description": "Client requires a web platform for customer feedback collection with sentiment analysis and Slack notifications. Target release is 4 weeks.",
-  "project_type": "web_saas",
-  "detail_level": "medium",
-  "output_format": "phases_table",
-  "model": "reasoner-fast",
-  "engine": "litellm"
-}
-```
-
-#### Response Schema
-
-```json
-{
-  "result": {
-    "summary": "Customer feedback platform with sentiment analysis and Slack notifications.",
-    "confidence_pct": 85,
-    "phases": [
-      {
-        "name": "Design & Specifications",
-        "duration_weeks": 1,
-        "cost_eur": 2500,
-        "summary": "API contracts, UX flows, and integration architecture."
-      },
-      {
-        "name": "Core Backend & Integrations",
-        "duration_weeks": 2,
-        "cost_eur": 5000,
-        "summary": "Webhook API, sentiment pipeline, and Slack notification service."
-      },
-      {
-        "name": "Frontend & Delivery",
-        "duration_weeks": 1,
-        "cost_eur": 2500,
-        "summary": "Management dashboard, end-to-end tests, and deployment pipeline."
-      }
-    ],
-    "total_duration_weeks": 4,
-    "total_cost_eur": 10000
-  },
-  "cached": false,
-  "prompt_version": "v1",
-  "model": "openai/gpt-6-luna",
-  "provider": "litellm",
-  "cost_usd": 0.00342,
-  "usage": {
-    "input_tokens": 1420,
-    "output_tokens": 380,
-    "total_tokens": 1800,
-    "preprocessing_input_tokens": 0,
-    "preprocessing_output_tokens": 0
-  }
-}
-```
-
-#### Example cURL
-
-```bash
-curl -X POST http://localhost:8000/api/v1/estimate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "description": "In the meeting with the marketing team, the client explained that they need a landing page with a contact form, integration with their existing CRM (HubSpot), and a blog section with a WYSIWYG editor. The target timeline is 4 weeks. Designs already exist in Figma.",
-    "project_type": "web_saas",
-    "detail_level": "medium",
-    "output_format": "phases_table",
-    "model": "reasoner-fast",
-    "engine": "litellm"
-  }'
-```
-
----
-
-### `GET /health`
-
-Verifies that the service is running.
-
-#### Example Response
-
-```json
-{
-  "status": "healthy",
-  "version": "0.1.0"
-}
-```
-
-## Verification Checklist
-
-Verify local setup against the baseline project criteria:
-
-- [x] Application initializes with `uv run aie-estimator` or `uv run uvicorn aie_estimator.server:create_app --factory --reload`
-- [x] API keys and secrets load from `.env.<environment>` via `pydantic-settings` without hardcoded fallbacks
-- [x] `GET /health` returns HTTP 200 with `status: healthy`
-- [x] `POST /api/v1/estimate` processes project descriptions and parameters to return structured estimations
-- [x] Prompts include historical few-shot reference examples from `src/aie_estimator/prompts/estimation/v1/examples.j2`
-- [x] Streamlit product form interface accessible at `http://localhost:8501` via `uv run streamlit run streamlit_app.py`
-- [x] Redis exact-match cache short-circuits repeated estimation requests with offline fallback
-- [x] Redis Insight UI accessible at `http://localhost:5540` showing `estimation:*` cache keys
-- [x] Arize Phoenix observability UI accessible at `http://localhost:6006`
-- [x] Swagger documentation is accessible at `/docs`
-- [x] `.env*` files are excluded in `.gitignore`
+See [API Schemas & Data Contracts](docs/api-schemas.md) for payload contracts and error mappings.
 
 ## Code Quality & Standards
 
-- **Linter & Formatter**: Configured with `ruff` (line-length 140, Python 3.14 target). Use `auto\lint.cmd` or directly:
+- **Lint & Format** ([`pyproject.toml`](pyproject.toml)): `auto\lint.cmd` or:
   ```bash
   uv run ruff check .
   uv run ruff format .
   ```
-- **Test Suite**: Managed via `pytest` with coverage threshold enforcement (`--cov-fail-under=85`). Use `auto\test.cmd` or directly:
-  ```bash
-  uv run pytest
-  ```
-- **Pre-commit**: Git hooks configured via `.pre-commit-config.yaml`.
-  ```bash
-  uv run pre-commit run --all-files
-  ```
+- **Tests & Coverage**: `auto\test.cmd` (or `uv run pytest --cov-fail-under=85` for the 85% coverage gate; `uv run pytest` for local runs without the gate).
+- **Pre-commit** ([`.pre-commit-config.yaml`](.pre-commit-config.yaml)): `uv run pre-commit run --all-files`.
 
 ## Documentation
 
-Detailed architecture guides and technical documentation are maintained in the [`docs/`](docs/) directory:
+Architecture and feature guides in [`docs/`](docs/):
 
-- [API Schemas & Data Contracts](docs/api-schemas.md): Request and response payload schemas, field validation rules, token accounting, and Level-1 structural evaluation scoring.
-- [Dependency Injection & Application Factory](docs/dependency-injection-and-app-factory.md): Centralized Composition Root, dependency injection factories, and FastAPI route handler integration.
-- [Prompt Template Engine](docs/prompt-engine.md): Modular Jinja2 prompt composition, system/user template layouts, few-shot examples injection, and decoupled versioning.
-- [Guardrails & Semantic Validation](docs/guardrails.md): Multi-layer semantic validation across input (content moderation, prompt injection heuristics, PII scanning) and output (low-confidence normalization).
-- [Estimations Service Architecture & Provider Subpackage](docs/estimations-service.md): Deep dive into estimations orchestration, provider isolation, LiteLLM Router, native SDKs, retry backoff, and exception handling.
-- [Model Catalog & Request Validation](docs/model-catalog.md): Centralized model catalog, supported OpenAI/Anthropic models, reasoning metadata, and boundary validation.
-- [Reasoning Profiles & Dynamic Routing](docs/reasoning-profiles.md): LiteLLM router profiles, qualitative reasoning effort tiers, cost-optimized dynamic fallback, two-level runtime failover, and credential filtering.
-- [Structured Product UI & Exact-Match Cache](docs/streamlit-conversational-ui.md): Streamlit product form interface, instant static Markdown rendering, execution telemetry container, deterministic Redis exact-match caching, and graceful degradation.
-- [Semantic Response Caching](docs/semantic-response-caching.md): Tier 2 native RediSearch vector similarity caching, cosine distance thresholds, shadow mode calibration, and offline test isolation.
-- [Observability, Logging & Distributed Tracing](docs/observability.md): Unified structlog pipeline, standardized event taxonomy, OpenTelemetry context injection, Arize Phoenix container setup, and DuckDB storage mechanics.
-- [Testing Guidelines](docs/testing.md): Test suite organization, pytest fixtures, and coverage expectations.
+- [API Schemas & Data Contracts](docs/api-schemas.md): Request/response schemas, validators, and HTTP 400 guardrail contracts.
+- [Dependency Injection & App Factory](docs/dependency-injection-and-app-factory.md): Application factory, composition root, and test dependency overrides.
+- [Estimations Service & Providers](docs/estimations-service.md): Orchestration, LiteLLM/native dispatch, Instructor extraction, and multi-layer retries.
+- [Guardrails & Semantic Validation](docs/guardrails.md): Input moderation/injection/PII checks and output low-confidence normalization.
+- [Model Catalog](docs/model-catalog.md): Externalized model registry, logical profiles, and OpenAPI enrichment.
+- [Observability](docs/observability.md): Structlog event taxonomy, OpenTelemetry context injection, and Arize Phoenix tracing.
+- [Prompt Engine](docs/prompt-engine.md): Versioned Jinja2 templates and decoupled prompt/API versioning.
+- [Reasoning Profiles](docs/reasoning-profiles.md): Reasoning effort normalization, two-level failover, and credential pruning.
+- [Semantic Response Caching](docs/semantic-response-caching.md): Tier 1 exact SHA-256 cache, Tier 2 RediSearch vector cache, and shadow mode.
+- [Streamlit UI](docs/streamlit-conversational-ui.md): Structured product form, headless test isolation, and telemetry inspection.
+- [Testing Guidelines](docs/testing.md): Suite layout, shared fixtures, coverage gate, and Windows async execution policy.

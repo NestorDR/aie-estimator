@@ -2,7 +2,7 @@
 
 ## Overview
 
-[`src/aie_estimator/model_catalog.py`](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/model_catalog.py) manages model specifications, logical routing profiles, and request boundary validation based on configuration defined in [`src/aie_estimator/llm_profiles.yml`](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/llm_profiles.yml).
+[`src/aie_estimator/model_catalog.py`](../src/aie_estimator/model_catalog.py) manages model specifications, logical routing profiles, and request boundary validation based on configuration defined in [`src/aie_estimator/llm_profiles.yml`](../src/aie_estimator/llm_profiles.yml).
 
 | Model / Profile Identifier | Provider | Reasoning Capable | Logical Profile | Scope |
 | :--- | :--- | :---: | :---: | :--- |
@@ -44,7 +44,7 @@ print(spec.provider, spec.is_reasoning, spec.is_profile)
 
 ## Technical Considerations
 
-1. **Decoupled Metadata Layer**: Situated in [`model_catalog.py`](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/model_catalog.py), separating domain schemas ([`schemas/estimations.py`](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/schemas/estimations.py)) from provider infrastructure ([`services/providers/`](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/services/providers/)) to eliminate circular imports.
-2. **Leaf Constants**: Canonical defaults (`DEFAULT_FAST_PROFILE`, `DEFAULT_DEEP_PROFILE`, `LOGICAL_PROFILE_NAMES`) reside in [`src/aie_estimator/utils/model_constants.py`](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/utils/model_constants.py), a leaf module with zero internal imports.
+1. **Decoupled Metadata Layer**: Situated in [`model_catalog.py`](../src/aie_estimator/model_catalog.py), separating domain schemas ([`schemas/estimations.py`](../src/aie_estimator/schemas/estimations.py)) from provider infrastructure ([`services/providers/`](../src/aie_estimator/services/providers/)) to eliminate circular imports.
+2. **Leaf Constants**: Canonical defaults (`DEFAULT_FAST_PROFILE`, `DEFAULT_DEEP_PROFILE`, `LOGICAL_PROFILE_NAMES`) reside in [`src/aie_estimator/utils/model_constants.py`](../src/aie_estimator/utils/model_constants.py), a leaf module with zero internal imports.
 3. **Single Cache Architecture**: `get_model_catalog()` uses `@lru_cache(maxsize=4)`. `get_supported_models()` derives directly from the cached catalog to prevent cache drift.
-4. **OpenAPI Schema Enrichment**: `Server._setup_openapi()` in [`src/aie_estimator/server.py`](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/server.py) dynamically injects supported models into the OpenAPI schema for interactive dropdown selection in Swagger UI (`/docs`).
+4. **OpenAPI Schema Enrichment**: `Server._setup_openapi()` in [`src/aie_estimator/server.py`](../src/aie_estimator/server.py) dynamically injects supported models into the OpenAPI schema for interactive dropdown selection in Swagger UI (`/docs`).

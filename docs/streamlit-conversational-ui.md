@@ -2,7 +2,7 @@
 
 ## Overview
 
-[`streamlit_app.py`](file:///c:/Development/Repos/ai-engineering/aie-estimator/streamlit_app.py) provides a structured parameter product web interface for `aie-estimator`. It allows users to configure project dimensions (`description`, `project_type`, `detail_level`, `output_format`), validates character boundaries client-side, submits typed requests to `POST /api/v1/estimate`, and renders the structured [`EstimationResult`](file:///c:/Development/Repos/ai-engineering/aie-estimator/src/aie_estimator/schemas/estimations.py) (summary alert, metric cards for total cost, duration, confidence, and HTML phase table) alongside turn-level execution telemetry.
+[`streamlit_app.py`](../streamlit_app.py) provides a structured parameter product web interface for `aie-estimator`. It allows users to configure project dimensions (`description`, `project_type`, `detail_level`, `output_format`), validates character boundaries client-side, submits typed requests to `POST /api/v1/estimate`, and renders the structured [`EstimationResult`](../src/aie_estimator/schemas/estimations.py) (summary alert, metric cards for total cost, duration, confidence, and HTML phase table) alongside turn-level execution telemetry.
 
 ---
 
@@ -36,7 +36,7 @@ The interface is available at `http://localhost:8501`.
 
 ## Technical Considerations
 
-1. **Decoupled Asynchronous Client**: [`streamlit_app.py`](file:///c:/Development/Repos/ai-engineering/aie-estimator/streamlit_app.py) communicates with the backend exclusively via `httpx.AsyncClient` targeting `POST /api/v1/estimate`. Domain orchestration and LLM provider logic remain strictly in the backend service.
+1. **Decoupled Asynchronous Client**: [`streamlit_app.py`](../streamlit_app.py) communicates with the backend exclusively via `httpx.AsyncClient` targeting `POST /api/v1/estimate`. Domain orchestration and LLM provider logic remain strictly in the backend service.
 2. **Session State Persistence**: The active response payload is stored in `st.session_state["latest_estimation"]`, preserving rendered estimations and telemetry across sidebar interactions and script reruns.
 3. **Headless Test Isolation**: Page configuration and interactive UI rendering are wrapped in `if runtime.exists():`. This allows `streamlit_app.py` to be imported and tested headlessly via Streamlit's `AppTest.from_file()` without global singleton context leakage.
 4. **Deterministic Cache Verification**: Repeated submissions with identical parameters return cached estimations from Redis in ~1–3 ms, updating the UI badge to indicate a cache hit with zero incremental token expenditure.
