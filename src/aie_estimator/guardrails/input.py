@@ -87,13 +87,13 @@ _EMAIL_RE: Final[re.Pattern[str]] = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]
 # 10 to 30 alphanumeric Basic Bank Account Number (BBAN) characters bounded by word boundaries.
 _IBAN_RE: Final[re.Pattern[str]] = re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{10,30}\b")
 
-# Telephone Numbers
-# Checks international format (prefixed with '+' and 1-3 country code digits) or
-# national formats containing 9 to 12 digits, allowing common delimiter separators
-# (spaces, dots, hyphens).
-# Guard against false positives: Requires a minimum of 9 digits to avoid matching
-# calendar dates (YYYY-MM-DD), timestamps, IP addresses, or semantic versions (e.g., 1.16.1).
-_PHONE_RE: Final[re.Pattern[str]] = re.compile(r"(?:\+\d{1,3}[\s.-]?)?(?:\d[\s.-]?){9,12}\d")
+# Numeric Identifiers and Telephone Numbers
+# Checks international phone formats (prefixed with '+' and 1-3 country code digits) or
+# 10-to-13-digit numeric identifiers with optional spaces, dots, or hyphens (covering national
+# telephone numbers, 12-digit AWS account IDs, 13-digit epoch timestamps, and long numeric IDs).
+# Guard against false positives: Requires at least 10 digits to avoid matching
+# calendar dates (YYYY-MM-DD), shorter timestamps, IP addresses, or semantic versions (e.g., 1.16.1).
+_NUMERIC_IDENTIFIER_RE: Final[re.Pattern[str]] = re.compile(r"(?:\+\d{1,3}[\s.-]?)?(?:\d[\s.-]?){9,12}\d")
 
 # Credit Card Numbers
 # Checks major credit card formats:
@@ -108,6 +108,15 @@ _CREDIT_CARD_RE: Final[re.Pattern[str]] = re.compile(
     r"\b3[47]\d{2}[ -]?\d{6}[ -]?\d{5}\b"
     r"|"
     r"\b\d{4}[ -]\d{4}[ -]\d{4}[ -]\d{4}\b"
+)
+
+# Ordered from most specific to broadest (credit_card before numeric_identifier so 16-digit
+# cards are never partially matched as 13-digit numeric identifiers).
+_PII_RULES: Final[tuple[tuple[str, re.Pattern[str], str, str], ...]] = (
+    ("email", _EMAIL_RE, "[REDACTED_EMAIL]", "Email address"),
+    ("iban", _IBAN_RE, "[REDACTED_IBAN]", "IBAN"),
+    ("credit_card", _CREDIT_CARD_RE, "[REDACTED_CREDIT_CARD]", "Credit card number"),
+    ("numeric_identifier", _NUMERIC_IDENTIFIER_RE, "[REDACTED_NUMERIC_ID]", "Phone number or numeric identifier"),
 )
 
 
@@ -142,6 +151,28 @@ async def check_input(
         await _check_moderation(description, openai_client)
     _check_prompt_injection(description)
     _check_pii(description)
+
+
+async def check_attachment_input(
+    text: str,
+    *,
+    openai_client: AsyncOpenAI | None = None,
+) -> str:
+    """
+    Validate extracted attachment text for moderation and prompt injection, then redact matched PII.
+
+    :param text: Extracted attachment text to inspect.
+    :param openai_client: Optional AsyncOpenAI client. When provided, runs content moderation.
+
+    :return: Sanitized attachment text with matched PII replaced by typed placeholders.
+    :raises InputGuardrailViolation: If moderation flags content or prompt injection is detected.
+    """
+    if not text:
+        return text
+    if openai_client is not None:
+        await _check_moderation(text, openai_client)
+    _check_prompt_injection(text)
+    return _redact_pii(text)
 
 
 async def _check_moderation(description: str, openai_client: AsyncOpenAI) -> None:
@@ -216,32 +247,34 @@ def _check_prompt_injection(description: str) -> None:
 
 def _check_pii(description: str) -> None:
     """
-    Scan description for personally identifiable information (emails, IBANs, credit cards, phone numbers).
+    Scan description for personally identifiable information (emails, IBANs, credit cards, numeric IDs/phones).
 
     :param description: Project description text to scan.
     :raises InputGuardrailViolation: If PII is detected.
     """
-    if _EMAIL_RE.search(description):
-        log.info("pii_detected", pii_type="email")
-        raise InputGuardrailViolation(
-            "Email address detected in description — please remove personal data.",
-            reason="pii",
-        )
-    if _IBAN_RE.search(description):
-        log.info("pii_detected", pii_type="iban")
-        raise InputGuardrailViolation(
-            "IBAN detected in description — please remove personal data.",
-            reason="pii",
-        )
-    if _CREDIT_CARD_RE.search(description):
-        log.info("pii_detected", pii_type="credit_card")
-        raise InputGuardrailViolation(
-            "Credit card number detected in description — please remove personal data.",
-            reason="pii",
-        )
-    if _PHONE_RE.search(description):
-        log.info("pii_detected", pii_type="phone")
-        raise InputGuardrailViolation(
-            "Phone number detected in description — please remove personal data.",
-            reason="pii",
-        )
+    for pii_type, pattern, _, label in _PII_RULES:
+        if pattern.search(description):
+            log.info("pii_detected", pii_type=pii_type)
+            raise InputGuardrailViolation(
+                f"{label} detected in description — please remove personal data.",
+                reason="pii",
+            )
+
+
+def _redact_pii(text: str) -> str:
+    """
+    Replace matched PII patterns in attachment text with typed placeholders and log redaction counts.
+
+    :param text: Extracted attachment text to sanitize.
+
+    :return: Text with matched PII replaced by ``[REDACTED_*]`` placeholders.
+    """
+    redacted_counts: dict[str, int] = {}
+    sanitized = text
+    for pii_type, pattern, placeholder, _ in _PII_RULES:
+        sanitized, count = pattern.subn(placeholder, sanitized)
+        if count > 0:
+            redacted_counts[pii_type] = count
+    if redacted_counts:
+        log.info("attachment_pii_redacted", counts=redacted_counts)
+    return sanitized

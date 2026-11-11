@@ -22,8 +22,19 @@ from aie_estimator.settings import Environment, Settings, get_settings
     [
         ({"app_env": "invalid_environment_name"}, ValueError, r"is not a valid"),
         ({"server_port": "invalid_port"}, ValidationError, r"valid integer"),
+        ({"max_attachments_per_turn": 0}, ValidationError, r"greater than 0"),
+        ({"max_attachment_bytes": 0}, ValidationError, r"greater than 0"),
+        ({"max_attachment_chars": -1}, ValidationError, r"greater than 0"),
+        ({"max_total_attachment_chars": 0}, ValidationError, r"greater than 0"),
     ],
-    ids=["invalid_env_string", "invalid_port_type"],
+    ids=[
+        "invalid_env_string",
+        "invalid_port_type",
+        "max_attachments_per_turn_non_positive",
+        "max_attachment_bytes_non_positive",
+        "max_attachment_chars_negative",
+        "max_total_attachment_chars_non_positive",
+    ],
 )
 def test_settings_initialization_validation_errors(
     kwargs: dict[str, Any],
@@ -157,6 +168,11 @@ def test_configure_logging_captures_callsite_parameters(capsys: pytest.CaptureFi
         ("redis_port", 6379),
         ("active_prompt_version", "v1"),
         ("enable_otel_tracing", False),
+        ("max_attachments_per_turn", 5),
+        ("max_attachment_bytes", 5_242_880),
+        ("max_attachment_chars", 12_000),
+        ("max_total_attachment_chars", 30_000),
+        ("supported_attachment_extensions", (".pdf", ".docx", ".txt", ".md")),
     ],
     ids=[
         "enable_exact_cache",
@@ -169,6 +185,11 @@ def test_configure_logging_captures_callsite_parameters(capsys: pytest.CaptureFi
         "redis_port",
         "active_prompt_version",
         "enable_otel_tracing",
+        "max_attachments_per_turn",
+        "max_attachment_bytes",
+        "max_attachment_chars",
+        "max_total_attachment_chars",
+        "supported_attachment_extensions",
     ],
 )
 def test_settings_default_values(attr_name: str, expected_default: Any) -> None:
@@ -206,6 +227,12 @@ def test_settings_default_values(attr_name: str, expected_default: Any) -> None:
         # Multi-provider API keys
         ("SCALEWAY_API_KEY", "test-scaleway-key", "scaleway_api_key", "test-scaleway-key"),
         ("NEBIUS_API_KEY", "test-nebius-key", "nebius_api_key", "test-nebius-key"),
+        # Attachment ingestion
+        ("MAX_ATTACHMENTS_PER_TURN", "3", "max_attachments_per_turn", 3),
+        ("MAX_ATTACHMENT_BYTES", "1048576", "max_attachment_bytes", 1_048_576),
+        ("MAX_ATTACHMENT_CHARS", "8000", "max_attachment_chars", 8000),
+        ("MAX_TOTAL_ATTACHMENT_CHARS", "20000", "max_total_attachment_chars", 20_000),
+        ("SUPPORTED_ATTACHMENT_EXTENSIONS", '[".pdf",".md"]', "supported_attachment_extensions", (".pdf", ".md")),
     ],
     ids=[
         "enable_exact_cache_false",
@@ -222,6 +249,11 @@ def test_settings_default_values(attr_name: str, expected_default: Any) -> None:
         "enable_otel_tracing_false",
         "scaleway_api_key",
         "nebius_api_key",
+        "max_attachments_per_turn",
+        "max_attachment_bytes",
+        "max_attachment_chars",
+        "max_total_attachment_chars",
+        "supported_attachment_extensions",
     ],
 )
 def test_settings_environment_variable_overrides(

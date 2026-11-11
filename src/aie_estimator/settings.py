@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Final
 
 # --- Third Party Libraries ---
-from pydantic import SecretStr, ValidationError
+from pydantic import Field, SecretStr, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import structlog
 
@@ -65,13 +65,20 @@ class Settings(BaseSettings):
 
     # Exact cache settings
     enable_exact_cache: bool = True
-    exact_cache_ttl: int = 86400
+    exact_cache_ttl: int = 86_400
 
     # Semantic cache settings
     enable_semantic_cache: bool = True
     semantic_cache_threshold: float = 0.92
     semantic_cache_log_only: bool = False
-    semantic_cache_ttl: int = 86400
+    semantic_cache_ttl: int = 86_400
+
+    # Attachment ingestion settings
+    max_attachments_per_turn: int = Field(default=5, gt=0)
+    max_attachment_bytes: int = Field(default=5_242_880, gt=0)
+    max_attachment_chars: int = Field(default=12_000, gt=0)
+    max_total_attachment_chars: int = Field(default=30_000, gt=0)
+    supported_attachment_extensions: tuple[str, ...] = (".pdf", ".docx", ".txt", ".md")
 
     # Configure env file handling
     model_config = SettingsConfigDict(

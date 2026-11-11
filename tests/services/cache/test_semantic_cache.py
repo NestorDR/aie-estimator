@@ -1,4 +1,4 @@
-# tests/services/test_semantic_cache.py
+# tests/services/cache/test_semantic_cache.py
 
 # --- Python Standard Library ---
 from collections.abc import Callable
@@ -78,10 +78,10 @@ def test_bucket_for_construction(sample_request: EstimationRequest) -> None:
     """
     GIVEN an EstimationRequest and prompt version
     WHEN bucket_for is computed
-    THEN the formatted colon-separated bucket tag string is produced.
+    THEN the formatted underscore-separated bucket tag string is produced.
     """
     bucket = EstimationSemanticCache.bucket_for(sample_request, prompt_version="v2")
-    assert bucket == "v2:mobile_app:medium:phases_table"
+    assert bucket == "v2_mobile_app_medium_phases_table"
 
 
 @pytest.mark.anyio
@@ -364,7 +364,7 @@ async def test_semantic_cache_store_success(
     call_args = mock_redis.hset.call_args
     assert call_args.args[0].startswith("estimation:semantic:")
     mapping = call_args.kwargs["mapping"]
-    assert mapping["bucket"] == "v1:mobile_app:medium:phases_table"
+    assert mapping["bucket"] == "v1_mobile_app_medium_phases_table"
     assert "result_json" in mapping
     assert isinstance(mapping["embedding"], bytes)
     assert len(mapping["embedding"]) == EMBEDDING_DIMENSIONS * 4
