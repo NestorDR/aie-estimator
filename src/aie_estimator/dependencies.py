@@ -18,28 +18,27 @@ from aie_estimator.services.cache import (
     get_semantic_cache as _get_semantic_cache,
 )
 from aie_estimator.services.estimations_service import EstimationService
+from aie_estimator.sessions.store import SessionStore
 from aie_estimator.settings import Settings, get_settings as _get_settings
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
 
 
-@lru_cache(maxsize=1)
 def get_settings() -> Settings:
     """
-    Retrieve or initialize the cached application-wide Settings singleton.
+    Retrieve the cached application-wide Settings singleton for FastAPI dependency wiring.
 
-    :return: Authenticated Settings singleton instance.
+    :return: Application Settings singleton instance.
     """
     return _get_settings()
 
 
-def get_exact_cache(
-    settings: Settings = Depends(get_settings),
-) -> EstimationExactCache | None:
+def get_exact_cache(settings: Settings = Depends(get_settings)) -> EstimationExactCache | None:
     """
     Resolve the Tier 1 exact-match hash cache instance.
 
     :param settings: Injected application configuration settings.
+
     :return: Configured EstimationExactCache instance.
     """
     if not settings.enable_exact_cache:
@@ -47,13 +46,12 @@ def get_exact_cache(
     return _get_exact_cache()
 
 
-def get_semantic_cache(
-    settings: Settings = Depends(get_settings),
-) -> EstimationSemanticCache | None:
+def get_semantic_cache(settings: Settings = Depends(get_settings)) -> EstimationSemanticCache | None:
     """
     Resolve the Tier 2 vector similarity cache instance if enabled.
 
     :param settings: Injected application configuration settings.
+
     :return: Configured EstimationSemanticCache instance, or None if disabled or unconfigured.
     """
     if not settings.enable_semantic_cache:
@@ -66,9 +64,9 @@ def get_semantic_cache(
 
 
 def get_estimation_service(
-    exact_cache: EstimationExactCache | None = Depends(get_exact_cache),
-    semantic_cache: EstimationSemanticCache | None = Depends(get_semantic_cache),
-    moderation_client: AsyncOpenAI | None = Depends(get_moderation_client),
+        exact_cache: EstimationExactCache | None = Depends(get_exact_cache),
+        semantic_cache: EstimationSemanticCache | None = Depends(get_semantic_cache),
+        moderation_client: AsyncOpenAI | None = Depends(get_moderation_client),
 ) -> EstimationService:
     """
     Compose the primary EstimationService instance with its caching and moderation collaborators.
@@ -76,10 +74,25 @@ def get_estimation_service(
     :param exact_cache: Resolved Tier 1 exact-match hash cache.
     :param semantic_cache: Optional Tier 2 vector similarity cache.
     :param moderation_client: Optional AsyncOpenAI client for content moderation.
+
     :return: Fully wired EstimationService instance.
     """
     return EstimationService(
         exact_cache=exact_cache,
         semantic_cache=semantic_cache,
         moderation_client=moderation_client,
+    )
+
+
+@lru_cache(maxsize=1)
+def get_session_store() -> SessionStore:
+    """
+    Return the process-local ``SessionStore`` singleton configured from settings.
+
+    :return: Cached ``SessionStore`` instance.
+    """
+    settings = get_settings()
+    return SessionStore(
+        max_turns=settings.session_max_turns,
+        ttl_seconds=settings.session_ttl_seconds,
     )

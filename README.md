@@ -12,8 +12,9 @@ AIE Estimator processes software project descriptions and domain parameters (`pr
 
 ## Architecture
 
-- **Schemas** ([`src/aie_estimator/schemas/`](src/aie_estimator/schemas/)): Pydantic v2 contracts (`EstimationRequest`, `EstimationResponse`, `EstimationResult`).
-- **Routers** ([`src/aie_estimator/routers/`](src/aie_estimator/routers/)): HTTP routes (`POST /api/v1/estimate`, `GET /health`, `GET /`).
+- **Schemas** ([`src/aie_estimator/schemas/`](src/aie_estimator/schemas/)): Pydantic v2 contracts (`EstimationRequest`, `EstimationResponse`, `EstimationResult`, `CreateSessionResponse`, `SessionInfoResponse`).
+- **Sessions** ([`src/aie_estimator/sessions/`](src/aie_estimator/sessions/)): In-memory conversational session store, sliding-window `ConversationHistory`, and 6-field `ProjectMetadata`.
+- **Routers** ([`src/aie_estimator/routers/`](src/aie_estimator/routers/)): HTTP routes (`POST /api/v1/estimate`, `POST /api/v1/sessions`, `GET /api/v1/sessions/{session_id}`, `GET /health`, `GET /`).
 - **Guardrails** ([`src/aie_estimator/guardrails/`](src/aie_estimator/guardrails/)): Input validation (`omni-moderation-latest`, prompt injection, PII heuristics) and low-confidence output normalization.
 - **Services** ([`src/aie_estimator/services/`](src/aie_estimator/services/)): Estimation orchestration, two-tier Redis caching (Tier 1 exact SHA-256, Tier 2 RediSearch vector similarity), and multi-provider dispatch with intra-tier rotation and cross-tier failover.
 - **Prompts** ([`src/aie_estimator/prompts/`](src/aie_estimator/prompts/)): Versioned Jinja2 templates (`system.j2`, `user.j2`, `examples.j2`) and loader.
@@ -61,6 +62,7 @@ aie-estimator/
 │       │   └── estimation/             # Software Engineering Estimation
 │       │       └── v1/                 # Prompt template Version 1
 │       ├── schemas/                    # Pydantic request/response contracts
+│       ├── sessions/                   # Conversational session state, history window, and store
 │       ├── routers/                    # FastAPI HTTP route handlers
 │       ├── services/                   # Core business logic, caching, and provider dispatch
 │       │   ├── cache/                  # Two-tier Redis response caching (exact & semantic)
@@ -133,6 +135,8 @@ Interactive documentation is available at `http://localhost:8000/docs` (Swagger 
 | `GET` | `/` | Service status and version information |
 | `GET` | `/health` | Health check endpoint (`{"status": "healthy", "version": "0.1.0"}`) |
 | `POST` | `/api/v1/estimate` | Generates a structured project effort estimation |
+| `POST` | `/api/v1/sessions` | Creates a new conversational estimation session (`session_id`) |
+| `GET` | `/api/v1/sessions/{session_id}` | Inspects session turn counts, `ProjectMetadata`, and TTL timestamps |
 
 See [API Schemas & Data Contracts](docs/api-schemas.md) for payload contracts and error mappings.
 
@@ -151,6 +155,7 @@ See [API Schemas & Data Contracts](docs/api-schemas.md) for payload contracts an
 Architecture and feature guides in [`docs/`](docs/):
 
 - [API Schemas & Data Contracts](docs/api-schemas.md): Request/response schemas, validators, and HTTP 400 guardrail contracts.
+- [Conversational Sessions](docs/conversational-sessions.md): In-memory session lifecycle, bounded sliding-window history, and `ProjectMetadata` merging.
 - [Dependency Injection & App Factory](docs/dependency-injection-and-app-factory.md): Application factory, composition root, and test dependency overrides.
 - [Estimations Service & Providers](docs/estimations-service.md): Orchestration, LiteLLM/native dispatch, Instructor extraction, and multi-layer retries.
 - [Guardrails & Semantic Validation](docs/guardrails.md): Input moderation/injection/PII checks and output low-confidence normalization.

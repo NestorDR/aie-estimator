@@ -80,6 +80,10 @@ class Settings(BaseSettings):
     max_total_attachment_chars: int = Field(default=30_000, gt=0)
     supported_attachment_extensions: tuple[str, ...] = (".pdf", ".docx", ".txt", ".md")
 
+    # Conversational session settings
+    session_max_turns: int = Field(default=6, gt=0)
+    session_ttl_seconds: int = Field(default=86_400, gt=0)
+
     # Configure env file handling
     model_config = SettingsConfigDict(
         env_file=f".env.{app_env.value}",

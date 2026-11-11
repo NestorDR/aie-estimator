@@ -13,7 +13,7 @@ from openai import AsyncOpenAI
 import pytest
 
 # --- App modules ---
-from aie_estimator.dependencies import get_settings as get_dep_settings
+from aie_estimator.dependencies import get_session_store
 from aie_estimator.guardrails.input import get_moderation_client
 from aie_estimator.model_catalog import get_model_catalog
 from aie_estimator.server import create_app
@@ -27,7 +27,6 @@ from aie_estimator.utils.model_constants import DEFAULT_GPT_LLM
 def _clear_all_caches() -> None:
     """Clear all application @lru_cache singletons between tests."""
     get_settings.cache_clear()
-    get_dep_settings.cache_clear()
     get_openai_client.cache_clear()
     get_anthropic_client.cache_clear()
     get_litellm_router.cache_clear()
@@ -35,6 +34,7 @@ def _clear_all_caches() -> None:
     get_exact_cache.cache_clear()
     get_semantic_cache.cache_clear()
     get_moderation_client.cache_clear()
+    get_session_store.cache_clear()
 
 
 @pytest.fixture(autouse=True)

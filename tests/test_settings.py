@@ -26,6 +26,8 @@ from aie_estimator.settings import Environment, Settings, get_settings
         ({"max_attachment_bytes": 0}, ValidationError, r"greater than 0"),
         ({"max_attachment_chars": -1}, ValidationError, r"greater than 0"),
         ({"max_total_attachment_chars": 0}, ValidationError, r"greater than 0"),
+        ({"session_max_turns": 0}, ValidationError, r"greater than 0"),
+        ({"session_ttl_seconds": 0}, ValidationError, r"greater than 0"),
     ],
     ids=[
         "invalid_env_string",
@@ -34,6 +36,8 @@ from aie_estimator.settings import Environment, Settings, get_settings
         "max_attachment_bytes_non_positive",
         "max_attachment_chars_negative",
         "max_total_attachment_chars_non_positive",
+        "session_max_turns_non_positive",
+        "session_ttl_seconds_non_positive",
     ],
 )
 def test_settings_initialization_validation_errors(
@@ -378,3 +382,22 @@ def test_monkeypatch_environment_mutation_clears_get_settings_cache(
     reset_settings = get_settings()
     assert reset_settings.active_prompt_version == "v1"
     assert reset_settings is not updated_settings
+
+
+def test_settings_session_defaults_and_env_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    GIVEN default Settings and SESSION_MAX_TURNS / SESSION_TTL_SECONDS env overrides
+    WHEN Settings is instantiated
+    THEN defaults are 6 turns and 86400 seconds and env overrides take effect.
+
+    :param monkeypatch: Pytest monkeypatch fixture.
+    """
+    default_settings = Settings(app_env=Environment.TEST)
+    assert default_settings.session_max_turns == 6
+    assert default_settings.session_ttl_seconds == 86_400
+
+    monkeypatch.setenv("SESSION_MAX_TURNS", "10")
+    monkeypatch.setenv("SESSION_TTL_SECONDS", "3600")
+    overridden = Settings(app_env=Environment.TEST)
+    assert overridden.session_max_turns == 10
+    assert overridden.session_ttl_seconds == 3600

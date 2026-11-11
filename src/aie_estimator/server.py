@@ -17,9 +17,10 @@ import structlog
 from aie_estimator.guardrails.input import InputGuardrailViolation
 from aie_estimator.logging import configure_logging
 from aie_estimator.model_catalog import get_supported_models
-from aie_estimator.routers import estimations_router, health_router
+from aie_estimator.routers import estimations_router, health_router, sessions_router
 from aie_estimator.services.cache import get_exact_cache, get_semantic_cache
 from aie_estimator.services.exceptions import LLMProviderError
+from aie_estimator.sessions.store import SessionNotFoundError
 from aie_estimator.settings import Settings, get_settings
 from aie_estimator.telemetry import instrument_fastapi_app, setup_telemetry
 
@@ -152,6 +153,7 @@ class Server:
         """
         app.include_router(health_router.router)
         app.include_router(estimations_router.router)
+        app.include_router(sessions_router.router)
 
         # Root endpoint
         @app.get("/", tags=["Root"])
@@ -191,6 +193,22 @@ class Server:
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content={"detail": {"reason": e.reason, "message": e.message}},
+            )
+
+        @app.exception_handler(SessionNotFoundError)
+        async def session_not_found_exception_handler(request: Request, e: SessionNotFoundError) -> JSONResponse:
+            """
+            Handle missing or expired conversational session lookups with HTTP 404 responses.
+
+            :param request: Incoming HTTP request targeting an unknown or expired session.
+            :param e: SessionNotFoundError instance.
+
+            :return: JSONResponse with HTTP 404 status code.
+            """
+            self.log.info("session_not_found", session_id=e.session_id)
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content={"detail": "Session not found"},
             )
 
         @app.exception_handler(RequestValidationError)

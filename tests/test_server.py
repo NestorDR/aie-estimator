@@ -141,7 +141,10 @@ def test_create_app_factory_returns_configured_app() -> None:
     new_app = create_app()
     assert isinstance(new_app, FastAPI)
     assert new_app.title == "API - Estimator"
-    assert "/api/v1/estimate" in new_app.openapi()["paths"]
+    paths = new_app.openapi()["paths"]
+    assert "/api/v1/estimate" in paths
+    assert "/api/v1/sessions" in paths
+    assert "/api/v1/sessions/{session_id}" in paths
 
 
 def test_create_app_factory_with_custom_settings() -> None:
@@ -165,3 +168,16 @@ def test_server_init_with_custom_settings() -> None:
     custom_server = Server(settings=custom_settings)
     assert custom_server.settings is custom_settings
     assert custom_server.settings.server_port == 8888
+
+
+def test_server_session_not_found_exception_handler(client: TestClient) -> None:
+    """
+    GIVEN a request targeting a missing conversational session
+    WHEN SessionNotFoundError propagates out of the router
+    THEN Server returns HTTP 404 with {"detail": "Session not found"}.
+
+    :param client: Shared TestClient fixture.
+    """
+    response = client.get("/api/v1/sessions/missing-id")
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Session not found"}
