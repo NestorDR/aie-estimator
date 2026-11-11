@@ -56,6 +56,7 @@ class Settings(BaseSettings):
     nebius_api_key: SecretStr | None = None
     llm_model: str = DEFAULT_FAST_PROFILE
     active_prompt_version: str = "v1"
+    conversational_prompt_version: str = "v2"
     litellm_local_model_cost_map: bool = True
     llm_profiles_path: Path = Path(__file__).resolve().parent / "llm_profiles.yml"
 

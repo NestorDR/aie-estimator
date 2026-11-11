@@ -241,3 +241,37 @@ async def test_call_router_error_unwrapping(
             system_prompt=None,
             opts=opts,
         )
+
+
+@pytest.mark.anyio
+async def test_call_router_multi_turn_prepends_system_prompt(
+    mock_router_response: Callable[..., MagicMock],
+) -> None:
+    """
+    GIVEN a multi-turn conversation sequence and a separate system_prompt
+    WHEN call_litellm_router is invoked with user_prompt=None and messages
+    THEN router.acompletion receives the system message followed by all conversation turns.
+
+    :param mock_router_response: Router response builder fixture.
+    """
+    mock_router = mock_router_response(hidden_params={})
+    turns = [
+        {"role": "user", "content": "Initial project scope"},
+        {"role": "assistant", "content": '{"total_cost_eur": 20000}'},
+        {"role": "user", "content": "Add OAuth2 SSO"},
+    ]
+
+    opts = GenerationOptions(model=DEFAULT_FAST_PROFILE, max_tokens=2000)
+    result = await call_litellm_router(
+        user_prompt=None,
+        system_prompt="Conversational estimator system prompt",
+        opts=opts,
+        messages=turns,
+    )
+
+    assert isinstance(result["result"], EstimationResult)
+    sent_messages = mock_router.acompletion.call_args.kwargs["messages"]
+    assert sent_messages[0]["role"] == "system"
+    assert sent_messages[0]["content"].startswith("Conversational estimator system prompt")
+    assert sent_messages[1:] == turns
+

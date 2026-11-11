@@ -14,7 +14,11 @@ import structlog
 from aie_estimator.model_catalog import get_model_catalog
 from aie_estimator.schemas.estimations import EstimationResult
 from aie_estimator.services.exceptions import LLMProviderError, unwrap_exception
-from aie_estimator.services.providers.formatting import format_provider_response
+from aie_estimator.services.providers.formatting import (
+    build_chat_messages,
+    format_provider_response,
+    normalize_turn_messages,
+)
 from aie_estimator.services.providers.generation_options import GenerationOptions
 from aie_estimator.settings import get_settings
 
@@ -54,20 +58,25 @@ def get_anthropic_client() -> AsyncAnthropic:
 
 
 async def call_openai(
-    user_prompt: str,
+    user_prompt: str | None,
     system_prompt: str | None,
     opts: GenerationOptions,
+    *,
+    messages: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     """
     Send an estimation request to the OpenAI API with structured parameter recovery.
 
-    :param user_prompt: Pre-rendered user prompt string.
+    :param user_prompt: Pre-rendered user prompt string for single-turn calls, or ``None`` when ``messages`` is passed.
     :param system_prompt: Optional system instructions and reference context.
     :param opts: Generation options specifying model, max_tokens, temperature, reasoning_effort, and max_retries.
+    :param messages: Optional multi-turn list of non-system ``user``/``assistant`` message dictionaries.
 
     :return: Standardized response dictionary containing result, model, provider, finish_reason, and usage.
     :raises LLMProviderError: If retries are exhausted or an unrecoverable API error occurs.
+    :raises ValueError: If ``user_prompt`` and ``messages`` violate turn normalization rules.
     """
+    chat_messages = build_chat_messages(user_prompt, system_prompt, messages)
     raw_client = get_openai_client()
     model = opts.effective_model
     spec = get_model_catalog().get(model)
@@ -75,15 +84,10 @@ async def call_openai(
 
     client = instructor.from_openai(raw_client, mode=instructor.Mode.JSON)
 
-    messages: list[dict[str, Any]] = []
-    if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
-    messages.append({"role": "user", "content": user_prompt})
-
     token_key = "max_completion_tokens" if is_reasoning_model else "max_tokens"
     request_params: dict[str, Any] = {
         "model": model,
-        "messages": messages,
+        "messages": chat_messages,
         token_key: opts.max_tokens,
     }
 
@@ -156,26 +160,29 @@ async def call_openai(
 
 
 async def call_anthropic(
-    user_prompt: str,
+    user_prompt: str | None,
     system_prompt: str | None,
     opts: GenerationOptions,
+    *,
+    messages: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     """
     Send an estimation request to the Anthropic Messages API with structured logging and asynchronous capability.
 
-    :param user_prompt: Pre-rendered user prompt string.
-    :param system_prompt: Optional system instructions and reference context.
+    :param user_prompt: Pre-rendered user prompt string for single-turn calls, or ``None`` when ``messages`` is passed.
+    :param system_prompt: Optional system instructions and reference context passed as Anthropic's top-level ``system``.
     :param opts: Generation options specifying model, max_tokens, temperature, and reasoning_effort.
+    :param messages: Optional multi-turn list of non-system ``user``/``assistant`` message dictionaries.
 
     :return: Standardized response dictionary containing result, model, provider, finish_reason, and usage.
     :raises LLMProviderError: If the API call fails or encounters an unhandled provider error.
+    :raises ValueError: If ``user_prompt`` and ``messages`` violate turn normalization rules.
     """
+    formatted_messages = normalize_turn_messages(user_prompt, messages)
     raw_client = get_anthropic_client()
     model = opts.effective_model
 
     client = instructor.from_anthropic(raw_client)
-
-    formatted_messages = [{"role": "user", "content": user_prompt}]
 
     kwargs: dict[str, Any] = {
         "model": model,

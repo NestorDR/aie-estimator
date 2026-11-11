@@ -11,11 +11,23 @@ import structlog
 # --- App modules ---
 from aie_estimator.guardrails.input import check_input
 from aie_estimator.guardrails.output import enforce_scope_response
-from aie_estimator.prompts.loader import render_estimation_prompt, resolve_prompt_version
-from aie_estimator.schemas.estimations import EstimationRequest, EstimationResult
+from aie_estimator.prompts.loader import (
+    render_conversational_prompt,
+    render_estimation_prompt,
+    resolve_prompt_version,
+)
+from aie_estimator.schemas.estimations import (
+    DetailLevel,
+    EstimationRequest,
+    EstimationResult,
+    OutputFormat,
+    ProjectType,
+)
 from aie_estimator.services.cache import EstimationExactCache, EstimationSemanticCache
 from aie_estimator.services.exceptions import LLMProviderError
 from aie_estimator.services.providers import GenerationOptions, call_llm
+from aie_estimator.sessions.models import Session
+from aie_estimator.settings import get_settings
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
 
@@ -128,7 +140,125 @@ class EstimationService:
         # Lazy prompt template rendering (executed only on cache miss before LLM call).
         system_prompt, user_prompt = render_estimation_prompt(request, version=version)
 
-        # LLM provider dispatch with structured output extraction.
+        result, structured_result = await self._dispatch_and_normalize(
+            system_prompt=system_prompt,
+            opts=opts,
+            version=version,
+            t0=t0,
+            user_prompt=user_prompt,
+        )
+
+        # Dual-write: cache validated payload in both Tier 1 exact-match and Tier 2 semantic caches.
+        cache_payload = {
+            **result,
+            "result": structured_result.model_dump(mode="json"),
+        }
+        if self.exact_cache is not None and exact_cache_key is not None:
+            await self.exact_cache.set(exact_cache_key, cache_payload)
+
+        if self.semantic_cache is not None:
+            await self.semantic_cache.store(request, structured_result, version)
+
+        # Return estimation response payload.
+        return result
+
+    async def generate_session_estimation(
+        self,
+        *,
+        session: Session,
+        transcript: str,
+        project_type: ProjectType,
+        detail_level: DetailLevel,
+        output_format: OutputFormat,
+        opts: GenerationOptions | None = None,
+        prompt_version: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Execute a multi-turn conversational estimation bypassing Tier 1 and Tier 2 caches.
+
+        Runs input guardrails on ``transcript``, renders conversational templates with
+        ``session.metadata``, dispatches prior ``session.history`` turns plus the new
+        user message, enforces output scope filtering, and appends the completed turn
+        to ``session.history``.
+
+        :param session: Active conversational ``Session`` holding history and distilled metadata.
+        :param transcript: Current turn transcript (optionally enriched with attachment text).
+        :param project_type: Target project domain category.
+        :param detail_level: Desired breakdown depth.
+        :param output_format: Desired presentation layout.
+        :param opts: Optional generation options controlling model, engine, and token limits.
+        :param prompt_version: Optional prompt version override; defaults to ``conversational_prompt_version``.
+
+        :return: Response dictionary matching :meth:`generate_estimation` with ``cache_hit=False``.
+        :raises InputGuardrailViolation: If input guardrails reject ``transcript``.
+        :raises LLMProviderError: If any LLM provider invocation fails.
+        :raises ValueError: If ``transcript`` is blank or ``prompt_version`` is invalid.
+        """
+        if not transcript or not transcript.strip():
+            raise ValueError("transcript must be provided.")
+
+        await check_input(transcript, openai_client=self.moderation_client)
+
+        opts = opts or GenerationOptions()
+        version = resolve_prompt_version(prompt_version or get_settings().conversational_prompt_version)
+        t0 = time.perf_counter()
+
+        system_prompt, user_prompt = render_conversational_prompt(
+            description=transcript,
+            project_type=project_type,
+            detail_level=detail_level,
+            output_format=output_format,
+            metadata=session.metadata,
+            version=version,
+        )
+
+        turns = [*session.history.to_messages(), {"role": "user", "content": user_prompt}]
+        log.info(
+            "estimation_session_request",
+            session_id=session.session_id,
+            history_messages=len(session.history.messages),
+            metadata_is_empty=session.metadata.is_empty(),
+            transcript_chars=len(transcript),
+        )
+
+        result, structured_result = await self._dispatch_and_normalize(
+            system_prompt=system_prompt,
+            opts=opts,
+            version=version,
+            t0=t0,
+            user_prompt=None,
+            messages=turns,
+        )
+
+        session.history.append(user=transcript, assistant=structured_result.model_dump_json())
+        return result
+
+    async def _dispatch_and_normalize(
+        self,
+        *,
+        system_prompt: str,
+        opts: GenerationOptions,
+        version: str,
+        t0: float,
+        user_prompt: str | None = None,
+        messages: list[dict[str, str]] | None = None,
+    ) -> tuple[dict[str, Any], EstimationResult]:
+        """
+        Dispatch single-turn or multi-turn prompt payload to ``call_llm`` and normalize response telemetry.
+
+        :param system_prompt: Rendered system instructions string.
+        :param opts: Generation options for provider execution.
+        :param version: Resolved prompt version identifier.
+        :param t0: Request start timestamp from ``time.perf_counter()``.
+        :param user_prompt: Single-turn user prompt string, or ``None`` when ``messages`` is provided.
+        :param messages: Multi-turn sequence of non-system turn dictionaries.
+
+        :return: Tuple of normalized response dictionary and scope-filtered ``EstimationResult``.
+        :raises LLMProviderError: If provider execution fails or returns an invalid result type.
+        """
+        model = opts.effective_model
+        provider = opts.provider
+
         log.info(
             "estimation_generation_started",
             engine=opts.engine,
@@ -143,6 +273,7 @@ class EstimationService:
                 user_prompt=user_prompt,
                 system_prompt=system_prompt,
                 opts=opts,
+                messages=messages,
             )
 
         except LLMProviderError:
@@ -158,7 +289,6 @@ class EstimationService:
             )
             raise LLMProviderError(f"LLM call failed: {e}") from e
 
-        # Response parsing and validation.
         raw_result = result.get("result")
         if isinstance(raw_result, dict):
             structured_result = EstimationResult.model_validate(raw_result)
@@ -172,7 +302,6 @@ class EstimationService:
         result["result"] = structured_result
         result["prompt_version"] = version
 
-        # Response telemetry, usage normalization, and latency calculation.
         result.setdefault("cost_usd", None)
         result["usage"].setdefault("preprocessing_input_tokens", 0)
         result["usage"].setdefault("preprocessing_output_tokens", 0)
@@ -193,16 +322,4 @@ class EstimationService:
             phases=len(structured_result.phases),
         )
 
-        # Dual-write: cache validated payload in both Tier 1 exact-match and Tier 2 semantic caches.
-        cache_payload = {
-            **result,
-            "result": structured_result.model_dump(mode="json"),
-        }
-        if self.exact_cache is not None and exact_cache_key is not None:
-            await self.exact_cache.set(exact_cache_key, cache_payload)
-
-        if self.semantic_cache is not None:
-            await self.semantic_cache.store(request, structured_result, version)
-
-        # Return estimation response payload.
-        return result
+        return result, structured_result

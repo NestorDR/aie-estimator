@@ -171,6 +171,7 @@ def test_configure_logging_captures_callsite_parameters(capsys: pytest.CaptureFi
         ("redis_host", "localhost"),
         ("redis_port", 6379),
         ("active_prompt_version", "v1"),
+        ("conversational_prompt_version", "v2"),
         ("enable_otel_tracing", False),
         ("max_attachments_per_turn", 5),
         ("max_attachment_bytes", 5_242_880),
@@ -188,6 +189,7 @@ def test_configure_logging_captures_callsite_parameters(capsys: pytest.CaptureFi
         "redis_host",
         "redis_port",
         "active_prompt_version",
+        "conversational_prompt_version",
         "enable_otel_tracing",
         "max_attachments_per_turn",
         "max_attachment_bytes",
@@ -226,6 +228,7 @@ def test_settings_default_values(attr_name: str, expected_default: Any) -> None:
         ("REDIS_PORT", "6380", "redis_port", 6380),
         # General & Telemetry
         ("ACTIVE_PROMPT_VERSION", "v2", "active_prompt_version", "v2"),
+        ("CONVERSATIONAL_PROMPT_VERSION", "v3", "conversational_prompt_version", "v3"),
         ("ENABLE_OTEL_TRACING", "true", "enable_otel_tracing", True),
         ("ENABLE_OTEL_TRACING", "false", "enable_otel_tracing", False),
         # Multi-provider API keys
@@ -249,6 +252,7 @@ def test_settings_default_values(attr_name: str, expected_default: Any) -> None:
         "redis_host",
         "redis_port",
         "active_prompt_version",
+        "conversational_prompt_version",
         "enable_otel_tracing_true",
         "enable_otel_tracing_false",
         "scaleway_api_key",

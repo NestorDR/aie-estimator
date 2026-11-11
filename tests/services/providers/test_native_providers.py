@@ -460,3 +460,106 @@ async def test_call_anthropic_error_unwrapping(
             system_prompt=None,
             opts=opts,
         )
+
+
+@pytest.mark.anyio
+async def test_call_openai_multi_turn_prepends_system_prompt(
+    mock_async_openai_client: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    GIVEN multi-turn conversation messages and a system_prompt
+    WHEN call_openai executes with user_prompt=None and messages
+    THEN the OpenAI request prepends the system message before the turn messages.
+
+    :param mock_async_openai_client: Reusable typed AsyncOpenAI mock fixture.
+    :param monkeypatch: Pytest monkeypatch fixture.
+    """
+    mock_create = AsyncMock()
+    mock_resp = MagicMock()
+    mock_choice = MagicMock()
+    mock_choice.finish_reason = "stop"
+    mock_choice.message.content = json.dumps(VALID_RESULT_DICT)
+    mock_choice.message.tool_calls = None
+    mock_resp.choices = [mock_choice]
+    mock_resp.model = DEFAULT_GPT_LLM
+    mock_resp.usage.prompt_tokens = 120
+    mock_resp.usage.completion_tokens = 80
+    mock_create.return_value = mock_resp
+    mock_async_openai_client.chat.completions.create = mock_create
+
+    monkeypatch.setattr(
+        "aie_estimator.services.providers.native_providers.get_openai_client",
+        lambda: mock_async_openai_client,
+    )
+
+    turns = [
+        {"role": "user", "content": "Initial SaaS scope"},
+        {"role": "assistant", "content": '{"total_cost_eur": 20000}'},
+        {"role": "user", "content": "Include mobile companion"},
+    ]
+    opts = GenerationOptions(model=DEFAULT_GPT_LLM, max_tokens=2000)
+    result = await call_openai(
+        user_prompt=None,
+        system_prompt="You are a conversational estimator.",
+        opts=opts,
+        messages=turns,
+    )
+
+    assert isinstance(result["result"], EstimationResult)
+    sent_messages = mock_create.call_args.kwargs["messages"]
+    assert sent_messages[0]["role"] == "system"
+    assert sent_messages[0]["content"].startswith("You are a conversational estimator.")
+    assert sent_messages[1:] == turns
+
+
+@pytest.mark.anyio
+async def test_call_anthropic_multi_turn_keeps_system_top_level(
+    mock_async_anthropic_client: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    GIVEN multi-turn conversation messages and a system_prompt
+    WHEN call_anthropic executes with user_prompt=None and messages
+    THEN system is passed top-level and messages contains only user/assistant turns.
+
+    :param mock_async_anthropic_client: Reusable typed AsyncAnthropic mock fixture.
+    :param monkeypatch: Pytest monkeypatch fixture.
+    """
+    mock_create = AsyncMock()
+    mock_resp = MagicMock()
+    mock_resp.model = DEFAULT_CLAUDE_LLM
+    mock_resp.stop_reason = "end_turn"
+    mock_resp.usage.input_tokens = 180
+    mock_resp.usage.output_tokens = 90
+    mock_tool = MagicMock()
+    mock_tool.type = "tool_use"
+    mock_tool.name = "EstimationResult"
+    mock_tool.input = VALID_RESULT_DICT
+    mock_resp.content = [mock_tool]
+    mock_create.return_value = mock_resp
+    mock_async_anthropic_client.messages.create = mock_create
+
+    monkeypatch.setattr(
+        "aie_estimator.services.providers.native_providers.get_anthropic_client",
+        lambda: mock_async_anthropic_client,
+    )
+
+    turns = [
+        {"role": "user", "content": "Initial SaaS scope"},
+        {"role": "assistant", "content": '{"total_cost_eur": 20000}'},
+        {"role": "user", "content": "Include mobile companion"},
+    ]
+    opts = GenerationOptions(model=DEFAULT_CLAUDE_LLM, max_tokens=2000)
+    result = await call_anthropic(
+        user_prompt=None,
+        system_prompt="Anthropic conversational system prompt",
+        opts=opts,
+        messages=turns,
+    )
+
+    assert isinstance(result["result"], EstimationResult)
+    call_kwargs = mock_create.call_args.kwargs
+    assert call_kwargs["system"] == "Anthropic conversational system prompt"
+    assert call_kwargs["messages"] == turns
+

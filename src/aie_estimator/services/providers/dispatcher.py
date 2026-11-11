@@ -16,16 +16,19 @@ log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
 
 
 async def call_llm(
-    user_prompt: str,
-    system_prompt: str,
+    user_prompt: str | None,
+    system_prompt: str | None,
     opts: GenerationOptions,
+    *,
+    messages: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     """
     Dispatch an LLM completion request to the configured execution engine and provider.
 
-    :param user_prompt: Pre-rendered user prompt string.
-    :param system_prompt: Pre-rendered system prompt string.
+    :param user_prompt: Pre-rendered user prompt string for single-turn calls, or ``None`` when ``messages`` is passed.
+    :param system_prompt: Optional pre-rendered system prompt string.
     :param opts: Generation options controlling model, engine, max_tokens, temperature, and reasoning.
+    :param messages: Optional multi-turn list of non-system ``user``/``assistant`` message dictionaries.
 
     :return: Standardized provider response dictionary.
     :raises LLMProviderError: If the provider is unsupported or the upstream call fails.
@@ -34,11 +37,26 @@ async def call_llm(
     provider = opts.provider
 
     if opts.engine == "litellm":
-        return await call_litellm_router(user_prompt=user_prompt, system_prompt=system_prompt, opts=opts)
+        return await call_litellm_router(
+            user_prompt=user_prompt,
+            system_prompt=system_prompt,
+            opts=opts,
+            messages=messages,
+        )
     if provider == "openai":
-        return await call_openai(user_prompt=user_prompt, system_prompt=system_prompt, opts=opts)
+        return await call_openai(
+            user_prompt=user_prompt,
+            system_prompt=system_prompt,
+            opts=opts,
+            messages=messages,
+        )
     if provider == "anthropic":
-        return await call_anthropic(user_prompt=user_prompt, system_prompt=system_prompt, opts=opts)
+        return await call_anthropic(
+            user_prompt=user_prompt,
+            system_prompt=system_prompt,
+            opts=opts,
+            messages=messages,
+        )
 
     log.error("provider_dispatch_unsupported_provider", provider=provider, model=model)
     raise LLMProviderError(f"Unsupported provider '{provider}' for legacy native engine.")

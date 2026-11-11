@@ -16,7 +16,7 @@ import yaml
 from aie_estimator.model_catalog import get_model_catalog
 from aie_estimator.schemas.estimations import EstimationResult
 from aie_estimator.services.exceptions import LLMProviderError, unwrap_exception
-from aie_estimator.services.providers.formatting import format_provider_response
+from aie_estimator.services.providers.formatting import build_chat_messages, format_provider_response
 from aie_estimator.services.providers.generation_options import GenerationOptions
 from aie_estimator.settings import get_settings
 from aie_estimator.utils.model_constants import DEFAULT_FAST_PROFILE
@@ -101,33 +101,32 @@ def get_litellm_router() -> Router:
 
 
 async def call_litellm_router(
-    user_prompt: str,
+    user_prompt: str | None,
     system_prompt: str | None,
     opts: GenerationOptions,
     *,
+    messages: list[dict[str, str]] | None = None,
     temperature: float | None = None,
 ) -> dict[str, Any]:
     """
     Send an asynchronous estimation request through the LiteLLM Router with cost extraction and error handling.
 
-    :param user_prompt: Pre-rendered user prompt string.
+    :param user_prompt: Pre-rendered user prompt string for single-turn calls, or ``None`` when ``messages`` is passed.
     :param system_prompt: Optional system instructions and reference context.
     :param opts: Generation options controlling model, max_tokens, and reasoning_effort.
+    :param messages: Optional multi-turn list of non-system ``user``/``assistant`` message dictionaries.
     :param temperature: Optional sampling temperature override.
 
     :return: Standardized response dictionary containing result, model, provider, finish_reason, usage, and cost_usd.
     :raises LLMProviderError: If the LiteLLM router call fails.
+    :raises ValueError: If ``user_prompt`` and ``messages`` violate turn normalization rules.
     """
+    formatted_messages = build_chat_messages(user_prompt, system_prompt, messages)
     router = get_litellm_router()
     catalog = get_model_catalog()
     model = opts.effective_model
     model_spec = catalog.get(model)
     target_profile = model if (model_spec and model_spec.is_profile) else DEFAULT_FAST_PROFILE
-
-    formatted_messages: list[dict[str, Any]] = []
-    if system_prompt:
-        formatted_messages.append({"role": "system", "content": system_prompt})
-    formatted_messages.append({"role": "user", "content": user_prompt})
 
     kwargs: dict[str, Any] = {
         "model": target_profile,

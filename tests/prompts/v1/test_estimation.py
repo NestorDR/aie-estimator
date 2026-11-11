@@ -262,3 +262,31 @@ def test_resolve_prompt_version_fallback_to_settings(monkeypatch: pytest.MonkeyP
     monkeypatch.setenv("ACTIVE_PROMPT_VERSION", "invalid_v")
     with pytest.raises(ValueError, match=r"Invalid prompt version 'invalid_v'"):
         resolve_prompt_version()
+
+
+def test_list_prompt_versions_non_estimation_use_case_omits_examples(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    GIVEN a non-estimation use-case directory containing only system.j2 and user.j2
+    WHEN list_prompt_versions is called for that use case
+    THEN the version is recognized without requiring examples.j2.
+
+    :param tmp_path: Temporary directory fixture.
+    :param monkeypatch: Pytest monkeypatch fixture.
+    """
+    prompts_root = tmp_path / "prompts"
+    extractor_v1 = prompts_root / "metadata_extraction" / "v1"
+    extractor_v1.mkdir(parents=True)
+    (extractor_v1 / "system.j2").write_text("system", encoding="utf-8")
+    (extractor_v1 / "user.j2").write_text("user", encoding="utf-8")
+
+    incomplete_v2 = prompts_root / "metadata_extraction" / "v2"
+    incomplete_v2.mkdir(parents=True)
+    (incomplete_v2 / "system.j2").write_text("system", encoding="utf-8")
+
+    monkeypatch.setattr("aie_estimator.prompts.loader._BASE_DIR", prompts_root)
+
+    assert list_prompt_versions("metadata_extraction") == ["v1"]
+

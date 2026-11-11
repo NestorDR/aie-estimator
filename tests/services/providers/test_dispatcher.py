@@ -73,6 +73,7 @@ async def test_call_llm_routes_to_engine_target(
         user_prompt="User input",
         system_prompt="System instructions",
         opts=opts,
+        messages=None,
     )
 
 
@@ -101,3 +102,54 @@ def test_generation_options_defaults() -> None:
     assert opts.reasoning_effort is None
     assert opts.engine == "litellm"
     assert opts.effective_model == get_settings().llm_model
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("engine", "model", "target"),
+    [
+        ("litellm", DEFAULT_FAST_PROFILE, "call_litellm_router"),
+        ("native", DEFAULT_GPT_LLM, "call_openai"),
+        ("native", DEFAULT_CLAUDE_LLM, "call_anthropic"),
+    ],
+    ids=["litellm_router", "native_openai", "native_anthropic"],
+)
+async def test_call_llm_multi_turn_forwards_messages(
+    monkeypatch: pytest.MonkeyPatch,
+    engine: str,
+    model: str,
+    target: str,
+) -> None:
+    """
+    GIVEN multi-turn messages with user_prompt=None and a system_prompt
+    WHEN call_llm executes
+    THEN the matching provider function receives user_prompt=None, system_prompt, opts, and messages.
+
+    :param monkeypatch: Pytest monkeypatch fixture.
+    :param engine: Execution engine ('litellm' or 'native').
+    :param model: Target model identifier.
+    :param target: Name of the provider function expected to be called.
+    """
+    mock_call = AsyncMock(return_value={"result": EstimationResult(**DUMMY_RESULT), "model": model})
+    monkeypatch.setattr(f"aie_estimator.services.providers.dispatcher.{target}", mock_call)
+
+    turns = [
+        {"role": "user", "content": "Initial SaaS"},
+        {"role": "assistant", "content": '{"total_cost_eur": 5000}'},
+        {"role": "user", "content": "Add OAuth2"},
+    ]
+    opts = GenerationOptions(engine=engine, model=model)
+    result = await call_llm(
+        user_prompt=None,
+        system_prompt="Conversational system",
+        opts=opts,
+        messages=turns,
+    )
+
+    assert isinstance(result["result"], EstimationResult)
+    mock_call.assert_awaited_once_with(
+        user_prompt=None,
+        system_prompt="Conversational system",
+        opts=opts,
+        messages=turns,
+    )
