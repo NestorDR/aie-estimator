@@ -22,7 +22,7 @@ The project enforces strict separation of concerns across dedicated application 
 - **Services (`src/aie_estimator/services/`)**: Encapsulates core business logic, CAG prompt assembly, multi-provider LLM dispatch with two-level runtime failover (intra-tier rotation and cross-tier escalation), token cost estimation, and two-tier response caching (Tier 1 exact-match and Tier 2 RediSearch vector similarity).
 - **Prompts (`src/aie_estimator/prompts/`)**: Stores versioned Jinja2 prompt templates (`system.j2`, `user.j2`, `examples.j2`) and loader for estimation prompt rendering.
 - **Settings (`src/aie_estimator/settings.py`)**: Environment-aware configuration and settings management powered by `pydantic-settings`, supporting structured JSON logging, credential isolation via `SecretStr`, and secret synchronization to `os.environ`.
-- **Dependencies (`src/aie_estimator/dependencies.py`)**: Centralized Composition Root managing cached dependency injection factories (`get_settings`, `get_semantic_cache`, `get_estimation_service`) for FastAPI route handlers.
+- **Dependencies (`src/aie_estimator/dependencies.py`)**: Centralized Composition Root managing cached dependency injection factories (`get_settings`, `get_exact_cache`, `get_semantic_cache`, `get_estimation_service`) for FastAPI route handlers.
 - **Server (`src/aie_estimator/server.py`)**: Application Factory (`create_app`) and server configuration with lifecycle management and exception mapping.
 
 ### Context-Augmented Generation (CAG) Workflow
@@ -135,7 +135,7 @@ aie-estimator/
     Edit `src/aie_estimator/.env.dev` and configure your API keys:
    ```ini
    APP_ENV=dev
- LOG_LEVEL=INFO
+   LOG_LEVEL=INFO
    JSON_LOGGING=false
    ENABLE_FILE_LOGGING=false
    ENABLE_OTEL_TRACING=false
@@ -169,13 +169,8 @@ Start the detached Docker Compose services from the project root using `auto\dc.
   ```cmd
   auto\dc.cmd dev
   ```
-  Browse cached estimations (keys `estimation:<sha256>`) in [Redis Insight](https://redis.io/insight/) at `http://localhost:5540`, or via CLI:
-  ```cmd
-  docker exec -it estimator-redis redis-cli
-  KEYS estimation:*
-  GET <key>
-  TTL <key>
-  ```
+  Browse cached estimations (keys `estimation:<sha256>`) in [Redis Insight](https://redis.io/insight/) at `http://localhost:5540`, or via `auto\redis_keys.cmd`.
+
 - **Production (Containerized FastAPI + Redis + Arize Phoenix Stack)**:
   Builds the multi-stage production image (`docker/Dockerfile`) and launches it along with Redis and Arize Phoenix on the production environment using `docker/docker-compose.prod.yml` and `src/aie_estimator/.env.prod`:
   ```cmd
@@ -197,7 +192,7 @@ Or directly via `uv`:
 ```bash
 uv run aie-estimator
 # or
-uv run uvicorn aie_estimator.server:server.app --reload --host localhost --port 8000
+uv run uvicorn aie_estimator.server:create_app --factory --reload --host localhost --port 8000
 ```
 
 The API service starts on `http://localhost:8000`.
@@ -333,7 +328,7 @@ Verifies that the service is running.
 
 Verify local setup against the baseline project criteria:
 
-- [x] Application initializes with `uv run aie-estimator` or `uv run uvicorn aie_estimator.server:server.app --reload`
+- [x] Application initializes with `uv run aie-estimator` or `uv run uvicorn aie_estimator.server:create_app --factory --reload`
 - [x] API keys and secrets load from `.env.<environment>` via `pydantic-settings` without hardcoded fallbacks
 - [x] `GET /health` returns HTTP 200 with `status: healthy`
 - [x] `POST /api/v1/estimate` processes project descriptions and parameters to return structured estimations
@@ -347,12 +342,12 @@ Verify local setup against the baseline project criteria:
 
 ## Code Quality & Standards
 
-- **Linter & Formatter**: Configured with `ruff` (line-length 140, Python 3.14 target).
+- **Linter & Formatter**: Configured with `ruff` (line-length 140, Python 3.14 target). Use `auto\lint.cmd` or directly:
   ```bash
   uv run ruff check .
   uv run ruff format .
   ```
-- **Test Suite**: Managed via `pytest`.
+- **Test Suite**: Managed via `pytest` with coverage threshold enforcement (`--cov-fail-under=85`). Use `auto\test.cmd` or directly:
   ```bash
   uv run pytest
   ```
@@ -376,4 +371,3 @@ Detailed architecture guides and technical documentation are maintained in the [
 - [Semantic Response Caching](docs/semantic-response-caching.md): Tier 2 native RediSearch vector similarity caching, cosine distance thresholds, shadow mode calibration, and offline test isolation.
 - [Observability, Logging & Distributed Tracing](docs/observability.md): Unified structlog pipeline, standardized event taxonomy, OpenTelemetry context injection, Arize Phoenix container setup, and DuckDB storage mechanics.
 - [Testing Guidelines](docs/testing.md): Test suite organization, pytest fixtures, and coverage expectations.
-
