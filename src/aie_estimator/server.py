@@ -225,7 +225,7 @@ class Server:
 
             :return: JSONResponse with HTTP 415 status code and structured detail.
             """
-            self.log.info("unsupported_attachment_rejected", filename=e.filename, message=e.message)
+            self.log.info("attachment_unsupported_rejected", filename=e.filename, message=e.message)
             return JSONResponse(
                 status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
                 content={

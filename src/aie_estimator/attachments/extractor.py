@@ -297,7 +297,7 @@ def enrich_transcript(
 
         safe_name = _sanitize_filename(raw_filename)
         if remaining_budget <= 0:
-            log.info("turn_attachment_budget_exhausted", omitted_filename=safe_name)
+            log.info("attachment_turn_budget_exhausted", omitted_filename=safe_name)
             continue
 
         bounded, was_truncated = _truncate_to_budget(_escape_xml_boundaries(stripped), remaining_budget)
@@ -305,7 +305,7 @@ def enrich_transcript(
         bounded = _escape_xml_boundaries(bounded)
         if was_truncated:
             log.info(
-                "turn_attachment_truncated",
+                "attachment_turn_truncated",
                 filename=safe_name,
                 remaining_budget=remaining_budget,
                 kept_chars=len(bounded),

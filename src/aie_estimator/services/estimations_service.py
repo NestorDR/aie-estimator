@@ -239,7 +239,7 @@ class EstimationService:
 
         turns = [*session.history.to_messages(), {"role": "user", "content": user_prompt}]
         log.info(
-            "estimation_session_request",
+            "estimation_session_started",
             session_id=session.session_id,
             history_messages=len(session.history.messages),
             metadata_is_empty=session.metadata.is_empty(),
