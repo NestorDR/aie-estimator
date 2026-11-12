@@ -5,7 +5,7 @@ from pydantic import ValidationError
 import pytest
 
 # --- App modules ---
-from aie_estimator.sessions.models import ConversationHistory, Message, ProjectMetadata, Session
+from aie_estimator.sessions.models import ConversationHistory, Message, MetadataExtractionResult, ProjectMetadata, Session
 
 
 def test_message_rejects_system_role() -> None:
@@ -73,7 +73,7 @@ def test_project_metadata_is_empty_transitions() -> None:
 
 def test_project_metadata_merge_with_overwrites_scalars_and_deduplicates_lists() -> None:
     """
-    GIVEN a base ProjectMetadata and an incremental update
+    GIVEN a base ProjectMetadata and an incremental MetadataExtractionResult update
     WHEN merge_with combines them
     THEN non-empty scalars overwrite prior values and list fields merge case-insensitively.
     """
@@ -85,7 +85,7 @@ def test_project_metadata_merge_with_overwrites_scalars_and_deduplicates_lists()
         explicit_constraints=["GDPR"],
         rejected_options=["GraphQL"],
     )
-    update = ProjectMetadata(
+    update = MetadataExtractionResult(
         project_name="BookFlow Pro",
         assumed_team_size=5,
         mentioned_technologies=["rails", "React"],
@@ -104,6 +104,77 @@ def test_project_metadata_merge_with_overwrites_scalars_and_deduplicates_lists()
         explicit_constraints=["GDPR", "SOC 2"],
         rejected_options=["GraphQL", "Microservices"],
     )
+
+
+@pytest.mark.parametrize(
+    ("base", "update", "expected"),
+    [
+        (
+            ProjectMetadata(
+                mentioned_technologies=["Rails", "PostgreSQL"],
+                explicit_constraints=["GDPR", "SOC 2"],
+                rejected_options=["Microservices"],
+            ),
+            MetadataExtractionResult(
+                mentioned_technologies=["Node"],
+                retracted_constraints=["gdpr"],
+                retracted_options=["microservices"],
+                rejected_options=["Rails"],
+            ),
+            ProjectMetadata(
+                mentioned_technologies=["PostgreSQL", "Node"],
+                explicit_constraints=["SOC 2"],
+                rejected_options=["Rails"],
+            ),
+        ),
+        (
+            ProjectMetadata(
+                mentioned_technologies=["Rails", "PostgreSQL"],
+            ),
+            MetadataExtractionResult(
+                mentioned_technologies=["Node", "rails"],
+                rejected_options=["rails"],
+            ),
+            ProjectMetadata(
+                mentioned_technologies=["PostgreSQL", "Node"],
+                rejected_options=["rails"],
+            ),
+        ),
+        (
+            ProjectMetadata(
+                mentioned_technologies=["PostgreSQL"],
+                rejected_options=["GraphQL"],
+            ),
+            MetadataExtractionResult(
+                mentioned_technologies=["graphql"],
+            ),
+            ProjectMetadata(
+                mentioned_technologies=["PostgreSQL", "graphql"],
+                rejected_options=[],
+            ),
+        ),
+    ],
+    ids=[
+        "explicit_retracted_lists",
+        "rejected_option_prunes_active_and_incoming_technology",
+        "readopted_technology_prunes_rejected_option",
+    ],
+)
+def test_project_metadata_merge_with_retractions_and_cross_pruning(
+    base: ProjectMetadata,
+    update: MetadataExtractionResult,
+    expected: ProjectMetadata,
+) -> None:
+    """
+    GIVEN base ProjectMetadata and a MetadataExtractionResult containing retractions or conflicting choices
+    WHEN merge_with applies the update
+    THEN retracted entries are removed and conflicting technologies/rejections are pruned consistently.
+
+    :param base: Existing session ProjectMetadata state.
+    :param update: Incremental MetadataExtractionResult delta.
+    :param expected: Expected resulting ProjectMetadata state.
+    """
+    assert base.merge_with(update) == expected
 
 
 def test_session_initializes_unique_ids_and_empty_state() -> None:

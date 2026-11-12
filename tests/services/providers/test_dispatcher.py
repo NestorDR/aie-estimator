@@ -12,6 +12,7 @@ from aie_estimator.schemas.estimations import EstimationResult
 from aie_estimator.services.exceptions import LLMProviderError
 from aie_estimator.services.providers.dispatcher import call_llm
 from aie_estimator.services.providers.generation_options import GenerationOptions
+from aie_estimator.sessions.models import MetadataExtractionResult
 from aie_estimator.settings import get_settings
 from aie_estimator.utils.model_constants import (
     DEFAULT_CLAUDE_LLM,
@@ -74,6 +75,7 @@ async def test_call_llm_routes_to_engine_target(
         system_prompt="System instructions",
         opts=opts,
         messages=None,
+        response_model=EstimationResult,
     )
 
 
@@ -152,4 +154,53 @@ async def test_call_llm_multi_turn_forwards_messages(
         system_prompt="Conversational system",
         opts=opts,
         messages=turns,
+        response_model=EstimationResult,
+    )
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("engine", "model", "target"),
+    [
+        ("litellm", DEFAULT_FAST_PROFILE, "call_litellm_router"),
+        ("native", DEFAULT_GPT_LLM, "call_openai"),
+        ("native", DEFAULT_CLAUDE_LLM, "call_anthropic"),
+    ],
+    ids=["litellm_router", "native_openai", "native_anthropic"],
+)
+async def test_call_llm_forwards_custom_response_model(
+    monkeypatch: pytest.MonkeyPatch,
+    engine: str,
+    model: str,
+    target: str,
+) -> None:
+    """
+    GIVEN a custom Pydantic response_model passed to call_llm
+    WHEN call_llm dispatches across litellm or native runners
+    THEN the matching provider runner receives response_model=MetadataExtractionResult.
+
+    :param monkeypatch: Pytest monkeypatch fixture.
+    :param engine: Execution engine ('litellm' or 'native').
+    :param model: Target model identifier.
+    :param target: Name of the provider function expected to be called.
+    """
+    extracted = MetadataExtractionResult(project_name="Atlas")
+    mock_call = AsyncMock(return_value={"result": extracted, "model": model})
+    monkeypatch.setattr(f"aie_estimator.services.providers.dispatcher.{target}", mock_call)
+
+    opts = GenerationOptions(engine=engine, model=model)
+    result = await call_llm(
+        user_prompt="Extract facts",
+        system_prompt="Extractor system",
+        opts=opts,
+        response_model=MetadataExtractionResult,
+    )
+
+    assert isinstance(result["result"], MetadataExtractionResult)
+    mock_call.assert_awaited_once_with(
+        user_prompt="Extract facts",
+        system_prompt="Extractor system",
+        opts=opts,
+        messages=None,
+        response_model=MetadataExtractionResult,
     )

@@ -3,11 +3,11 @@
 ## Overview
 
 The prompt template engine in [`src/aie_estimator/prompts/loader.py`](../src/aie_estimator/prompts/loader.py) externalizes LLM prompt composition from Python service logic into versioned Jinja2 templates under [`src/aie_estimator/prompts/<use_case>/<version>/`](../src/aie_estimator/prompts/estimation/v1/):
-- `system.j2`: System instructions defining consultant role, hourly rates, format conditionals, JSON constraints, and dynamic inclusion of reference examples (`v2/` adds `<project_metadata>` injection and conversational authority rules).
-- `user.j2`: User message block wrapping the project description in `<project_description>` XML tags.
-- `examples.j2`: Canonical few-shot reference estimations used as calibration anchors.
+- `system.j2`: System instructions defining consultant role, hourly rates, format conditionals, JSON constraints, and dynamic inclusion of reference examples (`v2/` adds `<project_metadata>` injection and conversational authority rules; `metadata_extraction/v1/` defines incremental delta and retraction extraction rules).
+- `user.j2`: User message block wrapping `<project_description>` (or `<previous_metadata>`, `<latest_user_transcript>`, and `<latest_assistant_estimation>` for `metadata_extraction`).
+- `examples.j2`: Canonical few-shot reference estimations used as calibration anchors (required only for `estimation`).
 
-Transactional estimations resolve `active_prompt_version` (default `"v1"`), while multi-turn sessions resolve `conversational_prompt_version` (default `"v2"`) from [`src/aie_estimator/settings.py`](../src/aie_estimator/settings.py).
+Transactional estimations resolve `active_prompt_version` (default `"v1"`) and multi-turn sessions resolve `conversational_prompt_version` (default `"v2"`) from [`src/aie_estimator/settings.py`](../src/aie_estimator/settings.py), while post-turn metadata extraction renders `metadata_extraction/v1/`.
 
 ---
 
@@ -43,10 +43,21 @@ conv_system, conv_user = render_conversational_prompt(
 ### 2. Listing and Validating Prompt Versions
 
 ```python
-from aie_estimator.prompts.loader import list_prompt_versions, validate_prompt_version
+from aie_estimator.prompts.loader import (
+    list_prompt_versions,
+    render_metadata_extraction_prompt,
+    validate_prompt_version,
+)
 
 available = list_prompt_versions("estimation")  # ["v1", "v2"]
+extraction_versions = list_prompt_versions("metadata_extraction")  # ["v1"]
 validated_version = validate_prompt_version("v2")
+
+ext_system, ext_user = render_metadata_extraction_prompt(
+    transcript="Drop Rails and use Node.",
+    result=estimation_result,
+    previous=ProjectMetadata(mentioned_technologies=["Rails"]),
+)
 ```
 
 ---

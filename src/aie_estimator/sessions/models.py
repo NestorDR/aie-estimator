@@ -35,6 +35,21 @@ def _merge_unique(existing: list[str], updates: list[str]) -> list[str]:
     return merged
 
 
+def _remove_items(existing: list[str], removals: list[str]) -> list[str]:
+    """
+    Remove items from ``existing`` matching ``removals`` case-insensitively while preserving order.
+
+    :param existing: Current list of values.
+    :param removals: Items to remove regardless of casing.
+
+    :return: Filtered list retaining original casing of remaining entries.
+    """
+    if not removals:
+        return list(existing)
+    removal_keys = {item.lower() for item in removals}
+    return [item for item in existing if item.lower() not in removal_keys]
+
+
 class Message(BaseModel):
     """Single user or assistant turn entry stored inside conversation history."""
 
@@ -101,25 +116,56 @@ class ProjectMetadata(BaseModel):
             and not self.rejected_options
         )
 
-    def merge_with(self, update: "ProjectMetadata") -> "ProjectMetadata":
+    def merge_with(self, update: "MetadataExtractionResult") -> "ProjectMetadata":
         """
-        Return a new ``ProjectMetadata`` merging ``update`` into ``self``.
+        Return a new ``ProjectMetadata`` applying scalar overwrites, additions, retractions, and pruning.
 
-        Non-empty scalar fields overwrite existing values and list fields merge via
-        case-insensitive union.
+        Non-empty scalar fields overwrite existing values, ``rejected_options`` prune active
+        technologies, ``retracted_options`` and newly adopted technologies un-reject prior
+        rejections, ``retracted_constraints`` remove lifted constraints, and remaining
+        additions merge via case-insensitive union.
 
-        :param update: Incremental metadata update extracted from the latest turn.
+        :param update: Incremental metadata extraction delta from the latest turn.
 
         :return: Merged ``ProjectMetadata`` instance.
         """
+        rejected_keys = {item.lower() for item in update.rejected_options}
+        # Explicit rejections take precedence over active technologies within the same turn.
+        accepted_technologies = [item for item in update.mentioned_technologies if item.lower() not in rejected_keys]
+        technologies = _merge_unique(
+            _remove_items(self.mentioned_technologies, update.rejected_options),
+            accepted_technologies,
+        )
+        rejected = _merge_unique(
+            _remove_items(self.rejected_options, [*update.retracted_options, *accepted_technologies]),
+            update.rejected_options,
+        )
+        constraints = _merge_unique(
+            _remove_items(self.explicit_constraints, update.retracted_constraints),
+            update.explicit_constraints,
+        )
+
         return ProjectMetadata(
             project_name=update.project_name or self.project_name,
             assumed_team_size=update.assumed_team_size if update.assumed_team_size is not None else self.assumed_team_size,
-            mentioned_technologies=_merge_unique(self.mentioned_technologies, update.mentioned_technologies),
+            mentioned_technologies=technologies,
             agreed_scope=update.agreed_scope or self.agreed_scope,
-            explicit_constraints=_merge_unique(self.explicit_constraints, update.explicit_constraints),
-            rejected_options=_merge_unique(self.rejected_options, update.rejected_options),
+            explicit_constraints=constraints,
+            rejected_options=rejected,
         )
+
+
+class MetadataExtractionResult(BaseModel):
+    """Structured extraction delta capturing metadata updates and explicit retractions."""
+
+    project_name: str | None = Field(default=None, max_length=_PROJECT_NAME_MAX_LENGTH)
+    assumed_team_size: int | None = Field(default=None, ge=1, le=_MAX_TEAM_SIZE)
+    mentioned_technologies: list[str] = Field(default_factory=list)
+    agreed_scope: str | None = Field(default=None, max_length=_AGREED_SCOPE_MAX_LENGTH)
+    explicit_constraints: list[str] = Field(default_factory=list)
+    rejected_options: list[str] = Field(default_factory=list)
+    retracted_constraints: list[str] = Field(default_factory=list)
+    retracted_options: list[str] = Field(default_factory=list)
 
 
 class Session(BaseModel):

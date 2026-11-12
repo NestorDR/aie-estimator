@@ -20,7 +20,8 @@ from aie_estimator.schemas.estimations import (
 from aie_estimator.services.estimations_service import EstimationService
 from aie_estimator.services.exceptions import LLMProviderError
 from aie_estimator.services.providers import GenerationOptions
-from aie_estimator.sessions.models import ProjectMetadata, Session
+from aie_estimator.sessions.metadata_extractor import MetadataExtractionOutcome
+from aie_estimator.sessions.models import MetadataExtractionResult, ProjectMetadata, Session
 from aie_estimator.utils.model_constants import (
     DEFAULT_FAST_PROFILE,
     DEFAULT_GPT_LLM,
@@ -609,6 +610,10 @@ async def test_generate_session_estimation_bypasses_caches_and_appends_turn(
     payload = make_estimation_result()
     mock_call_llm = AsyncMock(return_value=payload)
     monkeypatch.setattr("aie_estimator.services.estimations_service.call_llm", mock_call_llm)
+    monkeypatch.setattr(
+        "aie_estimator.services.estimations_service.update_metadata",
+        AsyncMock(return_value=MetadataExtractionOutcome(metadata=session.metadata)),
+    )
 
     result = await service.generate_session_estimation(
         session=session,
@@ -733,3 +738,149 @@ async def test_generate_session_estimation_enforces_scope_filter_before_history_
     persisted = EstimationResult.model_validate_json(session.history.messages[1].content)
     assert persisted.summary.startswith("Out of scope:")
     assert persisted.total_cost_eur == 0
+
+
+@pytest.mark.anyio
+async def test_generate_session_estimation_evolves_metadata_and_rolls_up_telemetry(
+    estimation_service: EstimationService,
+    make_estimation_result: Callable[..., dict[str, Any]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    GIVEN a multi-turn conversational session starting with empty ProjectMetadata
+    WHEN generate_session_estimation runs across initial, cumulative, and Policy 1 revision turns
+    THEN session.metadata evolves accurately and preprocessing tokens plus extractor cost roll into the response.
+
+    :param estimation_service: Injected EstimationService fixture.
+    :param make_estimation_result: Estimation result factory fixture.
+    :param monkeypatch: Pytest monkeypatch fixture.
+    """
+    session = Session()
+
+    main_responses = [
+        make_estimation_result(cost_usd=0.0020),
+        make_estimation_result(cost_usd=0.0025),
+        make_estimation_result(cost_usd=0.0030),
+    ]
+    extractor_responses = [
+        {
+            "result": MetadataExtractionResult(
+                project_name="NovaPay",
+                assumed_team_size=3,
+                mentioned_technologies=["Rails", "PostgreSQL"],
+                agreed_scope="Core ledger and onboarding",
+            ),
+            "model": DEFAULT_FAST_PROFILE,
+            "usage": {"input_tokens": 140, "output_tokens": 35, "total_tokens": 175},
+            "cost_usd": 0.00015,
+        },
+        {
+            "result": MetadataExtractionResult(
+                mentioned_technologies=["Redis"],
+                explicit_constraints=["SOC 2 Type II"],
+            ),
+            "model": DEFAULT_FAST_PROFILE,
+            "usage": {"input_tokens": 160, "output_tokens": 40, "total_tokens": 200},
+            "cost_usd": 0.00020,
+        },
+        {
+            "result": MetadataExtractionResult(
+                assumed_team_size=5,
+                mentioned_technologies=["FastAPI"],
+                rejected_options=["Rails"],
+            ),
+            "model": DEFAULT_FAST_PROFILE,
+            "usage": {"input_tokens": 180, "output_tokens": 45, "total_tokens": 225},
+            "cost_usd": 0.00025,
+        },
+    ]
+    monkeypatch.setattr("aie_estimator.services.estimations_service.call_llm", AsyncMock(side_effect=main_responses))
+    monkeypatch.setattr(
+        "aie_estimator.sessions.metadata_extractor.call_llm",
+        AsyncMock(side_effect=extractor_responses),
+    )
+
+    turn_1 = await estimation_service.generate_session_estimation(
+        session=session,
+        transcript="Build NovaPay with 3 devs on Rails and PostgreSQL.",
+        project_type=ProjectType.WEB_SAAS,
+        detail_level=DetailLevel.MEDIUM,
+        output_format=OutputFormat.PHASES_TABLE,
+    )
+    assert session.metadata.project_name == "NovaPay"
+    assert session.metadata.mentioned_technologies == ["Rails", "PostgreSQL"]
+    assert turn_1["usage"]["preprocessing_input_tokens"] == 140
+    assert turn_1["usage"]["preprocessing_output_tokens"] == 35
+    assert turn_1["cost_usd"] == 0.00215
+
+    turn_2 = await estimation_service.generate_session_estimation(
+        session=session,
+        transcript="Add Redis caching and require SOC 2 Type II.",
+        project_type=ProjectType.WEB_SAAS,
+        detail_level=DetailLevel.MEDIUM,
+        output_format=OutputFormat.PHASES_TABLE,
+    )
+    assert session.metadata.mentioned_technologies == ["Rails", "PostgreSQL", "Redis"]
+    assert session.metadata.explicit_constraints == ["SOC 2 Type II"]
+    assert turn_2["cost_usd"] == 0.0027
+
+    turn_3 = await estimation_service.generate_session_estimation(
+        session=session,
+        transcript="Switch team to 5 devs, drop Rails and use FastAPI instead.",
+        project_type=ProjectType.WEB_SAAS,
+        detail_level=DetailLevel.MEDIUM,
+        output_format=OutputFormat.PHASES_TABLE,
+    )
+    assert session.metadata == ProjectMetadata(
+        project_name="NovaPay",
+        assumed_team_size=5,
+        mentioned_technologies=["PostgreSQL", "Redis", "FastAPI"],
+        agreed_scope="Core ledger and onboarding",
+        explicit_constraints=["SOC 2 Type II"],
+        rejected_options=["Rails"],
+    )
+    assert turn_3["usage"]["preprocessing_input_tokens"] == 180
+    assert turn_3["usage"]["preprocessing_output_tokens"] == 45
+    assert turn_3["cost_usd"] == 0.00325
+
+
+@pytest.mark.anyio
+async def test_generate_session_estimation_survives_extractor_failure(
+    estimation_service: EstimationService,
+    make_estimation_result: Callable[..., dict[str, Any]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    GIVEN a valid main estimation turn whose secondary metadata extraction call fails
+    WHEN generate_session_estimation executes
+    THEN the turn completes, session.history appends the turn, preprocessing tokens stay 0, and prior metadata persists.
+
+    :param estimation_service: Injected EstimationService fixture.
+    :param make_estimation_result: Estimation result factory fixture.
+    :param monkeypatch: Pytest monkeypatch fixture.
+    """
+    prior_metadata = ProjectMetadata(project_name="NovaPay", mentioned_technologies=["PostgreSQL"])
+    session = Session(metadata=prior_metadata)
+
+    monkeypatch.setattr(
+        "aie_estimator.services.estimations_service.call_llm",
+        AsyncMock(return_value=make_estimation_result(cost_usd=0.0020)),
+    )
+    monkeypatch.setattr(
+        "aie_estimator.sessions.metadata_extractor.call_llm",
+        AsyncMock(side_effect=LLMProviderError("Extractor timeout")),
+    )
+
+    result = await estimation_service.generate_session_estimation(
+        session=session,
+        transcript="Add audit trail export.",
+        project_type=ProjectType.WEB_SAAS,
+        detail_level=DetailLevel.SUMMARY,
+        output_format=OutputFormat.PHASES_TABLE,
+    )
+
+    assert session.metadata == prior_metadata
+    assert len(session.history.messages) == 2
+    assert result["usage"]["preprocessing_input_tokens"] == 0
+    assert result["usage"]["preprocessing_output_tokens"] == 0
+    assert result["cost_usd"] == 0.0020

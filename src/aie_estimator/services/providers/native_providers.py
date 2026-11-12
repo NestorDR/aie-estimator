@@ -8,6 +8,7 @@ from typing import Any, Final
 from anthropic import AsyncAnthropic
 import instructor
 from openai import AsyncOpenAI, BadRequestError
+from pydantic import BaseModel
 import structlog
 
 # --- App modules ---
@@ -63,14 +64,16 @@ async def call_openai(
     opts: GenerationOptions,
     *,
     messages: list[dict[str, str]] | None = None,
+    response_model: type[BaseModel] = EstimationResult,
 ) -> dict[str, Any]:
     """
-    Send an estimation request to the OpenAI API with structured parameter recovery.
+    Send a structured-output request to the OpenAI API with parameter recovery.
 
     :param user_prompt: Pre-rendered user prompt string for single-turn calls, or ``None`` when ``messages`` is passed.
     :param system_prompt: Optional system instructions and reference context.
     :param opts: Generation options specifying model, max_tokens, temperature, reasoning_effort, and max_retries.
     :param messages: Optional multi-turn list of non-system ``user``/``assistant`` message dictionaries.
+    :param response_model: Target Pydantic model class for structured output extraction.
 
     :return: Standardized response dictionary containing result, model, provider, finish_reason, and usage.
     :raises LLMProviderError: If retries are exhausted or an unrecoverable API error occurs.
@@ -102,7 +105,7 @@ async def call_openai(
     for _ in range(2):
         try:
             structured_result, response = await client.chat.completions.create_with_completion(
-                response_model=EstimationResult,
+                response_model=response_model,
                 max_retries=opts.max_retries,
                 **request_params,
             )
@@ -165,14 +168,16 @@ async def call_anthropic(
     opts: GenerationOptions,
     *,
     messages: list[dict[str, str]] | None = None,
+    response_model: type[BaseModel] = EstimationResult,
 ) -> dict[str, Any]:
     """
-    Send an estimation request to the Anthropic Messages API with structured logging and asynchronous capability.
+    Send a structured-output request to the Anthropic Messages API with structured logging and async capability.
 
     :param user_prompt: Pre-rendered user prompt string for single-turn calls, or ``None`` when ``messages`` is passed.
     :param system_prompt: Optional system instructions and reference context passed as Anthropic's top-level ``system``.
     :param opts: Generation options specifying model, max_tokens, temperature, and reasoning_effort.
     :param messages: Optional multi-turn list of non-system ``user``/``assistant`` message dictionaries.
+    :param response_model: Target Pydantic model class for structured output extraction.
 
     :return: Standardized response dictionary containing result, model, provider, finish_reason, and usage.
     :raises LLMProviderError: If the API call fails or encounters an unhandled provider error.
@@ -201,7 +206,7 @@ async def call_anthropic(
 
     try:
         structured_result, response = await client.messages.create_with_completion(
-            response_model=EstimationResult,
+            response_model=response_model,
             max_retries=opts.max_retries,
             **kwargs,
         )

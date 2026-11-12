@@ -4,7 +4,12 @@
 import pytest
 
 # --- App modules ---
-from aie_estimator.services.providers.formatting import build_chat_messages, normalize_turn_messages
+from aie_estimator.services.providers.formatting import (
+    build_chat_messages,
+    format_provider_response,
+    normalize_turn_messages,
+)
+from aie_estimator.sessions.models import MetadataExtractionResult
 
 
 def test_normalize_turn_messages_single_turn() -> None:
@@ -100,4 +105,26 @@ def test_build_chat_messages_prepends_system_only_when_truthy(
     ]
     result = build_chat_messages(None, system_prompt, turns)
     assert result == [*expected_prefix, *turns]
+
+
+def test_format_provider_response_accepts_generic_base_model() -> None:
+    """
+    GIVEN any validated Pydantic BaseModel instance
+    WHEN format_provider_response builds the standardized provider payload
+    THEN the model instance, token totals, and resolved cost_usd are included.
+    """
+    extracted = MetadataExtractionResult(project_name="Atlas")
+    formatted = format_provider_response(
+        result=extracted,
+        model="gpt-6-luna",
+        provider="openai",
+        finish_reason="stop",
+        input_tokens=100,
+        output_tokens=40,
+        cost_usd=0.00025,
+    )
+
+    assert formatted["result"] is extracted
+    assert formatted["usage"] == {"input_tokens": 100, "output_tokens": 40, "total_tokens": 140}
+    assert formatted["cost_usd"] == 0.00025
 

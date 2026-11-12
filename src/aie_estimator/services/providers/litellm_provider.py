@@ -9,6 +9,7 @@ from typing import Any, Final
 import instructor
 import litellm
 from litellm import Router
+from pydantic import BaseModel
 import structlog
 import yaml
 
@@ -107,15 +108,17 @@ async def call_litellm_router(
     *,
     messages: list[dict[str, str]] | None = None,
     temperature: float | None = None,
+    response_model: type[BaseModel] = EstimationResult,
 ) -> dict[str, Any]:
     """
-    Send an asynchronous estimation request through the LiteLLM Router with cost extraction and error handling.
+    Send an asynchronous structured-output request through the LiteLLM Router with cost extraction and error handling.
 
     :param user_prompt: Pre-rendered user prompt string for single-turn calls, or ``None`` when ``messages`` is passed.
     :param system_prompt: Optional system instructions and reference context.
     :param opts: Generation options controlling model, max_tokens, and reasoning_effort.
     :param messages: Optional multi-turn list of non-system ``user``/``assistant`` message dictionaries.
     :param temperature: Optional sampling temperature override.
+    :param response_model: Target Pydantic model class for structured output extraction.
 
     :return: Standardized response dictionary containing result, model, provider, finish_reason, usage, and cost_usd.
     :raises LLMProviderError: If the LiteLLM router call fails.
@@ -147,7 +150,7 @@ async def call_litellm_router(
         # `create_with_completion` is an asynchronous coroutine method that must be awaited
         # because `instructor.from_litellm` was initialized with the async `router.acompletion` callable.
         structured_result, response = await client.chat.completions.create_with_completion(
-            response_model=EstimationResult,
+            response_model=response_model,
             max_retries=opts.max_retries,
             **kwargs,
         )

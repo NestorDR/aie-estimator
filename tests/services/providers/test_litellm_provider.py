@@ -16,6 +16,7 @@ from aie_estimator.schemas.estimations import EstimationResult
 from aie_estimator.services.exceptions import LLMProviderError
 from aie_estimator.services.providers.generation_options import GenerationOptions
 from aie_estimator.services.providers.litellm_provider import call_litellm_router, get_litellm_router
+from aie_estimator.sessions.models import MetadataExtractionResult
 from aie_estimator.utils.model_constants import DEFAULT_FAST_PROFILE, DEFAULT_GPT_LLM
 
 VALID_RESULT_DICT: Final[dict[str, Any]] = {
@@ -274,4 +275,34 @@ async def test_call_router_multi_turn_prepends_system_prompt(
     assert sent_messages[0]["role"] == "system"
     assert sent_messages[0]["content"].startswith("Conversational estimator system prompt")
     assert sent_messages[1:] == turns
+
+
+@pytest.mark.anyio
+async def test_call_router_supports_custom_response_model(
+    mock_router_response: Callable[..., MagicMock],
+) -> None:
+    """
+    GIVEN a custom Pydantic response_model passed to call_litellm_router
+    WHEN router.acompletion returns JSON matching that schema
+    THEN call_litellm_router returns a validated instance of the custom model.
+
+    :param mock_router_response: Router response builder fixture.
+    """
+    mock_router_response(
+        content=json.dumps({"project_name": "Atlas", "mentioned_technologies": ["FastAPI"]}),
+        hidden_params={"response_cost": 0.00012},
+    )
+
+    opts = GenerationOptions(model=DEFAULT_FAST_PROFILE, max_tokens=500, temperature=0.0)
+    result = await call_litellm_router(
+        user_prompt="Extract project metadata",
+        system_prompt="You are a project facts extractor.",
+        opts=opts,
+        response_model=MetadataExtractionResult,
+    )
+
+    assert isinstance(result["result"], MetadataExtractionResult)
+    assert result["result"].project_name == "Atlas"
+    assert result["result"].mentioned_technologies == ["FastAPI"]
+    assert result["cost_usd"] == 0.00012
 

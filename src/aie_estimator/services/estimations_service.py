@@ -26,6 +26,7 @@ from aie_estimator.schemas.estimations import (
 from aie_estimator.services.cache import EstimationExactCache, EstimationSemanticCache
 from aie_estimator.services.exceptions import LLMProviderError
 from aie_estimator.services.providers import GenerationOptions, call_llm
+from aie_estimator.sessions.metadata_extractor import update_metadata
 from aie_estimator.sessions.models import Session
 from aie_estimator.settings import get_settings
 
@@ -176,10 +177,11 @@ class EstimationService:
         """
         Execute a multi-turn conversational estimation bypassing Tier 1 and Tier 2 caches.
 
-        Runs input guardrails on ``transcript``, renders conversational templates with
+        Executes input guardrails on ``transcript``, renders conversational templates with
         ``session.metadata``, dispatches prior ``session.history`` turns plus the new
-        user message, enforces output scope filtering, and appends the completed turn
-        to ``session.history``.
+        user message, enforces output scope filtering, appends the completed turn
+        to ``session.history``, and refreshes ``session.metadata`` via non-fatal
+        post-turn extraction while recording extractor tokens and cost.
 
         :param session: Active conversational ``Session`` holding history and distilled metadata.
         :param transcript: Current turn transcript (optionally enriched with attachment text).
@@ -231,6 +233,20 @@ class EstimationService:
         )
 
         session.history.append(user=transcript, assistant=structured_result.model_dump_json())
+
+        metadata_outcome = await update_metadata(
+            previous=session.metadata,
+            transcript=transcript,
+            result=structured_result,
+            opts=opts,
+        )
+        session.metadata = metadata_outcome.metadata
+        result["usage"]["preprocessing_input_tokens"] = metadata_outcome.input_tokens
+        result["usage"]["preprocessing_output_tokens"] = metadata_outcome.output_tokens
+        if result.get("cost_usd") is not None and metadata_outcome.cost_usd is not None:
+            result["cost_usd"] = round(float(result["cost_usd"]) + metadata_outcome.cost_usd, 6)
+        result["latency_ms"] = int((time.perf_counter() - t0) * 1000)
+
         return result
 
     async def _dispatch_and_normalize(

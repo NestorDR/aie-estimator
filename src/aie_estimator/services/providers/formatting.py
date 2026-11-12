@@ -3,8 +3,10 @@
 # --- Python Standard Library ---
 from typing import Any
 
+# --- Third Party Libraries ---
+from pydantic import BaseModel
+
 # --- App modules ---
-from aie_estimator.schemas.estimations import EstimationResult
 from aie_estimator.services.providers.pricing import estimate_cost
 
 
@@ -60,7 +62,7 @@ def build_chat_messages(
 
 def format_provider_response(
     *,
-    result: EstimationResult,
+    result: BaseModel,
     model: str,
     provider: str,
     finish_reason: str,
@@ -71,7 +73,7 @@ def format_provider_response(
     """
     Standardize the internal dictionary contract across provider dispatch engines.
 
-    :param result: Validated EstimationResult instance.
+    :param result: Validated Pydantic structured output instance.
     :param model: Upstream model identifier reported by provider.
     :param provider: Upstream provider identifier.
     :param finish_reason: Upstream model completion finish reason.

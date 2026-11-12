@@ -18,7 +18,7 @@ from typing import Any, Final
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 # --- App modules ---
-from aie_estimator.schemas.estimations import DetailLevel, EstimationRequest, OutputFormat, ProjectType
+from aie_estimator.schemas.estimations import DetailLevel, EstimationRequest, EstimationResult, OutputFormat, ProjectType
 from aie_estimator.sessions.models import ProjectMetadata
 from aie_estimator.settings import get_settings
 
@@ -131,7 +131,8 @@ def render_estimation_prompt(
     request: EstimationRequest,
     version: str | None = None,
 ) -> tuple[str, str]:
-    """Render the system and user prompts for the software estimation domain.
+    """
+    Render the system and user prompts for the software estimation domain.
 
     :param request: Validated estimation request parameters.
     :param version: Optional prompt template version identifier. Defaults to active_prompt_version from settings.
@@ -159,7 +160,8 @@ def render_conversational_prompt(
     metadata: ProjectMetadata,
     version: str | None = None,
 ) -> tuple[str, str]:
-    """Render the conversational estimation system and user prompts with distilled project metadata.
+    """
+    Render the conversational estimation system and user prompts with distilled project metadata.
 
     :param description: Turn transcript (optionally enriched with extracted attachment text).
     :param project_type: Target project domain category.
@@ -182,3 +184,33 @@ def render_conversational_prompt(
         version=resolved_version,
         metadata=metadata,
     )
+
+
+def render_metadata_extraction_prompt(
+    *,
+    transcript: str,
+    result: EstimationResult,
+    previous: ProjectMetadata,
+) -> tuple[str, str]:
+    """
+    Render system and user prompts for post-turn ``ProjectMetadata`` delta extraction.
+
+    :param transcript: Latest user turn transcript (optionally enriched with attachment text).
+    :param result: Validated ``EstimationResult`` produced for the latest turn.
+    :param previous: Current ``ProjectMetadata`` state prior to this turn's update.
+
+    :return: A tuple of ``(system_prompt, user_prompt)`` ready for structured LLM extraction.
+    :raises jinja2.exceptions.TemplateNotFound: If templates for ``metadata_extraction/v1`` do not exist.
+    :raises jinja2.exceptions.UndefinedError: If required context parameters are missing during rendering.
+    """
+    system = _ENV.get_template("metadata_extraction/v1/system.j2").render(
+        transcript=transcript,
+        result=result,
+        previous=previous,
+    )
+    user = _ENV.get_template("metadata_extraction/v1/user.j2").render(
+        transcript=transcript,
+        result=result,
+        previous=previous,
+    )
+    return system, user

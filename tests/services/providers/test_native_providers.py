@@ -21,6 +21,7 @@ from aie_estimator.services.providers.native_providers import (
     get_anthropic_client,
     get_openai_client,
 )
+from aie_estimator.sessions.models import MetadataExtractionResult
 from aie_estimator.settings import Environment, Settings
 from aie_estimator.utils.model_constants import DEFAULT_CLAUDE_LLM, DEFAULT_GPT_LLM
 
@@ -562,4 +563,93 @@ async def test_call_anthropic_multi_turn_keeps_system_top_level(
     call_kwargs = mock_create.call_args.kwargs
     assert call_kwargs["system"] == "Anthropic conversational system prompt"
     assert call_kwargs["messages"] == turns
+
+
+@pytest.mark.anyio
+async def test_call_openai_supports_custom_response_model(
+    mock_async_openai_client: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    GIVEN a custom Pydantic response_model passed to call_openai
+    WHEN OpenAI returns JSON matching that schema
+    THEN call_openai validates and returns an instance of the custom model.
+
+    :param mock_async_openai_client: Reusable typed AsyncOpenAI mock fixture.
+    :param monkeypatch: Pytest monkeypatch fixture.
+    """
+    mock_create = AsyncMock()
+    mock_resp = MagicMock()
+    mock_choice = MagicMock()
+    mock_choice.finish_reason = "stop"
+    mock_choice.message.content = json.dumps({"project_name": "Atlas", "assumed_team_size": 4})
+    mock_choice.message.tool_calls = None
+    mock_resp.choices = [mock_choice]
+    mock_resp.model = DEFAULT_GPT_LLM
+    mock_resp.usage.prompt_tokens = 100
+    mock_resp.usage.completion_tokens = 30
+    mock_create.return_value = mock_resp
+    mock_async_openai_client.chat.completions.create = mock_create
+
+    monkeypatch.setattr(
+        "aie_estimator.services.providers.native_providers.get_openai_client",
+        lambda: mock_async_openai_client,
+    )
+
+    opts = GenerationOptions(model=DEFAULT_GPT_LLM, max_tokens=500)
+    result = await call_openai(
+        user_prompt="Extract project metadata",
+        system_prompt="Extractor system",
+        opts=opts,
+        response_model=MetadataExtractionResult,
+    )
+
+    assert isinstance(result["result"], MetadataExtractionResult)
+    assert result["result"].project_name == "Atlas"
+    assert result["result"].assumed_team_size == 4
+
+
+@pytest.mark.anyio
+async def test_call_anthropic_supports_custom_response_model(
+    mock_async_anthropic_client: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    GIVEN a custom Pydantic response_model passed to call_anthropic
+    WHEN Anthropic returns tool_use matching that schema
+    THEN call_anthropic validates and returns an instance of the custom model.
+
+    :param mock_async_anthropic_client: Reusable typed AsyncAnthropic mock fixture.
+    :param monkeypatch: Pytest monkeypatch fixture.
+    """
+    mock_create = AsyncMock()
+    mock_resp = MagicMock()
+    mock_resp.model = DEFAULT_CLAUDE_LLM
+    mock_resp.stop_reason = "end_turn"
+    mock_resp.usage.input_tokens = 110
+    mock_resp.usage.output_tokens = 35
+    mock_tool = MagicMock()
+    mock_tool.type = "tool_use"
+    mock_tool.name = "MetadataExtractionResult"
+    mock_tool.input = {"project_name": "Atlas", "rejected_options": ["Rails"]}
+    mock_resp.content = [mock_tool]
+    mock_create.return_value = mock_resp
+    mock_async_anthropic_client.messages.create = mock_create
+
+    monkeypatch.setattr(
+        "aie_estimator.services.providers.native_providers.get_anthropic_client",
+        lambda: mock_async_anthropic_client,
+    )
+
+    opts = GenerationOptions(model=DEFAULT_CLAUDE_LLM, max_tokens=500)
+    result = await call_anthropic(
+        user_prompt="Extract project metadata",
+        system_prompt="Extractor system",
+        opts=opts,
+        response_model=MetadataExtractionResult,
+    )
+
+    assert isinstance(result["result"], MetadataExtractionResult)
+    assert result["result"].project_name == "Atlas"
+    assert result["result"].rejected_options == ["Rails"]
 
