@@ -1,0 +1,11 @@
+# Executive Summary
+
+The logistics company requires a mobile-first web application to streamline employee expense reimbursement. Field drivers will photograph or upload receipts from mobile browsers, while automated OCR extracts the merchant name, transaction date, total amount, currency, tax, and available line-item details. Employees can review and correct extracted values, categorize expenses, and group them into monthly reports for manager approval.
+
+The application will provide role-based access for employees, department managers, finance administrators, and system administrators. Managers will use a review dashboard to approve, reject, or flag reports and individual expenses. Configurable policy rules will validate spending limits, receipt requirements, duplicate submissions, and restricted merchant categories. Policy exceptions will require documented manager approval.
+
+Approved reports will generate CSV exports for finance processing and synchronize with QuickBooks Online through its REST API. The system will securely manage OAuth credentials, map expense categories to accounting records, retry failed synchronizations, and prevent duplicate transactions. Email and Slack notifications will alert managers, employees, and finance teams at key workflow stages.
+
+The platform will use a responsive React frontend, containerized backend services, PostgreSQL, encrypted object storage for receipts, asynchronous workers, and Amazon Textract for OCR. It will deploy to AWS using Docker and infrastructure-as-code across development, staging, and production environments. Security controls include TLS encryption, role-based permissions, audit logging, secrets management, and backup procedures.
+
+The 12-week delivery plan covers discovery, core expense and approval workflows, OCR integration, policy enforcement, notifications, exports, QuickBooks integration, testing, deployment, and handover. The initial scope supports approximately 300 employees, 25 managers, and 2,000 receipts per month, with scalability for future growth.

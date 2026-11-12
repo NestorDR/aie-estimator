@@ -1,6 +1,6 @@
 # AIE Estimator
 
-FastAPI backend service for automated software engineering effort estimation using Context-Augmented Generation (CAG), paired with a Streamlit product form interface.
+FastAPI backend service for automated software engineering effort estimation using Context-Augmented Generation (CAG), paired with a Streamlit conversational chat interface.
 
 ## About
 
@@ -60,8 +60,6 @@ aie-estimator/
 │       ├── .env.example                # Example environment configuration
 │       ├── guardrails/                 # Defense-in-depth semantic validation
 │       ├── prompts/                    # Jinja2 prompt templates and loader
-│       │   └── estimation/             # Software Engineering Estimation
-│       │       └── v1/                 # Prompt template Version 1
 │       ├── schemas/                    # Pydantic request/response contracts
 │       ├── sessions/                   # Conversational session state, history window, and store
 │       ├── routers/                    # FastAPI HTTP route handlers
@@ -76,7 +74,7 @@ aie-estimator/
 ├── .pre-commit-config.yaml
 ├── pyproject.toml                      # Project metadata, dependencies, and tools config
 ├── README.md                           # Project documentation
-├── streamlit_app.py                    # Streamlit structured product estimation interface
+├── streamlit_app.py                    # Streamlit conversational estimation interface
 └── uv.lock                             # Locked dependency graph
 ```
 

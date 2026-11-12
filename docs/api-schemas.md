@@ -10,7 +10,7 @@ The schema contract governs the core phases of the estimation lifecycle:
 3. **Execution Instrumentation ([`TokenUsage`](../src/aie_estimator/schemas/estimations.py))**: Tracks input, output, and preprocessing tokens along with calculated execution cost (`cost_usd`).
 4. **Response Delivery ([`EstimationResponse`](../src/aie_estimator/schemas/estimations.py))**: Standardized envelope containing the structured result, active prompt version, cache status, resolved model, provider attribution, and token telemetry.
 
-Consult [`src/aie_estimator/schemas/estimations.py`](../src/aie_estimator/schemas/estimations.py) for complete field constraints, type annotations, and validator logic.
+Consult [`src/aie_estimator/schemas/estimations.py`](../src/aie_estimator/schemas/estimations.py) for complete field constraints, type annotations, and validator logic. Conversational session contracts (`CreateSessionResponse`, `SessionInfoResponse`) live in [`src/aie_estimator/schemas/sessions.py`](../src/aie_estimator/schemas/sessions.py) and are documented in [`docs/conversational-sessions.md`](conversational-sessions.md).
 
 ---
 
