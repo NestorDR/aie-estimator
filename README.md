@@ -26,17 +26,25 @@ AIE Estimator processes software project descriptions and domain parameters (`pr
 
 ```mermaid
 flowchart TD
-    Client(["Client (Streamlit / API)"]) -->|"1. POST /api/v1/estimate"| Router["FastAPI Router"]
-    Router -->|"2. Dependency Injection"| Service["EstimationService"]
-    Service --> Guardrails["3. Input Guardrails\n(Moderation, Injection, PII)"]
-    Guardrails --> Cache{"4. Two-Tier Cache\n(Exact & Semantic)"}
+    Client(["Client (Streamlit / API)"]) -->|"POST /api/v1/estimate"| Router["FastAPI Routers + DI"]
+    Client -->|"POST /api/v1/sessions/{id}/estimate (+ attachments)"| Attachments["Attachment Extractor (PDF / DOCX / Text)"]
+    Attachments --> Router
 
-    Cache -->|"Cache Miss"| LLM["5. LLM Dispatch\n(Jinja2 CAG Prompts → LiteLLM / Native)"]
-    LLM --> OutputGuard["6. Output Filter & Dual-Write Cache"]
+    Router --> Guardrails["Input Guardrails (Moderation, Injection, PII)"]
+    Guardrails -->|"Transactional"| Cache{"Two-Tier Cache (Exact & Semantic)"}
+    Guardrails -->|"Conversational"| SessionCtx["Load Session (Sliding Window + ProjectMetadata)"]
 
-    Cache -->|"Cache Hit (~1ms)"| Response["EstimationResponse (HTTP 200)"]
-    OutputGuard --> Response
-    Response -->|"7. Return to Client UI"| ClientDone(["Client (Streamlit / API)"])
+    Cache -->|"Cache Hit"| Response["EstimationResponse (HTTP 200)"]
+    Cache -->|"Cache Miss (v1)"| LLM["LLM Dispatch (LiteLLM / Native)"]
+    SessionCtx -->|"v2 + History"| LLM
+
+    LLM --> OutputGuard["Output Scope Filter"]
+    OutputGuard -->|"Transactional"| CacheWrite["Dual-Write Cache"]
+    OutputGuard -->|"Conversational"| MemoryUpdate["Append Turn + Update ProjectMetadata"]
+
+    CacheWrite --> Response
+    MemoryUpdate --> Response
+    Response --> ClientDone(["Client (Streamlit / API)"])
 ```
 
 ## Project Structure
