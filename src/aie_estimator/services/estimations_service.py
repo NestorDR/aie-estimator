@@ -9,7 +9,12 @@ from openai import AsyncOpenAI
 import structlog
 
 # --- App modules ---
-from aie_estimator.guardrails.input import check_input
+from aie_estimator.attachments.extractor import (
+    enrich_transcript,
+    extract_text,
+    validate_attachment_count,
+)
+from aie_estimator.guardrails.input import check_attachment_input, check_input
 from aie_estimator.guardrails.output import enforce_scope_response
 from aie_estimator.prompts.loader import (
     render_conversational_prompt,
@@ -62,7 +67,6 @@ class EstimationService:
         self,
         request: EstimationRequest,
         opts: GenerationOptions | None = None,
-        prompt_version: str | None = None,
     ) -> dict[str, Any]:
         """
         Coordinate the end-to-end software project estimation workflow using multirole prompts.
@@ -72,7 +76,6 @@ class EstimationService:
 
         :param request: Validated EstimationRequest containing project description and preferences.
         :param opts: Optional generation options controlling model selection, engine, and token limits.
-        :param prompt_version: Optional prompt version identifier; defaults to configured active version.
 
         :return: Response dictionary containing validated EstimationResult, model metadata, token usage, latency, prompt_version, and cache hit indicator.
         :raises InputGuardrailViolation: If input guardrails reject the prompt.
@@ -89,7 +92,7 @@ class EstimationService:
         if opts is None:
             opts = GenerationOptions(model=request.model, engine=request.engine)
 
-        version = prompt_version or resolve_prompt_version()
+        version = resolve_prompt_version(get_settings().active_prompt_version)
         t0 = time.perf_counter()
 
         model = opts.effective_model
@@ -135,7 +138,6 @@ class EstimationService:
                         "preprocessing_output_tokens": 0,
                     },
                     "latency_ms": latency_ms,
-                    "extracted_requirements": None,
                 }
 
         # Lazy prompt template rendering (executed only on cache miss before LLM call).
@@ -171,42 +173,63 @@ class EstimationService:
         project_type: ProjectType,
         detail_level: DetailLevel,
         output_format: OutputFormat,
+        attachments: list[tuple[str, bytes]] | None = None,
         opts: GenerationOptions | None = None,
-        prompt_version: str | None = None,
     ) -> dict[str, Any]:
         """
         Execute a multi-turn conversational estimation bypassing Tier 1 and Tier 2 caches.
 
-        Executes input guardrails on ``transcript``, renders conversational templates with
-        ``session.metadata``, dispatches prior ``session.history`` turns plus the new
-        user message, enforces output scope filtering, appends the completed turn
-        to ``session.history``, and refreshes ``session.metadata`` via non-fatal
-        post-turn extraction while recording extractor tokens and cost.
+        Validates attachment count, executes input guardrails on ``transcript``, extracts and
+        sanitizes attachment text via ``extract_text`` and ``check_attachment_input`` (with PII
+        redaction), enriches the transcript inside ``<attachments>`` XML delimiters, renders
+        conversational templates with ``session.metadata``, dispatches prior ``session.history``
+        turns plus the new user message, enforces output scope filtering, appends the completed
+        turn to ``session.history``, and refreshes ``session.metadata`` via non-fatal post-turn
+        extraction while recording extractor tokens and cost.
 
         :param session: Active conversational ``Session`` holding history and distilled metadata.
-        :param transcript: Current turn transcript (optionally enriched with attachment text).
+        :param transcript: Current raw user turn transcript.
         :param project_type: Target project domain category.
         :param detail_level: Desired breakdown depth.
         :param output_format: Desired presentation layout.
+        :param attachments: Optional list of ``(filename, content)`` raw attachment pairs.
         :param opts: Optional generation options controlling model, engine, and token limits.
-        :param prompt_version: Optional prompt version override; defaults to ``conversational_prompt_version``.
 
         :return: Response dictionary matching :meth:`generate_estimation` with ``cache_hit=False``.
-        :raises InputGuardrailViolation: If input guardrails reject ``transcript``.
+        :raises AttachmentExtractionError: If attachment count, byte size, or parsing fails.
+        :raises UnsupportedAttachmentError: If an attachment extension is unsupported.
+        :raises InputGuardrailViolation: If input guardrails reject ``transcript`` or attachment content.
         :raises LLMProviderError: If any LLM provider invocation fails.
-        :raises ValueError: If ``transcript`` is blank or ``prompt_version`` is invalid.
+        :raises ValueError: If ``transcript`` is blank.
         """
         if not transcript or not transcript.strip():
             raise ValueError("transcript must be provided.")
 
+        raw_attachments = attachments or []
+        validate_attachment_count(len(raw_attachments))
         await check_input(transcript, openai_client=self.moderation_client)
 
+        extracted_pairs: list[tuple[str, str]] = []
+        for filename, content in raw_attachments:
+            extracted_text = extract_text(filename=filename, content=content)
+            sanitized_text = await check_attachment_input(
+                extracted_text,
+                openai_client=self.moderation_client,
+            )
+            if sanitized_text:
+                extracted_pairs.append((filename, sanitized_text))
+
+        enriched_transcript = enrich_transcript(
+            transcript=transcript,
+            attachments=extracted_pairs,
+        )
+
         opts = opts or GenerationOptions()
-        version = resolve_prompt_version(prompt_version or get_settings().conversational_prompt_version)
+        version = resolve_prompt_version(get_settings().conversational_prompt_version)
         t0 = time.perf_counter()
 
         system_prompt, user_prompt = render_conversational_prompt(
-            description=transcript,
+            description=enriched_transcript,
             project_type=project_type,
             detail_level=detail_level,
             output_format=output_format,
@@ -221,6 +244,8 @@ class EstimationService:
             history_messages=len(session.history.messages),
             metadata_is_empty=session.metadata.is_empty(),
             transcript_chars=len(transcript),
+            enriched_transcript_chars=len(enriched_transcript),
+            attachment_count=len(extracted_pairs),
         )
 
         result, structured_result = await self._dispatch_and_normalize(
@@ -232,11 +257,11 @@ class EstimationService:
             messages=turns,
         )
 
-        session.history.append(user=transcript, assistant=structured_result.model_dump_json())
+        session.history.append(user=enriched_transcript, assistant=structured_result.model_dump_json())
 
         metadata_outcome = await update_metadata(
             previous=session.metadata,
-            transcript=transcript,
+            transcript=enriched_transcript,
             result=structured_result,
             opts=opts,
         )
@@ -321,7 +346,6 @@ class EstimationService:
         result.setdefault("cost_usd", None)
         result["usage"].setdefault("preprocessing_input_tokens", 0)
         result["usage"].setdefault("preprocessing_output_tokens", 0)
-        result["extracted_requirements"] = None
         result["latency_ms"] = int((time.perf_counter() - t0) * 1000)
         result["cache_hit"] = False
 

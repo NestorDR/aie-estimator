@@ -78,7 +78,7 @@ def test_project_metadata_merge_with_overwrites_scalars_and_deduplicates_lists()
     THEN non-empty scalars overwrite prior values and list fields merge case-insensitively.
     """
     base = ProjectMetadata(
-        project_name="BookFlow",
+        project_name="MyProject",
         assumed_team_size=3,
         mentioned_technologies=["Rails", "PostgreSQL"],
         agreed_scope="MVP phase 1",
@@ -86,7 +86,7 @@ def test_project_metadata_merge_with_overwrites_scalars_and_deduplicates_lists()
         rejected_options=["GraphQL"],
     )
     update = MetadataExtractionResult(
-        project_name="BookFlow Pro",
+        project_name="MyProject Pro",
         assumed_team_size=5,
         mentioned_technologies=["rails", "React"],
         agreed_scope=None,
@@ -97,7 +97,7 @@ def test_project_metadata_merge_with_overwrites_scalars_and_deduplicates_lists()
     merged = base.merge_with(update)
 
     assert merged == ProjectMetadata(
-        project_name="BookFlow Pro",
+        project_name="MyProject Pro",
         assumed_team_size=5,
         mentioned_technologies=["Rails", "PostgreSQL", "React"],
         agreed_scope="MVP phase 1",

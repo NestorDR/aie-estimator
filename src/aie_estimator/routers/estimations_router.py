@@ -43,12 +43,4 @@ async def create_estimation(
 
     result = await service.generate_estimation(request)
 
-    return EstimationResponse(
-        result=result["result"],
-        cached=bool(result.get("cache_hit", False)),
-        prompt_version=result.get("prompt_version", "v1"),
-        model=result["model"],
-        provider=result["provider"],
-        cost_usd=result.get("cost_usd"),
-        usage=result["usage"],
-    )
+    return EstimationResponse.from_service_result(result)

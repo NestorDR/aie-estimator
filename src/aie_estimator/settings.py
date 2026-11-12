@@ -79,7 +79,9 @@ class Settings(BaseSettings):
     max_attachment_bytes: int = Field(default=5_242_880, gt=0)
     max_attachment_chars: int = Field(default=12_000, gt=0)
     max_total_attachment_chars: int = Field(default=30_000, gt=0)
-    supported_attachment_extensions: tuple[str, ...] = (".pdf", ".docx", ".txt", ".md")
+    supported_attachment_extensions: list[str] = Field(
+        default_factory=lambda: [".pdf", ".docx", ".txt", ".md"],
+    )
 
     # Conversational session settings
     session_max_turns: int = Field(default=6, gt=0)

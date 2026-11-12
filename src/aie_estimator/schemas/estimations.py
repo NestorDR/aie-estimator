@@ -2,7 +2,7 @@
 
 # --- Python Standard Library ---
 from enum import Enum
-from typing import Annotated, Final, Literal, Self
+from typing import Any, Final, Literal, Self
 
 # --- Third Party Libraries ---
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -42,6 +42,24 @@ class OutputFormat(str, Enum):
     NARRATIVE = "narrative"
 
 
+def validate_catalog_model(value: str | None) -> str:
+    """
+    Validate that the model is registered in the model catalog or logical profiles.
+
+    :param value: Optional model identifier from request.
+
+    :return: Validated model identifier, defaulting to settings.llm_model if None or empty.
+    :raises ValueError: If a model is not registered in the catalog.
+    """
+    if value is None or value in ("none", ""):
+        return get_settings().llm_model
+    supported = get_supported_models()
+    if value not in supported:
+        supported_str = ", ".join(supported)
+        raise ValueError(f"Input should be one of: {supported_str}")
+    return value
+
+
 class EstimationRequest(BaseModel):
     """Payload schema for software project estimation requests."""
 
@@ -67,20 +85,15 @@ class EstimationRequest(BaseModel):
     @field_validator("model", mode="after")
     @classmethod
     def validate_model(cls, value: str | None) -> str:
-        """Validate that the model is registered in the model catalog or logical profiles.
+        """
+        Validate that the model is registered in the model catalog or logical profiles.
 
         :param value: Optional model identifier from request.
 
         :return: Validated model identifier, defaulting to settings.llm_model if None.
         :raises ValueError: If a model is not registered in the catalog.
         """
-        if value is None or value in ("none", ""):
-            return get_settings().llm_model
-        supported = get_supported_models()
-        if value not in supported:
-            supported_str = ", ".join(supported)
-            raise ValueError(f"Input should be one of: {supported_str}")
-        return value
+        return validate_catalog_model(value)
 
 
 class TokenUsage(BaseModel):
@@ -96,10 +109,23 @@ class TokenUsage(BaseModel):
 class Phase(BaseModel):
     """A distinct delivery phase within a software project estimation."""
 
-    name: Annotated[str, Field(min_length=1, description="Phase title or identifier.")]
-    duration_weeks: Annotated[int, Field(ge=1, le=52, description="Phase duration in weeks.")]
-    cost_eur: Annotated[int, Field(ge=0, description="Estimated monetary cost for the phase in EUR.")]
-    summary: Annotated[str, Field(min_length=10, description="Concise scope and deliverable narrative for this phase.")]
+    name: str = Field(
+        min_length=1,
+        description="Phase title or identifier.",
+    )
+    duration_weeks: int = Field(
+        ge=1,
+        le=52,
+        description="Phase duration in weeks.",
+    )
+    cost_eur: int = Field(
+        ge=0,
+        description="Estimated monetary cost for the phase in EUR.",
+    )
+    summary: str = Field(
+        min_length=10,
+        description="Concise scope and deliverable narrative for this phase.",
+    )
 
 
 class EstimationResult(BaseModel):
@@ -111,26 +137,23 @@ class EstimationResult(BaseModel):
         ...,
         description="Concise synthesis of project scope, risks, and architectural assumptions.",
     )
-    confidence_pct: Annotated[
-        int,
-        Field(
-            ge=0,
-            le=100,
-            description="Confidence percentage score (0-100) reflecting transcript clarity and requirements completeness.",
-        ),
-    ]
+    confidence_pct: int = Field(
+        ge=0,
+        le=100,
+        description="Confidence percentage score (0-100) reflecting transcript clarity and requirements completeness.",
+    )
     phases: list[Phase] = Field(
         ...,
         description="Sequential project implementation phases composing the delivery schedule.",
     )
-    total_duration_weeks: Annotated[
-        int,
-        Field(ge=0, description="Overall project duration in elapsed weeks, matching the sum of phases."),
-    ]
-    total_cost_eur: Annotated[
-        int,
-        Field(ge=0, description="Total project expenditure in EUR, matching the exact sum of phase costs."),
-    ]
+    total_duration_weeks: int = Field(
+        ge=0,
+        description="Overall project duration in elapsed weeks, matching the sum of phases.",
+    )
+    total_cost_eur: int = Field(
+        ge=0,
+        description="Total project expenditure in EUR, matching the exact sum of phase costs.",
+    )
 
     @model_validator(mode="after")
     def phases_sum_matches_total(self) -> Self:
@@ -173,3 +196,22 @@ class EstimationResponse(BaseModel):
         description="Calculated execution cost in USD reported by the routing engine.",
     )
     usage: TokenUsage
+
+    @classmethod
+    def from_service_result(cls, result: dict[str, Any]) -> Self:
+        """
+        Construct an EstimationResponse from an EstimationService result dictionary.
+
+        :param result: Normalized estimation result dictionary returned by EstimationService.
+
+        :return: Validated EstimationResponse instance.
+        """
+        return cls(
+            result=result["result"],
+            cached=bool(result["cache_hit"]),
+            prompt_version=result["prompt_version"],
+            model=result["model"],
+            provider=result["provider"],
+            cost_usd=result.get("cost_usd"),
+            usage=result["usage"],
+        )

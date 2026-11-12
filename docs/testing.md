@@ -2,7 +2,7 @@
 
 ## Overview
 
-[`pyproject.toml`](../pyproject.toml) configures pytest for `aie-estimator` (`testpaths = ["tests"]`, `pythonpath = [".", "src"]`). Test modules mirror the source tree under [`tests/`](../tests/).
+[`pyproject.toml`](../pyproject.toml) configures pytest for `aie-estimator` (`testpaths = ["tests"]`, `pythonpath = [".", "src"]`). Test modules mirror the source tree under [`tests/`](../tests/), complemented by end-to-end conversational scenario modules under [`tests/integration/`](../tests/integration/) (`test_session_metadata_chaining.py`, `test_session_pdf_attachment.py`, and `test_session_sliding_window.py`).
 
 Core shared fixtures are defined in [`tests/conftest.py`](../tests/conftest.py):
 - `app`: Instantiates the FastAPI application via `create_app()` and clears dependency overrides on teardown.

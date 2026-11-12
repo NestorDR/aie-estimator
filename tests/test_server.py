@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 # --- App modules ---
+from aie_estimator.attachments.extractor import AttachmentExtractionError, UnsupportedAttachmentError
 from aie_estimator.model_catalog import get_supported_models
 from aie_estimator.server import Server, create_app
 from aie_estimator.services.exceptions import LLMProviderError
@@ -181,3 +182,68 @@ def test_server_session_not_found_exception_handler(client: TestClient) -> None:
     response = client.get("/api/v1/sessions/missing-id")
     assert response.status_code == 404
     assert response.json() == {"detail": "Session not found"}
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_status", "expected_reason", "expected_filename"),
+    [
+        (
+            UnsupportedAttachmentError("image.png", "Unsupported attachment extension '.png'"),
+            415,
+            "unsupported_attachment",
+            "image.png",
+        ),
+        (
+            AttachmentExtractionError("broken.pdf", "Failed to extract text from broken.pdf"),
+            422,
+            "attachment_extraction_failed",
+            "broken.pdf",
+        ),
+    ],
+    ids=["unsupported_attachment_415", "attachment_extraction_error_422"],
+)
+def test_server_attachment_exception_handlers(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    error: AttachmentExtractionError,
+    expected_status: int,
+    expected_reason: str,
+    expected_filename: str,
+) -> None:
+    """
+    GIVEN an UnsupportedAttachmentError or AttachmentExtractionError raised during request handling
+    WHEN the exception reaches Server's centralized handlers
+    THEN HTTP 415 or 422 is returned with structured reason, filename, and message details.
+
+    :param client: Shared TestClient fixture.
+    :param monkeypatch: Pytest monkeypatch fixture.
+    :param error: Domain attachment exception raised.
+    :param expected_status: Expected HTTP status code (415 or 422).
+    :param expected_reason: Expected detail.reason string.
+    :param expected_filename: Expected detail.filename string.
+    """
+
+    async def mock_failing_generation(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise error
+
+    monkeypatch.setattr(
+        "aie_estimator.services.estimations_service.EstimationService.generate_estimation",
+        mock_failing_generation,
+    )
+
+    response = client.post(
+        "/api/v1/estimate",
+        json={
+            "description": "Valid length project description for attachment exception handler verification.",
+            "project_type": "web_saas",
+            "detail_level": "medium",
+            "output_format": "phases_table",
+        },
+    )
+
+    assert response.status_code == expected_status
+    detail = response.json()["detail"]
+    assert detail["reason"] == expected_reason
+    assert detail["filename"] == expected_filename
+    assert error.message in detail["message"]
+

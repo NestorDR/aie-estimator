@@ -1,7 +1,6 @@
 # src/aie_estimator/attachments/extractor.py
 
 # --- Python Standard Library ---
-from collections.abc import Iterable
 import io
 from pathlib import PurePosixPath, PureWindowsPath
 import re
@@ -70,11 +69,11 @@ def _extension(filename: str) -> str:
     return PurePosixPath(filename.replace("\\", "/")).suffix.lower()
 
 
-def _normalize_extensions(extensions: Iterable[str]) -> frozenset[str]:
+def _normalize_extensions(extensions: list[str]) -> frozenset[str]:
     """
     Normalize configured attachment extensions to lowercase dotted suffixes.
 
-    :param extensions: Collection of extension strings.
+    :param extensions: List of extension strings.
 
     :return: Normalized frozenset of lowercase dotted suffixes.
     """
@@ -197,7 +196,7 @@ def extract_text(
     content: bytes,
     max_chars: int | None = None,
     max_bytes: int | None = None,
-    supported_extensions: Iterable[str] | None = None,
+    supported_extensions: list[str] | None = None,
 ) -> str:
     """
     Extract and budget-bound plain text from an uploaded attachment.
@@ -279,7 +278,7 @@ def enrich_transcript(
     characters, and escapes embedded ``</attachment>`` or ``</attachments>`` closing tags.
 
     :param transcript: Base user transcript for the estimation turn.
-    :param attachments: Sequence of ``(filename, extracted_text)`` pairs.
+    :param attachments: List of ``(filename, extracted_text)`` pairs.
     :param max_attachments: Optional per-turn attachment count override; defaults to ``Settings.max_attachments_per_turn``.
     :param max_total_chars: Optional cumulative attachment character budget; defaults to ``Settings.max_total_attachment_chars``.
 

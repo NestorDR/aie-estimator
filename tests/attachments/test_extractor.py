@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, patch
 
 # --- Third Party Libraries ---
 from docx import Document
-from pypdf import PdfWriter
 import pytest
 
 # --- App modules ---
@@ -17,48 +16,7 @@ from aie_estimator.attachments.extractor import (
     extract_text,
     validate_attachment_count,
 )
-
-
-def _build_pdf_bytes(text: str | None = None) -> bytes:
-    """
-    Build a minimal valid in-memory PDF payload with optional selectable text.
-
-    :param text: Optional ASCII text to embed on the first page; None creates a blank page.
-
-    :return: Raw PDF bytes.
-    """
-    if text is None:
-        writer = PdfWriter()
-        writer.add_blank_page(width=200, height=200)
-        buffer = io.BytesIO()
-        writer.write(buffer)
-        return buffer.getvalue()
-
-    escaped = text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
-    stream = f"BT /F1 12 Tf 72 720 Td ({escaped}) Tj ET".encode("ascii")
-    objects = [
-        b"1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n",
-        b"2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n",
-        (
-            b"3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
-            b"/Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> endobj\n"
-        ),
-        f"4 0 obj << /Length {len(stream)} >> stream\n".encode("ascii") + stream + b"\nendstream endobj\n",
-        b"5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n",
-    ]
-
-    output = bytearray(b"%PDF-1.4\n")
-    offsets: list[int] = [0]
-    for obj in objects:
-        offsets.append(len(output))
-        output.extend(obj)
-
-    xref_pos = len(output)
-    output.extend(f"xref\n0 {len(offsets)}\n0000000000 65535 f \n".encode("ascii"))
-    for offset in offsets[1:]:
-        output.extend(f"{offset:010d} 00000 n \n".encode("ascii"))
-    output.extend(f"trailer << /Size {len(offsets)} /Root 1 0 R >>\nstartxref\n{xref_pos}\n%%EOF\n".encode("ascii"))
-    return bytes(output)
+from tests.conftest import build_pdf_bytes as _build_pdf_bytes
 
 
 def _build_docx_bytes(
@@ -317,4 +275,3 @@ def test_enrich_transcript_enforces_total_char_budget_and_count() -> None:
             max_attachments=1,
             max_total_chars=500,
         )
-

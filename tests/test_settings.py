@@ -177,7 +177,7 @@ def test_configure_logging_captures_callsite_parameters(capsys: pytest.CaptureFi
         ("max_attachment_bytes", 5_242_880),
         ("max_attachment_chars", 12_000),
         ("max_total_attachment_chars", 30_000),
-        ("supported_attachment_extensions", (".pdf", ".docx", ".txt", ".md")),
+        ("supported_attachment_extensions", [".pdf", ".docx", ".txt", ".md"]),
         ("enable_metadata_extraction", True),
         ("metadata_extractor_model", "reasoner-fast"),
     ],
@@ -243,7 +243,7 @@ def test_settings_default_values(attr_name: str, expected_default: Any) -> None:
         ("MAX_ATTACHMENT_BYTES", "1048576", "max_attachment_bytes", 1_048_576),
         ("MAX_ATTACHMENT_CHARS", "8000", "max_attachment_chars", 8000),
         ("MAX_TOTAL_ATTACHMENT_CHARS", "20000", "max_total_attachment_chars", 20_000),
-        ("SUPPORTED_ATTACHMENT_EXTENSIONS", '[".pdf",".md"]', "supported_attachment_extensions", (".pdf", ".md")),
+        ("SUPPORTED_ATTACHMENT_EXTENSIONS", '[".pdf",".md"]', "supported_attachment_extensions", [".pdf", ".md"]),
         # Metadata extraction
         ("ENABLE_METADATA_EXTRACTION", "false", "enable_metadata_extraction", False),
         ("METADATA_EXTRACTOR_MODEL", "gpt-6-luna", "metadata_extractor_model", "gpt-6-luna"),

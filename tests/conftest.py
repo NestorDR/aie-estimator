@@ -2,6 +2,7 @@
 
 # --- Python Standard Library ---
 from collections.abc import Callable, Generator
+import io
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -10,6 +11,7 @@ from anthropic import AsyncAnthropic
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from openai import AsyncOpenAI
+from pypdf import PdfWriter
 import pytest
 
 # --- App modules ---
@@ -209,18 +211,61 @@ def make_estimation_result() -> Callable[..., dict[str, Any]]:
             "result": result_payload,
             "estimation": body,
             "text": body,
+            "prompt_version": "v1",
+            "cache_hit": False,
             "model": DEFAULT_GPT_LLM,
             "provider": "openai",
             "finish_reason": "stop",
             "usage": {"input_tokens": 100, "output_tokens": 50, "total_tokens": 150},
             "preprocessing": "none",
-            "extracted_requirements": None,
             "latency_ms": 250,
             "cost_usd": None,
             **overrides,
         }
 
     return _factory
+
+
+def build_pdf_bytes(text: str | None = None) -> bytes:
+    """
+    Build a minimal valid in-memory PDF payload with optional selectable ASCII text.
+
+    :param text: Optional ASCII text to embed on the first page; None creates a blank page.
+
+    :return: Raw PDF bytes.
+    """
+    if text is None:
+        writer = PdfWriter()
+        writer.add_blank_page(width=200, height=200)
+        buffer = io.BytesIO()
+        writer.write(buffer)
+        return buffer.getvalue()
+
+    escaped = text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+    stream = f"BT /F1 12 Tf 72 720 Td ({escaped}) Tj ET".encode("ascii")
+    objects = [
+        b"1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n",
+        b"2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n",
+        (
+            b"3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+            b"/Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> endobj\n"
+        ),
+        f"4 0 obj << /Length {len(stream)} >> stream\n".encode("ascii") + stream + b"\nendstream endobj\n",
+        b"5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n",
+    ]
+
+    output = bytearray(b"%PDF-1.4\n")
+    offsets: list[int] = [0]
+    for obj in objects:
+        offsets.append(len(output))
+        output.extend(obj)
+
+    xref_pos = len(output)
+    output.extend(f"xref\n0 {len(offsets)}\n0000000000 65535 f \n".encode("ascii"))
+    for offset in offsets[1:]:
+        output.extend(f"{offset:010d} 00000 n \n".encode("ascii"))
+    output.extend(f"trailer << /Size {len(offsets)} /Root 1 0 R >>\nstartxref\n{xref_pos}\n%%EOF\n".encode("ascii"))
+    return bytes(output)
 
 
 @pytest.fixture

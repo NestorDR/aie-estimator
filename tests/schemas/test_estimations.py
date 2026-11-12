@@ -385,3 +385,19 @@ def test_estimation_response_serialization() -> None:
     assert data["provider"] == "openai"
     assert data["cost_usd"] == 0.0012
     assert data["usage"]["total_tokens"] == 150
+
+    from_service = EstimationResponse.from_service_result(
+        {
+            "result": result,
+            "cache_hit": True,
+            "prompt_version": "v2",
+            "model": DEFAULT_GPT_LLM,
+            "provider": "openai",
+            "cost_usd": 0.0012,
+            "usage": {"input_tokens": 100, "output_tokens": 50, "total_tokens": 150},
+        }
+    )
+    assert from_service.cached is True
+    assert from_service.prompt_version == "v2"
+    assert from_service.result.total_cost_eur == 20000
+
