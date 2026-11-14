@@ -14,7 +14,7 @@ from aie_estimator.attachments.extractor import (
     extract_text,
     validate_attachment_count,
 )
-from aie_estimator.guardrails.input import check_attachment_input, check_input
+from aie_estimator.guardrails.input import sanitize_attachment_input, sanitize_input
 from aie_estimator.guardrails.output import enforce_scope_response
 from aie_estimator.prompts.loader import (
     render_conversational_prompt,
@@ -86,7 +86,7 @@ class EstimationService:
             raise ValueError("request.description must be provided.")
 
         # Input guardrails — raises InputGuardrailViolation on rejection.
-        await check_input(request.description, openai_client=self.moderation_client)
+        await sanitize_input(request.description, openai_client=self.moderation_client)
 
         # Options and prompt version resolution.
         if opts is None:
@@ -205,20 +205,22 @@ class EstimationService:
         if not transcript or not transcript.strip():
             raise ValueError("transcript must be provided.")
 
+        # Sanitize transcript and attachments
         raw_attachments = attachments or []
         validate_attachment_count(len(raw_attachments))
-        await check_input(transcript, openai_client=self.moderation_client)
+        await sanitize_input(transcript, openai_client=self.moderation_client)
 
         extracted_pairs: list[tuple[str, str]] = []
         for filename, content in raw_attachments:
             extracted_text = extract_text(filename=filename, content=content)
-            sanitized_text = await check_attachment_input(
+            sanitized_text = await sanitize_attachment_input(
                 extracted_text,
                 openai_client=self.moderation_client,
             )
             if sanitized_text:
                 extracted_pairs.append((filename, sanitized_text))
 
+        # Enrich transcript with attachment text
         enriched_transcript = enrich_transcript(
             transcript=transcript,
             attachments=extracted_pairs,
@@ -228,6 +230,7 @@ class EstimationService:
         version = resolve_prompt_version(get_settings().conversational_prompt_version)
         t0 = time.perf_counter()
 
+        # Render conversational prompt
         system_prompt, user_prompt = render_conversational_prompt(
             description=enriched_transcript,
             project_type=project_type,
@@ -237,6 +240,7 @@ class EstimationService:
             version=version,
         )
 
+        # Build turns history from session history
         turns = [*session.history.to_messages(), {"role": "user", "content": user_prompt}]
         log.info(
             "estimation_session_started",

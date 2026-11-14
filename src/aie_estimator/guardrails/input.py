@@ -134,7 +134,7 @@ def get_moderation_client() -> AsyncOpenAI | None:
     return AsyncOpenAI(api_key=api_key)
 
 
-async def check_input(
+async def sanitize_input(
     description: str,
     *,
     openai_client: AsyncOpenAI | None = None,
@@ -153,7 +153,7 @@ async def check_input(
     _check_pii(description)
 
 
-async def check_attachment_input(
+async def sanitize_attachment_input(
     text: str,
     *,
     openai_client: AsyncOpenAI | None = None,
