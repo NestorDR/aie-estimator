@@ -58,6 +58,11 @@ Always apply good software engineering practices: **KISS, YAGNI, DRY, SOLID, ACI
 ## 5. Developer Workflows and CLI Commands
 - **Forbidden Commands**: 
   - Never execute `.cmd` or `.ps1` scripts inside the `auto/` directory. These are reserved for manual developer execution.
+  - Never install, add, upgrade, or remove libraries (e.g. `uv add`, `uv remove`, `uv pip install`, `pip install`) on your own. Stop and ask the user to approve the installation. In the request, give the following:
+    - The package name and the version constraint, if one is needed.
+    - The reason the dependency is required.
+    - The exact command for the user to run, using `uv` through RTK (e.g. `rtk uv add <package>` for runtime dependencies or `rtk uv add --dev <package>` for development dependencies).
+    - Wait for the user's confirmation that the installation is done before continuing.
 - **Context & Tool Optimization**:
   - **Think in Code**: During exploratory tasks (such as `/opsx-explore`), do not read multiple files into context sequentially. Prefer writing and executing targeted scripts via `ctx_execute` to parse files locally and output only distilled summaries. On Windows, reconfigure stdout (`sys.stdout.reconfigure(encoding="utf-8")`) in Python inspection scripts that print file contents to avoid `cp1252` `UnicodeEncodeError`.
   - **Terminal Output**: Adhere to the RTK guidelines for CLI commands to keep context usage minimal during test and build runs. On Windows, always invoke linters and tools via `uv run` (e.g. `rtk uv run ruff check`, `rtk uv run pytest`) to ensure binaries installed in virtual environments are resolved correctly.

@@ -78,7 +78,7 @@ def resolve_tier(
     Precedence:
     1. ``caller_tier`` from trusted ``CallerContext`` (``"caller_context"``).
     2. ``override`` from explicit request parameter (``"explicit_override"``).
-    3. Ordered rule predicates over ``transcript`` and ``metadata``.
+    3. Ordered rule predicates over ``transcript`` and ``metadata`` using regular expressions.
     4. Default fallback to ``Tier.PM`` (``"default"``).
 
     :param transcript: Current project description or turn transcript.
@@ -88,14 +88,18 @@ def resolve_tier(
 
     :return: Tuple of ``(resolved_tier, rule_name)``.
     """
+
+    # Explicit caller context takes precedence over any heuristic rules.
     if caller_tier is not None:
         log.info("tier_resolved", tier=caller_tier.value, rule="caller_context")
         return caller_tier, "caller_context"
 
+    # Explicit override takes precedence over remaining heuristic rules.
     if override is not None:
         log.info("tier_resolved", tier=override.value, rule="explicit_override")
         return override, "explicit_override"
 
+    # Resolve tier using heuristic rules over the transcript and metadata.
     resolved_metadata = metadata or ProjectMetadata()
     checks = (
         ("nda_detected", Tier.EXECUTIVE, _has_nda(transcript, resolved_metadata)),
@@ -108,5 +112,6 @@ def resolve_tier(
             log.info("tier_resolved", tier=tier.value, rule=rule_name)
             return tier, rule_name
 
+    # Default fallback to PM tier if no other rules matched.
     log.info("tier_resolved", tier=Tier.PM.value, rule="default")
     return Tier.PM, "default"
