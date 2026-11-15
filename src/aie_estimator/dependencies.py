@@ -5,7 +5,7 @@ from functools import lru_cache
 from typing import Final
 
 # --- Third Party Libraries ---
-from fastapi import Depends
+from fastapi import Depends, Header, HTTPException, status
 from openai import AsyncOpenAI
 import structlog
 
@@ -19,6 +19,7 @@ from aie_estimator.services.cache import (
 )
 from aie_estimator.services.estimations_service import EstimationService
 from aie_estimator.sessions.store import SessionStore
+from aie_estimator.sessions.tier_resolver import Tier
 from aie_estimator.settings import Settings, get_settings as _get_settings
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
@@ -96,3 +97,28 @@ def get_session_store() -> SessionStore:
         max_turns=settings.session_max_turns,
         ttl_seconds=settings.session_ttl_seconds,
     )
+
+
+def get_caller_tier(
+    x_user_tier: str | None = Header(default=None),
+) -> Tier | None:
+    """
+    Extract optional trusted stakeholder tier from the ``X-User-Tier`` HTTP header.
+
+    :param x_user_tier: Optional ``X-User-Tier`` header value (``developer``, ``pm``, ``executive``).
+
+    :return: Parsed ``Tier`` enum or ``None`` if omitted.
+    :raises HTTPException: HTTP 400 if ``X-User-Tier`` is provided with an unknown tier value.
+    """
+    if x_user_tier is None:
+        return None
+
+    normalized = x_user_tier.strip().lower()
+    try:
+        return Tier(normalized)
+    except ValueError as exc:
+        log.warning("tier_header_invalid", raw_tier=x_user_tier[:64])
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown tier '{x_user_tier}'. Expected one of: developer, pm, executive.",
+        ) from exc

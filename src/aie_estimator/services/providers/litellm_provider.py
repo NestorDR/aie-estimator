@@ -15,7 +15,7 @@ import yaml
 
 # --- App modules ---
 from aie_estimator.model_catalog import get_model_catalog
-from aie_estimator.schemas.estimations import EstimationResult
+from aie_estimator.schemas.estimations import PmEstimation
 from aie_estimator.services.exceptions import LLMProviderError, unwrap_exception
 from aie_estimator.services.providers.formatting import build_chat_messages, format_provider_response
 from aie_estimator.services.providers.generation_options import GenerationOptions
@@ -108,7 +108,7 @@ async def call_litellm_router(
     *,
     messages: list[dict[str, str]] | None = None,
     temperature: float | None = None,
-    response_model: type[BaseModel] = EstimationResult,
+    response_model: type[BaseModel] = PmEstimation,
 ) -> dict[str, Any]:
     """
     Send an asynchronous structured-output request through the LiteLLM Router with cost extraction and error handling.

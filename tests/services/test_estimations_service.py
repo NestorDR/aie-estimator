@@ -14,15 +14,17 @@ from aie_estimator.guardrails.input import InputGuardrailViolation
 from aie_estimator.schemas.estimations import (
     DetailLevel,
     EstimationRequest,
-    EstimationResult,
     OutputFormat,
+    PmEstimation,
     ProjectType,
+    TeamComposition,
 )
 from aie_estimator.services.estimations_service import EstimationService
 from aie_estimator.services.exceptions import LLMProviderError
 from aie_estimator.services.providers import GenerationOptions
 from aie_estimator.sessions.metadata_extractor import MetadataExtractionOutcome
 from aie_estimator.sessions.models import MetadataExtractionResult, ProjectMetadata, Session
+from aie_estimator.sessions.tier_resolver import Tier
 from aie_estimator.utils.model_constants import (
     DEFAULT_FAST_PROFILE,
     DEFAULT_GPT_LLM,
@@ -116,10 +118,10 @@ async def test_generate_estimation_cache_hit_bypasses_provider(
     mock_call_llm = AsyncMock()
     monkeypatch.setattr("aie_estimator.services.estimations_service.call_llm", mock_call_llm)
 
-    with patch("aie_estimator.services.estimations_service.render_estimation_prompt") as mock_render:
+    with patch("aie_estimator.services.estimations_service.render_tier_estimation_prompt") as mock_render:
         result = await service.generate_estimation(sample_estimation_request)
 
-        assert isinstance(result["result"], EstimationResult)
+        assert isinstance(result["result"], PmEstimation)
         assert result["result"].total_cost_eur == 20000
         assert result["cache_hit"] is True
         mock_call_llm.assert_not_called()
@@ -157,7 +159,7 @@ async def test_generate_estimation_cache_miss_calls_provider_and_stores(
     opts = GenerationOptions(engine="litellm", model=DEFAULT_FAST_PROFILE)
     result = await estimation_service.generate_estimation(sample_estimation_request, opts=opts)
 
-    assert isinstance(result["result"], EstimationResult)
+    assert isinstance(result["result"], PmEstimation)
     assert result["provider"] == "litellm"
     assert result["cache_hit"] is False
     assert mock_call_llm.await_count == 1
@@ -261,7 +263,7 @@ async def test_generate_estimation_emits_lifecycle_telemetry_events(
     opts = GenerationOptions(engine=engine, model=model)
     result = await estimation_service.generate_estimation(sample_estimation_request, opts=opts)
 
-    assert isinstance(result["result"], EstimationResult)
+    assert isinstance(result["result"], PmEstimation)
 
     started_call = next(
         (call for call in mock_log.info.call_args_list if call.args and call.args[0] == "estimation_generation_started"),
@@ -283,8 +285,9 @@ async def test_generate_estimation_emits_lifecycle_telemetry_events(
     assert isinstance(completed_call.kwargs["latency_ms"], int)
     assert completed_call.kwargs["cost_usd"] == 0.0042
     assert completed_call.kwargs["confidence_pct"] == 85
-    assert completed_call.kwargs["total_cost_eur"] == 20000
-    assert completed_call.kwargs["phases"] == 2
+    assert completed_call.kwargs["tier"] == "pm"
+    assert completed_call.kwargs["tier_rule"] == "default"
+    assert completed_call.kwargs["schema"] == "PmEstimation"
     assert "usage" in completed_call.kwargs
 
 
@@ -335,12 +338,13 @@ async def test_generate_estimation_applies_output_filter_before_cache_store(
     :param estimation_service: Injected EstimationService fixture.
     """
     # Create an unmarked low-confidence result bypassing strict __init__ via model_construct
-    unmarked_low_conf_result = EstimationResult.model_construct(
+    unmarked_low_conf_result = PmEstimation.model_construct(
         summary="This project description does not contain sufficient technical details to estimate.",
         confidence_pct=25,
         phases=[
             make_estimation_result()["result"]["phases"][0],
         ],
+        team_composition=TeamComposition(developers=1, designers=0),
         total_duration_weeks=2,
         total_cost_eur=5000,
     )
@@ -357,7 +361,7 @@ async def test_generate_estimation_applies_output_filter_before_cache_store(
 
     result = await estimation_service.generate_estimation(sample_estimation_request)
 
-    assert isinstance(result["result"], EstimationResult)
+    assert isinstance(result["result"], PmEstimation)
     assert result["result"].summary.startswith("Out of scope:")
     assert result["result"].confidence_pct == 25
     assert result["result"].total_cost_eur == 0
@@ -393,21 +397,26 @@ async def test_generate_estimation_semantic_cache_hit_bypasses_provider(
     :param estimation_service: Injected EstimationService fixture.
     """
     sample_payload = make_estimation_result()
-    semantic_result = EstimationResult.model_validate(sample_payload["result"])
+    semantic_result = PmEstimation.model_validate(sample_payload["result"])
 
     mock_semantic_cache.lookup = AsyncMock(return_value=semantic_result)
 
     mock_call_llm = AsyncMock()
     monkeypatch.setattr("aie_estimator.services.estimations_service.call_llm", mock_call_llm)
 
-    with patch("aie_estimator.services.estimations_service.render_estimation_prompt") as mock_render:
+    with patch("aie_estimator.services.estimations_service.render_tier_estimation_prompt") as mock_render:
         result = await estimation_service.generate_estimation(
             request=sample_estimation_request,
         )
 
         assert result["cache_hit"] is True
         assert result["result"] == semantic_result
-        mock_semantic_cache.lookup.assert_awaited_once_with(sample_estimation_request, "v1")
+        mock_semantic_cache.lookup.assert_awaited_once_with(
+            sample_estimation_request,
+            "v3",
+            tier=Tier.PM,
+            response_model=PmEstimation,
+        )
         mock_call_llm.assert_not_called()
         mock_default_cache.set.assert_not_called()
         mock_render.assert_not_called()
@@ -447,8 +456,9 @@ async def test_generate_estimation_cache_miss_dual_writes_to_exact_and_semantic_
     mock_semantic_cache.store.assert_awaited_once()
     store_args = mock_semantic_cache.store.call_args[0]
     assert store_args[0] == sample_estimation_request
-    assert isinstance(store_args[1], EstimationResult)
-    assert store_args[2] == "v1"
+    assert isinstance(store_args[1], PmEstimation)
+    assert store_args[2] == "v3"
+    assert mock_semantic_cache.store.call_args.kwargs["tier"] is Tier.PM
 
 
 @pytest.mark.anyio
@@ -622,7 +632,7 @@ async def test_generate_session_estimation_bypasses_caches_and_appends_turn(
     )
 
     assert result["cache_hit"] is False
-    assert result["prompt_version"] == "v2"
+    assert result["prompt_version"] == "v3"
     mock_default_cache.get.assert_not_called()
     mock_default_cache.set.assert_not_called()
     mock_semantic_cache.lookup.assert_not_called()
@@ -644,7 +654,7 @@ async def test_generate_session_estimation_bypasses_caches_and_appends_turn(
     assert session.history.messages[2].role == "user"
     assert session.history.messages[2].content == "Add SEPA instant payouts"
     assert session.history.messages[3].role == "assistant"
-    persisted = EstimationResult.model_validate_json(session.history.messages[3].content)
+    persisted = PmEstimation.model_validate_json(session.history.messages[3].content)
     assert persisted.total_cost_eur == result["result"].total_cost_eur
 
 
@@ -708,10 +718,11 @@ async def test_generate_session_estimation_enforces_scope_filter_before_history_
     :param monkeypatch: Pytest monkeypatch fixture.
     """
     session = Session()
-    unmarked_low_conf = EstimationResult.model_construct(
+    unmarked_low_conf = PmEstimation.model_construct(
         summary="Vague request without technical requirements.",
         confidence_pct=20,
         phases=[make_estimation_result()["result"]["phases"][0]],
+        team_composition=TeamComposition(developers=1, designers=0),
         total_duration_weeks=2,
         total_cost_eur=5000,
     )
@@ -733,7 +744,7 @@ async def test_generate_session_estimation_enforces_scope_filter_before_history_
 
     assert result["result"].summary.startswith("Out of scope:")
     assert result["result"].total_cost_eur == 0
-    persisted = EstimationResult.model_validate_json(session.history.messages[1].content)
+    persisted = PmEstimation.model_validate_json(session.history.messages[1].content)
     assert persisted.summary.startswith("Out of scope:")
     assert persisted.total_cost_eur == 0
 
@@ -817,6 +828,7 @@ async def test_generate_session_estimation_evolves_metadata_and_rolls_up_telemet
         project_type=ProjectType.WEB_SAAS,
         detail_level=DetailLevel.MEDIUM,
         output_format=OutputFormat.PHASES_TABLE,
+        tier_override=Tier.PM,
     )
     assert session.metadata.mentioned_technologies == ["Rails", "PostgreSQL", "Redis"]
     assert session.metadata.explicit_constraints == ["SOC 2 Type II"]

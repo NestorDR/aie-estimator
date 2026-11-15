@@ -4,10 +4,12 @@
 from unittest.mock import MagicMock, patch
 
 # --- Third Party Libraries ---
+from fastapi import HTTPException
 import pytest
 
 # --- App modules ---
 from aie_estimator.dependencies import (
+    get_caller_tier,
     get_estimation_service,
     get_exact_cache,
     get_semantic_cache,
@@ -20,6 +22,7 @@ from aie_estimator.services.cache import (
 )
 from aie_estimator.services.estimations_service import EstimationService
 from aie_estimator.sessions.store import SessionStore
+from aie_estimator.sessions.tier_resolver import Tier
 from aie_estimator.settings import Settings
 
 
@@ -138,3 +141,39 @@ def test_get_session_store_returns_singleton_with_settings(monkeypatch: pytest.M
     assert store_1 is store_2
     assert store_1.max_turns == 8
     assert store_1.ttl_seconds == 1200
+
+
+@pytest.mark.parametrize(
+    ("raw_tier", "expected_tier"),
+    [
+        (None, None),
+        ("developer", Tier.DEVELOPER),
+        ("PM", Tier.PM),
+        (" executive ", Tier.EXECUTIVE),
+    ],
+)
+def test_get_caller_tier_valid(
+    raw_tier: str | None,
+    expected_tier: Tier | None,
+) -> None:
+    """
+    GIVEN valid or omitted X-User-Tier headers
+    WHEN get_caller_tier is called
+    THEN it returns the normalized Tier or None.
+    """
+    tier = get_caller_tier(x_user_tier=raw_tier)
+
+    assert tier is expected_tier
+
+
+def test_get_caller_tier_rejects_invalid_tier() -> None:
+    """
+    GIVEN an unknown X-User-Tier header value
+    WHEN get_caller_tier is called
+    THEN it raises HTTPException with status 400.
+    """
+    with pytest.raises(HTTPException) as exc_info:
+        get_caller_tier(x_user_tier="admin")
+
+    assert exc_info.value.status_code == 400
+    assert "Unknown tier" in str(exc_info.value.detail)

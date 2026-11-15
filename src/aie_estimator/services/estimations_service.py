@@ -17,14 +17,14 @@ from aie_estimator.attachments.extractor import (
 from aie_estimator.guardrails.input import sanitize_attachment_input, sanitize_input
 from aie_estimator.guardrails.output import enforce_scope_response
 from aie_estimator.prompts.loader import (
-    render_conversational_prompt,
-    render_estimation_prompt,
+    render_tier_estimation_prompt,
     resolve_prompt_version,
 )
+from aie_estimator.prompts.tier_config import TIER_CONFIG
 from aie_estimator.schemas.estimations import (
+    BaseTierEstimation,
     DetailLevel,
     EstimationRequest,
-    EstimationResult,
     OutputFormat,
     ProjectType,
 )
@@ -33,6 +33,7 @@ from aie_estimator.services.exceptions import LLMProviderError
 from aie_estimator.services.providers import GenerationOptions, call_llm
 from aie_estimator.sessions.metadata_extractor import update_metadata
 from aie_estimator.sessions.models import Session
+from aie_estimator.sessions.tier_resolver import Tier, resolve_tier
 from aie_estimator.settings import get_settings
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
@@ -67,17 +68,19 @@ class EstimationService:
         self,
         request: EstimationRequest,
         opts: GenerationOptions | None = None,
+        caller_tier: Tier | None = None,
     ) -> dict[str, Any]:
         """
-        Coordinate the end-to-end software project estimation workflow using multirole prompts.
+        Coordinate the end-to-end software project estimation workflow using tier-adaptive prompts.
 
         Evaluates Tier 1 exact-match hash cache and Tier 2 semantic vector cache before
         rendering prompt templates and dispatching to LLM providers.
 
         :param request: Validated EstimationRequest containing project description and preferences.
         :param opts: Optional generation options controlling model selection, engine, and token limits.
+        :param caller_tier: Optional trusted stakeholder tier propagated from HTTP headers.
 
-        :return: Response dictionary containing validated EstimationResult, model metadata, token usage, latency, prompt_version, and cache hit indicator.
+        :return: Response dictionary containing validated tier result, tier metadata, model metadata, token usage, latency, prompt_version, and cache hit indicator.
         :raises InputGuardrailViolation: If input guardrails reject the prompt.
         :raises LLMProviderError: If any LLM provider invocation encounters an error.
         :raises ValueError: If request or request.description is empty.
@@ -88,11 +91,17 @@ class EstimationService:
         # Input guardrails — raises InputGuardrailViolation on rejection.
         await sanitize_input(request.description, openai_client=self.moderation_client)
 
-        # Options and prompt version resolution.
+        # Options, prompt version, and stakeholder tier resolution.
         if opts is None:
             opts = GenerationOptions(model=request.model, engine=request.engine)
 
         version = resolve_prompt_version(get_settings().active_prompt_version)
+        tier, tier_rule = resolve_tier(
+            transcript=request.description,
+            caller_tier=caller_tier,
+            override=request.tier,
+        )
+        tier_config = TIER_CONFIG[tier]
         t0 = time.perf_counter()
 
         model = opts.effective_model
@@ -105,6 +114,7 @@ class EstimationService:
                 request=request,
                 prompt_version=version,
                 opts=opts,
+                tier=tier,
             )
 
             cached_result = await self.exact_cache.get(exact_cache_key)
@@ -112,19 +122,28 @@ class EstimationService:
                 cached_result["latency_ms"] = int((time.perf_counter() - t0) * 1000)
                 cached_result["cache_hit"] = True
                 cached_result["prompt_version"] = version
+                cached_result["tier"] = tier
+                cached_result["tier_rule"] = tier_rule
                 if isinstance(cached_result.get("result"), dict):
-                    cached_result["result"] = EstimationResult.model_validate(cached_result["result"])
-                log.info("estimation_cache_hit", kind="exact", model=model, latency_ms=cached_result["latency_ms"])
+                    cached_result["result"] = tier_config.schema.model_validate(cached_result["result"])
+                log.info("estimation_cache_hit", kind="exact", tier=tier.value, model=model, latency_ms=cached_result["latency_ms"])
                 return cached_result
 
         # Tier 2: Semantic vector cache lookup (evaluated on exact-match miss).
         if self.semantic_cache is not None:
-            semantic_hit = await self.semantic_cache.lookup(request, version)
+            semantic_hit = await self.semantic_cache.lookup(
+                request,
+                version,
+                tier=tier,
+                response_model=tier_config.schema,
+            )
             if semantic_hit is not None:
                 latency_ms = int((time.perf_counter() - t0) * 1000)
-                log.info("estimation_cache_hit", kind="semantic", model=model, latency_ms=latency_ms)
+                log.info("estimation_cache_hit", kind="semantic", tier=tier.value, model=model, latency_ms=latency_ms)
                 return {
                     "result": semantic_hit,
+                    "tier": tier,
+                    "tier_rule": tier_rule,
                     "cache_hit": True,
                     "prompt_version": version,
                     "model": model,
@@ -141,12 +160,22 @@ class EstimationService:
                 }
 
         # Lazy prompt template rendering (executed only on cache miss before LLM call).
-        system_prompt, user_prompt = render_estimation_prompt(request, version=version)
+        system_prompt, user_prompt = render_tier_estimation_prompt(
+            description=request.description,
+            project_type=request.project_type,
+            detail_level=request.detail_level,
+            output_format=request.output_format,
+            tier=tier,
+            version=version,
+        )
 
         result, structured_result = await self._dispatch_and_normalize(
             system_prompt=system_prompt,
             opts=opts,
             version=version,
+            tier=tier,
+            tier_rule=tier_rule,
+            response_model=tier_config.schema,
             t0=t0,
             user_prompt=user_prompt,
         )
@@ -154,13 +183,14 @@ class EstimationService:
         # Dual-write: cache validated payload in both Tier 1 exact-match and Tier 2 semantic caches.
         cache_payload = {
             **result,
+            "tier": tier.value,
             "result": structured_result.model_dump(mode="json"),
         }
         if self.exact_cache is not None and exact_cache_key is not None:
             await self.exact_cache.set(exact_cache_key, cache_payload)
 
         if self.semantic_cache is not None:
-            await self.semantic_cache.store(request, structured_result, version)
+            await self.semantic_cache.store(request, structured_result, version, tier=tier)
 
         # Return estimation response payload.
         return result
@@ -175,6 +205,8 @@ class EstimationService:
         output_format: OutputFormat,
         attachments: list[tuple[str, bytes]] | None = None,
         opts: GenerationOptions | None = None,
+        caller_tier: Tier | None = None,
+        tier_override: Tier | None = None,
     ) -> dict[str, Any]:
         """
         Execute a multi-turn conversational estimation bypassing Tier 1 and Tier 2 caches.
@@ -228,14 +260,22 @@ class EstimationService:
 
         opts = opts or GenerationOptions()
         version = resolve_prompt_version(get_settings().conversational_prompt_version)
+        tier, tier_rule = resolve_tier(
+            transcript=enriched_transcript,
+            metadata=session.metadata,
+            caller_tier=caller_tier,
+            override=tier_override,
+        )
+        tier_config = TIER_CONFIG[tier]
         t0 = time.perf_counter()
 
-        # Render conversational prompt
-        system_prompt, user_prompt = render_conversational_prompt(
+        # Render tier-adaptive conversational prompt
+        system_prompt, user_prompt = render_tier_estimation_prompt(
             description=enriched_transcript,
             project_type=project_type,
             detail_level=detail_level,
             output_format=output_format,
+            tier=tier,
             metadata=session.metadata,
             version=version,
         )
@@ -245,6 +285,8 @@ class EstimationService:
         log.info(
             "estimation_session_started",
             session_id=session.session_id,
+            tier=tier.value,
+            tier_rule=tier_rule,
             history_messages=len(session.history.messages),
             metadata_is_empty=session.metadata.is_empty(),
             transcript_chars=len(transcript),
@@ -256,11 +298,15 @@ class EstimationService:
             system_prompt=system_prompt,
             opts=opts,
             version=version,
+            tier=tier,
+            tier_rule=tier_rule,
+            response_model=tier_config.schema,
             t0=t0,
             user_prompt=None,
             messages=turns,
         )
 
+        session.last_tier = tier.value
         session.history.append(user=enriched_transcript, assistant=structured_result.model_dump_json())
 
         metadata_outcome = await update_metadata(
@@ -284,21 +330,27 @@ class EstimationService:
         system_prompt: str,
         opts: GenerationOptions,
         version: str,
+        tier: Tier,
+        tier_rule: str,
+        response_model: type[BaseTierEstimation],
         t0: float,
         user_prompt: str | None = None,
         messages: list[dict[str, str]] | None = None,
-    ) -> tuple[dict[str, Any], EstimationResult]:
+    ) -> tuple[dict[str, Any], BaseTierEstimation]:
         """
         Dispatch single-turn or multi-turn prompt payload to ``call_llm`` and normalize response telemetry.
 
         :param system_prompt: Rendered system instructions string.
         :param opts: Generation options for provider execution.
         :param version: Resolved prompt version identifier.
+        :param tier: Resolved stakeholder tier.
+        :param tier_rule: Tier resolution rule identifier.
+        :param response_model: Target Pydantic schema class for structured output.
         :param t0: Request start timestamp from ``time.perf_counter()``.
-        :param user_prompt: Single-turn user prompt string, or ``None`` when ``messages`` is provided.
+        :param user_prompt: Single-turn user prompt string, or ``None`` when ``messages`` is passed.
         :param messages: Multi-turn sequence of non-system turn dictionaries.
 
-        :return: Tuple of normalized response dictionary and scope-filtered ``EstimationResult``.
+        :return: Tuple of normalized response dictionary and scope-filtered tier estimate.
         :raises LLMProviderError: If provider execution fails or returns an invalid result type.
         """
         model = opts.effective_model
@@ -309,6 +361,8 @@ class EstimationService:
             engine=opts.engine,
             provider=provider,
             model=model,
+            tier=tier.value,
+            tier_rule=tier_rule,
             max_tokens=opts.max_tokens,
             reasoning_effort=opts.reasoning_effort,
         )
@@ -319,6 +373,7 @@ class EstimationService:
                 system_prompt=system_prompt,
                 opts=opts,
                 messages=messages,
+                response_model=response_model,
             )
 
         except LLMProviderError:
@@ -329,6 +384,7 @@ class EstimationService:
                 "estimation_generation_failed",
                 provider=provider,
                 model=model,
+                tier=tier.value,
                 error=repr(e),
                 engine=opts.engine,
             )
@@ -336,8 +392,8 @@ class EstimationService:
 
         raw_result = result.get("result")
         if isinstance(raw_result, dict):
-            structured_result = EstimationResult.model_validate(raw_result)
-        elif isinstance(raw_result, EstimationResult):
+            structured_result = response_model.model_validate(raw_result)
+        elif isinstance(raw_result, response_model):
             structured_result = raw_result
         else:
             raise LLMProviderError(f"Unexpected result type from provider: {type(raw_result)}")
@@ -345,6 +401,8 @@ class EstimationService:
         # Output guardrail (filter): normalises low-confidence answers.
         structured_result = enforce_scope_response(structured_result)
         result["result"] = structured_result
+        result["tier"] = tier
+        result["tier_rule"] = tier_rule
         result["prompt_version"] = version
 
         result.setdefault("cost_usd", None)
@@ -358,12 +416,13 @@ class EstimationService:
             engine=opts.engine,
             provider=provider,
             model=model,
+            tier=tier.value,
+            tier_rule=tier_rule,
+            schema=response_model.__name__,
             latency_ms=result["latency_ms"],
             cost_usd=result.get("cost_usd"),
             usage=result.get("usage"),
             confidence_pct=structured_result.confidence_pct,
-            total_cost_eur=structured_result.total_cost_eur,
-            phases=len(structured_result.phases),
         )
 
         return result, structured_result

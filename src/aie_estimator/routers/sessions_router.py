@@ -10,7 +10,7 @@ import structlog
 
 # --- App modules ---
 from aie_estimator.attachments.extractor import validate_attachment_count
-from aie_estimator.dependencies import get_estimation_service, get_session_store
+from aie_estimator.dependencies import get_caller_tier, get_estimation_service, get_session_store
 from aie_estimator.schemas.estimations import (
     DetailLevel,
     EstimationResponse,
@@ -23,6 +23,7 @@ from aie_estimator.schemas.sessions import CreateSessionResponse, SessionInfoRes
 from aie_estimator.services.estimations_service import EstimationService
 from aie_estimator.services.providers import GenerationOptions
 from aie_estimator.sessions.store import SessionStore
+from aie_estimator.sessions.tier_resolver import Tier
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
 
@@ -79,6 +80,7 @@ async def get_session(
         message_count=len(session.history.messages),
         max_turns=session.history.max_turns,
         metadata=session.metadata,
+        last_tier=Tier(session.last_tier) if session.last_tier else None,
         created_at=session.created_at,
         last_accessed_at=session.last_accessed_at,
     )
@@ -102,7 +104,9 @@ async def estimate_in_session(
     output_format: Annotated[OutputFormat, Form()],
     model: Annotated[str | None, Form(), AfterValidator(validate_catalog_model)] = None,
     engine: Annotated[ProviderMode, Form()] = "litellm",
+    tier: Annotated[Tier | None, Form()] = None,
     attachments: Annotated[list[UploadFile] | None, File()] = None,
+    caller_tier: Tier | None = Depends(get_caller_tier),
     store: SessionStore = Depends(get_session_store),
     service: EstimationService = Depends(get_estimation_service),
 ) -> EstimationResponse:
@@ -116,11 +120,13 @@ async def estimate_in_session(
     :param output_format: Presentation format for the response text.
     :param model: Optional catalog model or profile alias override.
     :param engine: Provider dispatch mode (``"litellm"`` or ``"native"``).
+    :param tier: Optional explicit stakeholder tier override.
     :param attachments: Optional list of uploaded specification files (up to 5 files).
+    :param caller_tier: Optional trusted stakeholder tier parsed from HTTP headers.
     :param store: Injected ``SessionStore`` singleton.
     :param service: Injected ``EstimationService`` orchestrator.
 
-    :return: Generated estimation text with prompt version and telemetry metadata.
+    :return: Generated estimation payload with tier, prompt version, and telemetry metadata.
     """
     session = store.get_or_404(session_id)
 
@@ -134,6 +140,8 @@ async def estimate_in_session(
         session_id=session_id,
         model=model,
         engine=engine,
+        tier_override=tier.value if tier else None,
+        caller_tier=caller_tier.value if caller_tier else None,
         attachment_count=len(raw_attachments),
     )
 
@@ -145,6 +153,8 @@ async def estimate_in_session(
         output_format=output_format,
         opts=GenerationOptions(model=model, engine=engine),
         attachments=raw_attachments,
+        caller_tier=caller_tier,
+        tier_override=tier,
     )
 
     return EstimationResponse.from_service_result(result)

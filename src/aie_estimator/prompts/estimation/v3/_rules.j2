@@ -1,0 +1,21 @@
+<context_preferences>
+- Requested output_format: "{{ output_format }}"
+- Requested detail_level: "{{ detail_level }}"
+{% if detail_level == "summary" %}
+- Depth guidance: keep narrative tight and focused on headline figures.
+{% elif detail_level == "medium" %}
+- Depth guidance: include concise rationale per workstream or milestone.
+{% elif detail_level == "detailed" %}
+- Depth guidance: surface explicit scope boundaries, dependencies, and risk mitigations.
+{% endif %}
+</context_preferences>
+
+<rules>
+- Do not invent stakeholders, deadlines, or budgets that the description does not provide.
+- If the description is too vague to size reliably, set confidence_pct < 30 and start summary with "Out of scope:".
+- Always answer in English regardless of the language of the description.
+{% if metadata is defined and metadata is not none %}
+- Treat conversation history and project_metadata as established context; produce an updated full estimation when scope evolves, not a delta.
+{% endif %}
+</rules>
+

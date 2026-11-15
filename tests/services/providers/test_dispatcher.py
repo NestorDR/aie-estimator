@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 # --- App modules ---
-from aie_estimator.schemas.estimations import EstimationResult
+from aie_estimator.schemas.estimations import PmEstimation
 from aie_estimator.services.exceptions import LLMProviderError
 from aie_estimator.services.providers.dispatcher import call_llm
 from aie_estimator.services.providers.generation_options import GenerationOptions
@@ -31,6 +31,7 @@ DUMMY_RESULT: Final[dict[str, Any]] = {
             "summary": "Technical architecture specification and UX wireframes.",
         },
     ],
+    "team_composition": {"developers": 2, "designers": 1},
     "total_duration_weeks": 2,
     "total_cost_eur": 5000,
 }
@@ -62,20 +63,20 @@ async def test_call_llm_routes_to_engine_target(
     :param model: Target model identifier.
     :param target: Name of the provider function expected to be called.
     """
-    mock_call = AsyncMock(return_value={"result": EstimationResult(**DUMMY_RESULT), "model": model})
+    mock_call = AsyncMock(return_value={"result": PmEstimation(**DUMMY_RESULT), "model": model})
     monkeypatch.setattr(f"aie_estimator.services.providers.dispatcher.{target}", mock_call)
 
     opts = GenerationOptions(engine=engine, model=model)
     result = await call_llm(user_prompt="User input", system_prompt="System instructions", opts=opts)
 
-    assert isinstance(result["result"], EstimationResult)
+    assert isinstance(result["result"], PmEstimation)
     assert result["result"].total_cost_eur == 5000
     mock_call.assert_awaited_once_with(
         user_prompt="User input",
         system_prompt="System instructions",
         opts=opts,
         messages=None,
-        response_model=EstimationResult,
+        response_model=PmEstimation,
     )
 
 
@@ -132,7 +133,7 @@ async def test_call_llm_multi_turn_forwards_messages(
     :param model: Target model identifier.
     :param target: Name of the provider function expected to be called.
     """
-    mock_call = AsyncMock(return_value={"result": EstimationResult(**DUMMY_RESULT), "model": model})
+    mock_call = AsyncMock(return_value={"result": PmEstimation(**DUMMY_RESULT), "model": model})
     monkeypatch.setattr(f"aie_estimator.services.providers.dispatcher.{target}", mock_call)
 
     turns = [
@@ -148,13 +149,13 @@ async def test_call_llm_multi_turn_forwards_messages(
         messages=turns,
     )
 
-    assert isinstance(result["result"], EstimationResult)
+    assert isinstance(result["result"], PmEstimation)
     mock_call.assert_awaited_once_with(
         user_prompt=None,
         system_prompt="Conversational system",
         opts=opts,
         messages=turns,
-        response_model=EstimationResult,
+        response_model=PmEstimation,
     )
 
 

@@ -18,7 +18,8 @@ from redis.exceptions import RedisError, ResponseError
 import structlog
 
 # --- App modules ---
-from aie_estimator.schemas.estimations import EstimationRequest, EstimationResult
+from aie_estimator.schemas.estimations import BaseTierEstimation, EstimationRequest, PmEstimation
+from aie_estimator.sessions.tier_resolver import Tier
 from aie_estimator.settings import get_settings
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
@@ -169,19 +170,23 @@ class EstimationSemanticCache:
             log.warning("semantic_index_create_failed", index_name=self.index_name, error=repr(e))
 
     @staticmethod
-    def bucket_for(request: EstimationRequest, prompt_version: str) -> str:
+    def bucket_for(request: EstimationRequest, prompt_version: str, tier: Tier = Tier.PM) -> str:
         """
-        Construct the deterministic bucket key from request options and prompt version.
+        Construct the deterministic bucket key from request options, tier, and prompt version.
 
         Preferred underscore-separated format to avoid RediSearch tag parsing issues with special characters.
         Inside a RediSearch tag filter ({...}), punctuation such as `:` `.` `-` and spaces must be backslash-escaped.
 
         :param request: Validated user estimation request.
-        :param prompt_version: Active prompt template version (e.g. 'v1').
+        :param prompt_version: Active prompt template version (e.g. 'v3').
+        :param tier: Resolved stakeholder tier.
 
         :return: Underscore-separated bucket identifier string.
         """
-        return f"{prompt_version}_{request.project_type.value}_{request.detail_level.value}_{request.output_format.value}"
+        return (
+            f"{prompt_version}_{tier.value}_{request.project_type.value}_"
+            f"{request.detail_level.value}_{request.output_format.value}"
+        )
 
     async def get_embedding(self, text: str) -> list[float] | None:
         """
@@ -205,7 +210,10 @@ class EstimationSemanticCache:
             self,
             request: EstimationRequest,
             prompt_version: str,
-    ) -> EstimationResult | None:
+            *,
+            tier: Tier = Tier.PM,
+            response_model: type[BaseTierEstimation] = PmEstimation,
+    ) -> BaseTierEstimation | None:
         """
         Search the semantic vector cache for a previously cached response matching the request intent.
 
@@ -226,7 +234,7 @@ class EstimationSemanticCache:
         :param prompt_version: Active prompt version for bucket partitioning.
         :return: Deserialized `EstimationResult` on hit, or None on miss or error.
         """
-        bucket = self.bucket_for(request, prompt_version)
+        bucket = self.bucket_for(request, prompt_version, tier=tier)
         embedding = await self.get_embedding(request.description)
         if embedding is None:
             return None
@@ -284,13 +292,15 @@ class EstimationSemanticCache:
             bucket=bucket,
             similarity=round(similarity, 4),
         )
-        return EstimationResult.model_validate_json(top_hit.result_json)
+        return response_model.model_validate_json(top_hit.result_json)
 
     async def store(
             self,
             request: EstimationRequest,
-            result: EstimationResult,
+            result: BaseTierEstimation,
             prompt_version: str,
+            *,
+            tier: Tier = Tier.PM,
     ) -> None:
         """
         Persist a validated estimation result, its bucket tag, and its vector embedding in Redis.
@@ -298,8 +308,9 @@ class EstimationSemanticCache:
         :param request: Input estimation request.
         :param result: Validated estimation domain model.
         :param prompt_version: Prompt version used during generation.
+        :param tier: Resolved stakeholder tier.
         """
-        bucket = self.bucket_for(request, prompt_version)
+        bucket = self.bucket_for(request, prompt_version, tier=tier)
         embedding = await self.get_embedding(request.description)
         if embedding is None:
             return

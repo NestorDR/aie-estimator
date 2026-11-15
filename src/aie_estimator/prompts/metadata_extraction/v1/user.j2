@@ -17,13 +17,18 @@
 
 <latest_assistant_estimation>
 summary: {{ result.summary }}
+confidence_pct: {{ result.confidence_pct }}
+{% if result.phases is defined %}
 total_duration_weeks: {{ result.total_duration_weeks }}
 total_cost_eur: {{ result.total_cost_eur }}
-confidence_pct: {{ result.confidence_pct }}
 phases:
 {% for phase in result.phases %}
 - {{ phase.name }} ({{ phase.duration_weeks }}w, {{ phase.cost_eur }} EUR): {{ phase.summary }}
 {% endfor %}
+{% else %}
+details:
+{{ result.model_dump_json(indent=2) }}
+{% endif %}
 </latest_assistant_estimation>
 
 Extract the incremental `MetadataExtractionResult` delta for this turn. Return null or [] for unchanged or ungrounded fields.

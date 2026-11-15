@@ -7,17 +7,16 @@ import pytest
 # --- App modules ---
 from aie_estimator.prompts.loader import (
     _ENV,
-    list_prompt_versions,
     render_metadata_extraction_prompt,
-    validate_prompt_version,
+    resolve_prompt_version,
 )
-from aie_estimator.schemas.estimations import EstimationResult, Phase
+from aie_estimator.schemas.estimations import Phase, PmEstimation, TeamComposition
 from aie_estimator.sessions.models import ProjectMetadata
 
 
-def _sample_estimation_result() -> EstimationResult:
-    """Build a minimal valid EstimationResult for metadata extraction prompt tests."""
-    return EstimationResult(
+def _sample_estimation_result() -> PmEstimation:
+    """Build a minimal valid PmEstimation for metadata extraction prompt tests."""
+    return PmEstimation(
         summary="Web SaaS MVP delivery estimate.",
         confidence_pct=85,
         phases=[
@@ -28,21 +27,25 @@ def _sample_estimation_result() -> EstimationResult:
                 summary="Build backend API and frontend client.",
             ),
         ],
+        team_composition=TeamComposition(developers=2, designers=1),
         total_duration_weeks=4,
         total_cost_eur=10_000,
     )
 
 
-def test_list_and_validate_metadata_extraction_prompt_versions() -> None:
+def test_resolve_prompt_version_fallback_to_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     """
-    GIVEN the metadata_extraction prompts directory containing system.j2 and user.j2 without examples.j2
-    WHEN list_prompt_versions and validate_prompt_version run for metadata_extraction
-    THEN v1 is discovered and unknown versions raise ValueError.
+    GIVEN no explicit version requested or an unconfigured version override
+    WHEN resolve_prompt_version is called
+    THEN it resolves against get_settings().active_prompt_version and raises ValueError for unknown directories.
     """
-    assert list_prompt_versions("metadata_extraction") == ["v1"]
-    assert validate_prompt_version("v1", use_case="metadata_extraction") == "v1"
-    with pytest.raises(ValueError, match=r"Invalid prompt version"):
-        validate_prompt_version("v99", use_case="metadata_extraction")
+    assert resolve_prompt_version(None) == "v3"
+    assert resolve_prompt_version("") == "v3"
+    assert resolve_prompt_version("v1") == "v1"
+
+    monkeypatch.setenv("ACTIVE_PROMPT_VERSION", "invalid_v")
+    with pytest.raises(ValueError, match=r"Invalid prompt version 'invalid_v'"):
+        resolve_prompt_version()
 
 
 @pytest.mark.parametrize(

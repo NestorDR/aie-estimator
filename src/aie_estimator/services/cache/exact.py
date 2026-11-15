@@ -14,6 +14,7 @@ import structlog
 # --- App modules ---
 from aie_estimator.schemas.estimations import EstimationRequest
 from aie_estimator.services.providers.generation_options import GenerationOptions
+from aie_estimator.sessions.tier_resolver import Tier
 from aie_estimator.settings import get_settings
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
@@ -69,13 +70,15 @@ class EstimationExactCache:
         request: EstimationRequest,
         prompt_version: str,
         opts: GenerationOptions,
+        tier: Tier = Tier.PM,
     ) -> str:
         """
-        Generate a deterministic SHA-256 cache key from typed request and generation options.
+        Generate a deterministic SHA-256 cache key from typed request, tier, and generation options.
 
         :param request: Validated EstimationRequest domain object.
         :param prompt_version: Active prompt template version.
         :param opts: GenerationOptions controlling model, token limits, and engine.
+        :param tier: Resolved stakeholder tier.
 
         :return: Prefixed hexadecimal cache key string.
         """
@@ -90,6 +93,7 @@ class EstimationExactCache:
                 "project_type": request.project_type.value,
                 "prompt_version": prompt_version,
                 "reasoning_effort": opts.reasoning_effort,
+                "tier": tier.value,
             },
             sort_keys=True,
         )

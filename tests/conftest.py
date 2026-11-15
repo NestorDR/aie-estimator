@@ -203,15 +203,20 @@ def make_estimation_result() -> Callable[..., dict[str, Any]]:
                     "summary": "Frontend, backend services, database schema, and test automation.",
                 },
             ],
+            "milestones": [],
+            "team_composition": {"developers": 2, "designers": 1, "qa_engineers": 0, "tech_lead": True},
+            "blockers": [],
             "total_duration_weeks": 8,
             "total_cost_eur": 20000,
         }
         body = overrides.get("estimation") or overrides.get("text") or "Project Breakdown:\n- Backend: 40h\nTotal: 40h"
         return {
             "result": result_payload,
+            "tier": "pm",
+            "tier_rule": "default",
             "estimation": body,
             "text": body,
-            "prompt_version": "v1",
+            "prompt_version": "v3",
             "cache_hit": False,
             "model": DEFAULT_GPT_LLM,
             "provider": "openai",

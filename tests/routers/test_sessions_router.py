@@ -120,9 +120,9 @@ def test_estimate_in_session_multipart_with_attachment_returns_200(
     updated_meta = ProjectMetadata(project_name="MyProject", mentioned_technologies=["FastAPI", "PostgreSQL"])
 
     with (
-        patch("aie_estimator.services.estimations_service.check_input", new_callable=AsyncMock) as mock_check_input,
+        patch("aie_estimator.services.estimations_service.sanitize_input", new_callable=AsyncMock) as mock_check_input,
         patch(
-            "aie_estimator.services.estimations_service.check_attachment_input",
+            "aie_estimator.services.estimations_service.sanitize_attachment_input",
             new_callable=AsyncMock,
             side_effect=lambda text, **_kwargs: text,
         ) as mock_check_attachment,
@@ -147,7 +147,7 @@ def test_estimate_in_session_multipart_with_attachment_returns_200(
     body = response.json()
     assert body["result"]["total_duration_weeks"] == 8
     assert body["result"]["total_cost_eur"] == 20000
-    assert body["prompt_version"] == "v2"
+    assert body["prompt_version"] == "v3"
 
     mock_check_input.assert_awaited_once()
     assert mock_check_input.await_args.args[0] == _VALID_FORM_DATA["transcript"]
@@ -295,7 +295,7 @@ def test_estimate_in_session_llm_provider_error_returns_500(client: TestClient) 
     session = store.get_or_404(session_id)
 
     with (
-        patch("aie_estimator.services.estimations_service.check_input", new_callable=AsyncMock),
+        patch("aie_estimator.services.estimations_service.sanitize_input", new_callable=AsyncMock),
         patch(
             "aie_estimator.services.estimations_service.call_llm",
             new_callable=AsyncMock,

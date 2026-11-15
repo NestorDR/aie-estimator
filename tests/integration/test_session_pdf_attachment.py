@@ -47,6 +47,7 @@ async def test_pdf_attachment_enriches_prompt_and_influences_estimate(
             ],
             "total_duration_weeks": 9,
             "total_cost_eur": 27000,
+            "team_composition": {"developers": 2, "designers": 1, "qa_engineers": 0, "tech_lead": True},
         }
     )
 
@@ -80,6 +81,7 @@ async def test_pdf_attachment_enriches_prompt_and_influences_estimate(
                     "project_type": "data_pipeline",
                     "detail_level": "detailed",
                     "output_format": "phases_table",
+                    "tier": "pm",
                 },
                 files=[("attachments", ("myproject_spec.pdf", pdf_bytes, "application/pdf"))],
             )

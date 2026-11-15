@@ -13,7 +13,7 @@ import structlog
 
 # --- App modules ---
 from aie_estimator.model_catalog import get_model_catalog
-from aie_estimator.schemas.estimations import EstimationResult
+from aie_estimator.schemas.estimations import PmEstimation
 from aie_estimator.services.exceptions import LLMProviderError, unwrap_exception
 from aie_estimator.services.providers.formatting import (
     build_chat_messages,
@@ -64,7 +64,7 @@ async def call_openai(
     opts: GenerationOptions,
     *,
     messages: list[dict[str, str]] | None = None,
-    response_model: type[BaseModel] = EstimationResult,
+    response_model: type[BaseModel] = PmEstimation,
 ) -> dict[str, Any]:
     """
     Send a structured-output request to the OpenAI API with parameter recovery.
@@ -168,7 +168,7 @@ async def call_anthropic(
     opts: GenerationOptions,
     *,
     messages: list[dict[str, str]] | None = None,
-    response_model: type[BaseModel] = EstimationResult,
+    response_model: type[BaseModel] = PmEstimation,
 ) -> dict[str, Any]:
     """
     Send a structured-output request to the Anthropic Messages API with structured logging and async capability.

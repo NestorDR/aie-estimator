@@ -12,7 +12,7 @@ from pydantic import SecretStr
 import pytest
 
 # --- App modules ---
-from aie_estimator.schemas.estimations import EstimationResult
+from aie_estimator.schemas.estimations import PmEstimation
 from aie_estimator.services.exceptions import LLMProviderError
 from aie_estimator.services.providers.generation_options import GenerationOptions
 from aie_estimator.services.providers.native_providers import (
@@ -44,6 +44,7 @@ VALID_RESULT_DICT: Final[dict[str, Any]] = {
     ],
     "total_duration_weeks": 8,
     "total_cost_eur": 20000,
+    "team_composition": {"developers": 2, "designers": 1},
 }
 
 
@@ -167,7 +168,7 @@ async def test_call_openai_model_parameter_selection(
         opts=opts,
     )
 
-    assert isinstance(result["result"], EstimationResult)
+    assert isinstance(result["result"], PmEstimation)
     assert result["result"].total_cost_eur == 20000
     assert result["finish_reason"] == "stop"
     assert result["usage"]["total_tokens"] == 400
@@ -234,7 +235,7 @@ async def test_call_openai_temperature_bad_request_stripping(
         opts=opts,
     )
 
-    assert isinstance(result["result"], EstimationResult)
+    assert isinstance(result["result"], PmEstimation)
     assert mock_create.call_count == 2
     second_call_kwargs = mock_create.call_args_list[1].kwargs
     assert "temperature" not in second_call_kwargs
@@ -294,7 +295,7 @@ async def test_call_openai_converts_max_tokens_to_completion_tokens_on_bad_reque
         opts=opts,
     )
 
-    assert isinstance(result["result"], EstimationResult)
+    assert isinstance(result["result"], PmEstimation)
     assert mock_create.call_count == 2
     first_call_kwargs = mock_create.call_args_list[0].kwargs
     assert first_call_kwargs["max_tokens"] == 2500
@@ -385,7 +386,7 @@ async def test_call_anthropic_thinking_and_temperature_exclusivity(
 
     mock_tool = MagicMock()
     mock_tool.type = "tool_use"
-    mock_tool.name = "EstimationResult"
+    mock_tool.name = "PmEstimation"
     mock_tool.input = VALID_RESULT_DICT
     mock_resp.content = [mock_tool]
     mock_create.return_value = mock_resp
@@ -408,7 +409,7 @@ async def test_call_anthropic_thinking_and_temperature_exclusivity(
         opts=opts,
     )
 
-    assert isinstance(result["result"], EstimationResult)
+    assert isinstance(result["result"], PmEstimation)
     assert result["result"].total_cost_eur == 20000
     assert result["finish_reason"] == "end_turn"
     assert result["usage"]["total_tokens"] == 500
@@ -507,7 +508,7 @@ async def test_call_openai_multi_turn_prepends_system_prompt(
         messages=turns,
     )
 
-    assert isinstance(result["result"], EstimationResult)
+    assert isinstance(result["result"], PmEstimation)
     sent_messages = mock_create.call_args.kwargs["messages"]
     assert sent_messages[0]["role"] == "system"
     assert sent_messages[0]["content"].startswith("You are a conversational estimator.")
@@ -535,7 +536,7 @@ async def test_call_anthropic_multi_turn_keeps_system_top_level(
     mock_resp.usage.output_tokens = 90
     mock_tool = MagicMock()
     mock_tool.type = "tool_use"
-    mock_tool.name = "EstimationResult"
+    mock_tool.name = "PmEstimation"
     mock_tool.input = VALID_RESULT_DICT
     mock_resp.content = [mock_tool]
     mock_create.return_value = mock_resp
@@ -559,7 +560,7 @@ async def test_call_anthropic_multi_turn_keeps_system_top_level(
         messages=turns,
     )
 
-    assert isinstance(result["result"], EstimationResult)
+    assert isinstance(result["result"], PmEstimation)
     call_kwargs = mock_create.call_args.kwargs
     assert call_kwargs["system"] == "Anthropic conversational system prompt"
     assert call_kwargs["messages"] == turns

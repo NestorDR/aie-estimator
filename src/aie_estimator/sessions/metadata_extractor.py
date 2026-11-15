@@ -10,7 +10,10 @@ import structlog
 # --- App modules ---
 from aie_estimator.model_catalog import get_model_catalog
 from aie_estimator.prompts.loader import render_metadata_extraction_prompt
-from aie_estimator.schemas.estimations import EstimationResult, LOW_CONFIDENCE_THRESHOLD
+from aie_estimator.schemas.estimations import (
+    BaseTierEstimation,
+    LOW_CONFIDENCE_THRESHOLD,
+)
 from aie_estimator.services.providers import GenerationOptions, call_llm
 from aie_estimator.sessions.models import MetadataExtractionResult, ProjectMetadata
 from aie_estimator.settings import Settings, get_settings
@@ -107,7 +110,7 @@ async def update_metadata(
     *,
     previous: ProjectMetadata,
     transcript: str,
-    result: EstimationResult,
+    result: BaseTierEstimation,
     opts: GenerationOptions,
 ) -> MetadataExtractionOutcome:
     """

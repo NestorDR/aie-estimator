@@ -12,7 +12,7 @@ import litellm
 import pytest
 
 # --- App modules ---
-from aie_estimator.schemas.estimations import EstimationResult
+from aie_estimator.schemas.estimations import PmEstimation
 from aie_estimator.services.exceptions import LLMProviderError
 from aie_estimator.services.providers.generation_options import GenerationOptions
 from aie_estimator.services.providers.litellm_provider import call_litellm_router, get_litellm_router
@@ -38,6 +38,7 @@ VALID_RESULT_DICT: Final[dict[str, Any]] = {
     ],
     "total_duration_weeks": 8,
     "total_cost_eur": 20000,
+    "team_composition": {"developers": 2, "designers": 1},
 }
 
 
@@ -144,7 +145,7 @@ async def test_call_router_cost_extraction_and_response_structure(
     """
     GIVEN a mocked LiteLLM Router completion response containing hidden cost params and structured JSON
     WHEN call_litellm_router is executed
-    THEN structured EstimationResult, metadata, token counts, and cost_usd are extracted accurately.
+    THEN structured PmEstimation, metadata, token counts, and cost_usd are extracted accurately.
 
     :param mock_router_response: Router response builder fixture.
     """
@@ -161,7 +162,7 @@ async def test_call_router_cost_extraction_and_response_structure(
         opts=opts,
     )
 
-    assert isinstance(result["result"], EstimationResult)
+    assert isinstance(result["result"], PmEstimation)
     assert result["result"].total_cost_eur == 20000
     assert result["result"].confidence_pct == 85
     assert len(result["result"].phases) == 2
@@ -205,7 +206,7 @@ async def test_call_router_dispatches_reasoning_effort(
         opts=opts,
     )
 
-    assert isinstance(result["result"], EstimationResult)
+    assert isinstance(result["result"], PmEstimation)
     call_kwargs = mock_router.acompletion.call_args.kwargs
     assert call_kwargs.get("reasoning_effort") == reasoning_effort
 
@@ -270,7 +271,7 @@ async def test_call_router_multi_turn_prepends_system_prompt(
         messages=turns,
     )
 
-    assert isinstance(result["result"], EstimationResult)
+    assert isinstance(result["result"], PmEstimation)
     sent_messages = mock_router.acompletion.call_args.kwargs["messages"]
     assert sent_messages[0]["role"] == "system"
     assert sent_messages[0]["content"].startswith("Conversational estimator system prompt")

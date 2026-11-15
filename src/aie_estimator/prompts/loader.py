@@ -18,15 +18,18 @@ from typing import Any, Final
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 # --- App modules ---
-from aie_estimator.schemas.estimations import DetailLevel, EstimationRequest, EstimationResult, OutputFormat, ProjectType
+from aie_estimator.prompts.tier_config import TIER_CONFIG
+from aie_estimator.schemas.estimations import (
+    BaseTierEstimation,
+    DetailLevel,
+    OutputFormat,
+    ProjectType,
+)
 from aie_estimator.sessions.models import ProjectMetadata
+from aie_estimator.sessions.tier_resolver import Tier
 from aie_estimator.settings import get_settings
 
 _BASE_DIR: Final[Path] = Path(__file__).resolve().parent
-_DEFAULT_REQUIRED_PROMPT_FILES: Final[frozenset[str]] = frozenset({"system.j2", "user.j2"})
-_REQUIRED_FILES_BY_USE_CASE: Final[dict[str, frozenset[str]]] = {
-    "estimation": frozenset({"system.j2", "user.j2", "examples.j2"}),
-}
 
 _ENV: Final[Environment] = Environment(
     loader=FileSystemLoader(_BASE_DIR),
@@ -43,48 +46,6 @@ def _enum_value(value: object) -> str:
     return str(value.value) if hasattr(value, "value") else str(value)
 
 
-def list_prompt_versions(use_case: str = "estimation") -> list[str]:
-    """
-    Discover all complete, valid prompt template versions for a specific use case.
-
-    A version is considered valid and complete if its directory exists under
-    ``prompts/<use_case>/<version>`` and contains all required template files
-    configured for that use case.
-
-    :param use_case: The use case directory name (defaults to "estimation").
-
-    :return: A sorted list of valid prompt version identifiers (e.g., ["v1", "v2"]).
-    """
-    target_dir = _BASE_DIR / use_case
-    if not target_dir.is_dir():
-        return []
-
-    required_files = _REQUIRED_FILES_BY_USE_CASE.get(use_case, _DEFAULT_REQUIRED_PROMPT_FILES)
-    versions: list[str] = []
-    for entry in target_dir.iterdir():
-        if entry.is_dir() and required_files.issubset({f.name for f in entry.iterdir() if f.is_file()}):
-            versions.append(entry.name)
-
-    return sorted(versions)
-
-
-def validate_prompt_version(version: str, use_case: str = "estimation") -> str:
-    """
-    Validate that the specified prompt version exists and contains complete templates.
-
-    :param version: Prompt version identifier to validate.
-    :param use_case: The use case directory name (defaults to "estimation").
-
-    :return: The validated version string.
-    :raises ValueError: If the version is not found or is incomplete.
-    """
-    valid_versions = list_prompt_versions(use_case)
-    if version not in valid_versions:
-        supported = ", ".join(valid_versions) if valid_versions else "none"
-        raise ValueError(f"Invalid prompt version '{version}' for use case '{use_case}'. Supported: {supported}")
-    return version
-
-
 def resolve_prompt_version(
     version: str | None = None,
     use_case: str = "estimation",
@@ -95,108 +56,67 @@ def resolve_prompt_version(
     :param version: Optional explicit prompt version override.
     :param use_case: The use case directory name (defaults to "estimation").
 
-    :return: The resolved and validated prompt version identifier.
-    :raises ValueError: If the resolved version is not a valid prompt version.
+    :return: The resolved prompt version identifier.
+    :raises ValueError: If the resolved version directory does not exist.
     """
     target_version = version or get_settings().active_prompt_version
-    return validate_prompt_version(target_version, use_case)
+    if not (_BASE_DIR / use_case / target_version).is_dir():
+        raise ValueError(f"Invalid prompt version '{target_version}' for use case '{use_case}'.")
+    return target_version
 
 
-def _render_estimation_templates(
+def render_tier_estimation_prompt(
     *,
     description: str,
     project_type: ProjectType | str,
     detail_level: DetailLevel | str,
     output_format: OutputFormat | str,
-    version: str,
+    tier: Tier | str,
+    version: str | None = None,
     metadata: ProjectMetadata | None = None,
 ) -> tuple[str, str]:
-    """Render ``estimation/<version>/system.j2`` and ``user.j2`` from shared estimation inputs."""
+    """
+    Render tier-specific ``estimation/<version>/<tier>.j2`` and ``user.j2`` templates.
+
+    :param description: Project description or enriched conversational turn transcript.
+    :param project_type: Target project domain category.
+    :param detail_level: Desired breakdown depth.
+    :param output_format: Desired presentation layout.
+    :param tier: Resolved stakeholder ``Tier`` selecting the persona template.
+    :param version: Optional prompt template version override; defaults to ``active_prompt_version``.
+    :param metadata: Optional distilled session ``ProjectMetadata`` for conversational sessions.
+
+    :return: Tuple of ``(system_prompt, user_prompt)`` ready for LLM provider dispatch.
+    :raises ValueError: If the resolved prompt version or tier is invalid.
+    :raises jinja2.exceptions.TemplateNotFound: If templates for the requested version do not exist.
+    :raises jinja2.exceptions.UndefinedError: If required context parameters are missing during rendering.
+    """
+    resolved_version = resolve_prompt_version(version)
+    tier_config = TIER_CONFIG[tier]
     context: dict[str, Any] = {
         "description": description,
         "project_type": _enum_value(project_type),
         "detail_level": _enum_value(detail_level),
         "output_format": _enum_value(output_format),
-        "version": version,
+        "version": resolved_version,
+        "metadata": metadata,
     }
-    if metadata is not None:
-        context["metadata"] = metadata
-
-    system = _ENV.get_template(f"estimation/{version}/system.j2").render(**context)
-    user = _ENV.get_template(f"estimation/{version}/user.j2").render(**context)
+    system = _ENV.get_template(f"estimation/{resolved_version}/{tier_config.template}").render(**context)
+    user = _ENV.get_template(f"estimation/{resolved_version}/user.j2").render(**context)
     return system, user
-
-
-def render_estimation_prompt(
-    request: EstimationRequest,
-    version: str | None = None,
-) -> tuple[str, str]:
-    """
-    Render the system and user prompts for the software estimation domain.
-
-    :param request: Validated estimation request parameters.
-    :param version: Optional prompt template version identifier. Defaults to active_prompt_version from settings.
-
-    :return: A tuple of ``(system_prompt, user_prompt)`` ready for LLM provider dispatch.
-    :raises ValueError: If the requested or configured version is invalid or incomplete.
-    :raises jinja2.exceptions.TemplateNotFound: If templates for the requested version do not exist.
-    :raises jinja2.exceptions.UndefinedError: If required context parameters are missing during rendering.
-    """
-    return _render_estimation_templates(
-        description=request.description,
-        project_type=request.project_type,
-        detail_level=request.detail_level,
-        output_format=request.output_format,
-        version=resolve_prompt_version(version),
-    )
-
-
-def render_conversational_prompt(
-    *,
-    description: str,
-    project_type: ProjectType | str,
-    detail_level: DetailLevel | str,
-    output_format: OutputFormat | str,
-    metadata: ProjectMetadata,
-    version: str | None = None,
-) -> tuple[str, str]:
-    """
-    Render the conversational estimation system and user prompts with distilled project metadata.
-
-    :param description: Turn transcript (optionally enriched with extracted attachment text).
-    :param project_type: Target project domain category.
-    :param detail_level: Desired breakdown depth.
-    :param output_format: Desired presentation format.
-    :param metadata: Distilled session ``ProjectMetadata`` injected into ``<project_metadata>``.
-    :param version: Optional prompt template version override. Defaults to ``conversational_prompt_version``.
-
-    :return: A tuple of ``(system_prompt, user_prompt)`` ready for multi-turn provider dispatch.
-    :raises ValueError: If the requested or configured version is invalid or incomplete.
-    :raises jinja2.exceptions.TemplateNotFound: If templates for the requested version do not exist.
-    :raises jinja2.exceptions.UndefinedError: If required context parameters are missing during rendering.
-    """
-    resolved_version = resolve_prompt_version(version or get_settings().conversational_prompt_version)
-    return _render_estimation_templates(
-        description=description,
-        project_type=project_type,
-        detail_level=detail_level,
-        output_format=output_format,
-        version=resolved_version,
-        metadata=metadata,
-    )
 
 
 def render_metadata_extraction_prompt(
     *,
     transcript: str,
-    result: EstimationResult,
+    result: BaseTierEstimation,
     previous: ProjectMetadata,
 ) -> tuple[str, str]:
     """
     Render system and user prompts for post-turn ``ProjectMetadata`` delta extraction.
 
     :param transcript: Latest user turn transcript (optionally enriched with attachment text).
-    :param result: Validated ``EstimationResult`` produced for the latest turn.
+    :param result: Validated tier estimation result produced for the latest turn.
     :param previous: Current ``ProjectMetadata`` state prior to this turn's update.
 
     :return: A tuple of ``(system_prompt, user_prompt)`` ready for structured LLM extraction.

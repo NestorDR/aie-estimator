@@ -14,7 +14,7 @@ from redis.exceptions import ConnectionError as RedisConnectionError, ResponseEr
 from aie_estimator.schemas.estimations import (
     DetailLevel,
     EstimationRequest,
-    EstimationResult,
+    PmEstimation,
     OutputFormat,
     ProjectType,
 )
@@ -81,7 +81,7 @@ def test_bucket_for_construction(sample_request: EstimationRequest) -> None:
     THEN the formatted underscore-separated bucket tag string is produced.
     """
     bucket = EstimationSemanticCache.bucket_for(sample_request, prompt_version="v2")
-    assert bucket == "v2_mobile_app_medium_phases_table"
+    assert bucket == "v2_pm_mobile_app_medium_phases_table"
 
 
 @pytest.mark.anyio
@@ -169,10 +169,10 @@ async def test_semantic_cache_lookup_hit(
     """
     GIVEN a stored estimation with cosine distance 0.05 (similarity 0.95 >= threshold 0.92)
     WHEN lookup is invoked
-    THEN the cached EstimationResult is deserialized and returned.
+    THEN the cached PmEstimation is deserialized and returned.
     """
     sample_payload = make_estimation_result()
-    serialized_result = EstimationResult.model_validate(sample_payload["result"]).model_dump_json()
+    serialized_result = PmEstimation.model_validate(sample_payload["result"]).model_dump_json()
 
     mock_doc = MagicMock()
     mock_doc.vector_distance = "0.05"
@@ -195,7 +195,7 @@ async def test_semantic_cache_lookup_hit(
 
     result = await cache.lookup(sample_request, prompt_version="v1")
     assert result is not None
-    assert isinstance(result, EstimationResult)
+    assert isinstance(result, PmEstimation)
     assert result.total_cost_eur == sample_payload["result"]["total_cost_eur"]
     mock_ft.search.assert_called_once()
 
@@ -234,7 +234,7 @@ async def test_semantic_cache_lookup_miss_below_threshold(
     THEN the candidate is rejected as below_threshold and None is returned.
     """
     sample_payload = make_estimation_result()
-    serialized_result = EstimationResult.model_validate(sample_payload["result"]).model_dump_json()
+    serialized_result = PmEstimation.model_validate(sample_payload["result"]).model_dump_json()
 
     mock_doc = MagicMock()
     mock_doc.vector_distance = "0.15"  # sim = 0.85 < 0.92
@@ -270,7 +270,7 @@ async def test_semantic_cache_lookup_log_only_mode(
     THEN None is returned so the request proceeds to LLM generation.
     """
     sample_payload = make_estimation_result()
-    serialized_result = EstimationResult.model_validate(sample_payload["result"]).model_dump_json()
+    serialized_result = PmEstimation.model_validate(sample_payload["result"]).model_dump_json()
 
     mock_doc = MagicMock()
     mock_doc.vector_distance = "0.05"
@@ -345,12 +345,12 @@ async def test_semantic_cache_store_success(
     make_estimation_result: Callable[..., dict[str, Any]],
 ) -> None:
     """
-    GIVEN a validated EstimationResult and prompt version
+    GIVEN a validated PmEstimation and prompt version
     WHEN store is executed
     THEN redis.hset is called with bucket, result_json, and float32 binary embedding bytes.
     """
     sample_payload = make_estimation_result()
-    structured_result = EstimationResult.model_validate(sample_payload["result"])
+    structured_result = PmEstimation.model_validate(sample_payload["result"])
 
     mock_openai = AsyncMock()
     mock_openai.embeddings.create.return_value = MagicMock(data=[MagicMock(embedding=[0.03] * EMBEDDING_DIMENSIONS)])
@@ -364,7 +364,7 @@ async def test_semantic_cache_store_success(
     call_args = mock_redis.hset.call_args
     assert call_args.args[0].startswith("estimation:semantic:")
     mapping = call_args.kwargs["mapping"]
-    assert mapping["bucket"] == "v1_mobile_app_medium_phases_table"
+    assert mapping["bucket"] == "v1_pm_mobile_app_medium_phases_table"
     assert "result_json" in mapping
     assert isinstance(mapping["embedding"], bytes)
     assert len(mapping["embedding"]) == EMBEDDING_DIMENSIONS * 4
@@ -383,7 +383,7 @@ async def test_semantic_cache_store_embedding_failure_skips_write(
     THEN Redis hset is not called and the failure is handled gracefully.
     """
     sample_payload = make_estimation_result()
-    structured_result = EstimationResult.model_validate(sample_payload["result"])
+    structured_result = PmEstimation.model_validate(sample_payload["result"])
 
     mock_openai = AsyncMock()
     mock_openai.embeddings.create.side_effect = RuntimeError("Embedding model offline")
@@ -406,7 +406,7 @@ async def test_semantic_cache_store_redis_error_suppressed(
     THEN the exception is caught without raising.
     """
     sample_payload = make_estimation_result()
-    structured_result = EstimationResult.model_validate(sample_payload["result"])
+    structured_result = PmEstimation.model_validate(sample_payload["result"])
 
     mock_openai = AsyncMock()
     mock_openai.embeddings.create.return_value = MagicMock(data=[MagicMock(embedding=[0.03] * EMBEDDING_DIMENSIONS)])

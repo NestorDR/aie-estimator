@@ -8,7 +8,7 @@ from pydantic import BaseModel
 import structlog
 
 # --- App modules ---
-from aie_estimator.schemas.estimations import EstimationResult
+from aie_estimator.schemas.estimations import PmEstimation
 from aie_estimator.services.exceptions import LLMProviderError
 from aie_estimator.services.providers.generation_options import GenerationOptions
 from aie_estimator.services.providers.litellm_provider import call_litellm_router
@@ -23,7 +23,7 @@ async def call_llm(
     opts: GenerationOptions,
     *,
     messages: list[dict[str, str]] | None = None,
-    response_model: type[BaseModel] = EstimationResult,
+    response_model: type[BaseModel] = PmEstimation,
 ) -> dict[str, Any]:
     """
     Dispatch an LLM completion request to the configured execution engine and provider.

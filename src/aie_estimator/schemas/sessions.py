@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 # --- App modules ---
 from aie_estimator.sessions.models import ProjectMetadata
+from aie_estimator.sessions.tier_resolver import Tier
 
 
 class CreateSessionResponse(BaseModel):
@@ -23,6 +24,7 @@ class SessionInfoResponse(BaseModel):
     message_count: int
     max_turns: int
     metadata: ProjectMetadata
+    last_tier: Tier | None = None
     created_at: datetime
     last_accessed_at: datetime
 

@@ -1,0 +1,35 @@
+{% if metadata is defined and metadata is not none %}
+This is a CONVERSATIONAL session: the user may refine the scope, add new information, or upload supporting documents across multiple turns. Treat the established facts below as the source of truth unless the user explicitly revises them in the current turn.
+
+<project_metadata>
+{% if metadata.is_empty() %}
+(No project context yet — this is the first turn of the session.)
+{% else %}
+{% if metadata.project_name %}
+- Project name: {{ metadata.project_name }}
+{% endif %}
+{% if metadata.assumed_team_size %}
+- Assumed team size: {{ metadata.assumed_team_size }} full-time engineers
+{% endif %}
+{% if metadata.mentioned_technologies %}
+- Technologies mentioned: {{ metadata.mentioned_technologies | join(", ") }}
+{% endif %}
+{% if metadata.agreed_scope %}
+- Agreed scope: {{ metadata.agreed_scope }}
+{% endif %}
+{% if metadata.explicit_constraints %}
+- Explicit constraints:
+{% for constraint in metadata.explicit_constraints %}
+  - {{ constraint }}
+{% endfor %}
+{% endif %}
+{% if metadata.rejected_options %}
+- Rejected options (do not propose these again):
+{% for option in metadata.rejected_options %}
+  - {{ option }}
+{% endfor %}
+{% endif %}
+{% endif %}
+</project_metadata>
+{% endif %}
+

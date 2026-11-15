@@ -170,8 +170,8 @@ def test_configure_logging_captures_callsite_parameters(capsys: pytest.CaptureFi
         ("semantic_cache_ttl", 86400),
         ("redis_host", "localhost"),
         ("redis_port", 6379),
-        ("active_prompt_version", "v1"),
-        ("conversational_prompt_version", "v2"),
+        ("active_prompt_version", "v3"),
+        ("conversational_prompt_version", "v3"),
         ("enable_otel_tracing", False),
         ("max_attachments_per_turn", 5),
         ("max_attachment_bytes", 5_242_880),
@@ -384,7 +384,7 @@ def test_monkeypatch_environment_mutation_clears_get_settings_cache(
     :param monkeypatch: Pytest monkeypatch fixture.
     """
     initial_settings = get_settings()
-    assert initial_settings.active_prompt_version == "v1"
+    assert initial_settings.active_prompt_version == "v3"
 
     monkeypatch.setenv("ACTIVE_PROMPT_VERSION", "v2")
     updated_settings = get_settings()
@@ -393,7 +393,7 @@ def test_monkeypatch_environment_mutation_clears_get_settings_cache(
 
     monkeypatch.delenv("ACTIVE_PROMPT_VERSION", raising=False)
     reset_settings = get_settings()
-    assert reset_settings.active_prompt_version == "v1"
+    assert reset_settings.active_prompt_version == "v3"
     assert reset_settings is not updated_settings
 
 

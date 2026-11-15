@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 # --- App modules ---
-from aie_estimator.schemas.estimations import EstimationResult, Phase
+from aie_estimator.schemas.estimations import Phase, PmEstimation, TeamComposition
 from aie_estimator.services.exceptions import LLMProviderError
 from aie_estimator.services.providers import GenerationOptions
 from aie_estimator.sessions.metadata_extractor import (
@@ -22,20 +22,22 @@ from aie_estimator.settings import Environment, Settings
 from aie_estimator.utils.model_constants import DEFAULT_FAST_PROFILE, DEFAULT_GPT_LLM
 
 
-def _sample_estimation(*, confidence_pct: int = 85) -> EstimationResult:
-    """Build a valid EstimationResult for metadata extractor unit tests."""
+def _sample_estimation(*, confidence_pct: int = 85) -> PmEstimation:
+    """Build a valid PmEstimation for metadata extractor unit tests."""
     if confidence_pct < 30:
-        return EstimationResult(
+        return PmEstimation(
             summary="Out of scope: Cannot size unrelated request.",
             confidence_pct=confidence_pct,
             phases=[Phase(name="Not estimated", duration_weeks=1, cost_eur=0, summary="Insufficient project scope.")],
+            team_composition=TeamComposition(developers=0, designers=0),
             total_duration_weeks=1,
             total_cost_eur=0,
         )
-    return EstimationResult(
+    return PmEstimation(
         summary="MVP delivery estimate for Atlas portal.",
         confidence_pct=confidence_pct,
         phases=[Phase(name="Implementation", duration_weeks=4, cost_eur=10_000, summary="Core backend and UI.")],
+        team_composition=TeamComposition(developers=2, designers=1),
         total_duration_weeks=4,
         total_cost_eur=10_000,
     )

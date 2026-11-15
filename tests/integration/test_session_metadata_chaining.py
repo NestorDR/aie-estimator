@@ -92,6 +92,7 @@ async def test_two_turn_session_metadata_chaining_for_myproject(
                     "project_type": "web_saas",
                     "detail_level": "detailed",
                     "output_format": "phases_table",
+                    "tier": "pm",
                 },
             )
             assert resp_2.status_code == 200

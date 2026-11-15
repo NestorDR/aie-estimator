@@ -83,7 +83,9 @@ def test_create_estimation_valid_request_returns_200(
     assert data["result"]["confidence_pct"] == 85
     assert len(data["result"]["phases"]) == 2
     assert data["cached"] is False
-    assert data["prompt_version"] == "v1"
+    assert data["prompt_version"] == "v3"
+    assert data["tier"] == "pm"
+    assert data["tier_rule"] == "default"
     assert data["model"] == DEFAULT_GPT_LLM
     assert data["provider"] == "openai"
     assert data["cost_usd"] == 0.0025
