@@ -51,9 +51,10 @@ flowchart TD
 
 ```
 aie-estimator/
-├── auto/                               # Developer automation scripts (dev.cmd, stl.cmd, dc.cmd, test.cmd, lint.cmd, etc.)
+├── auto/                               # Developer automation scripts (dev.cmd, stl.cmd, dc.cmd, eval.cmd, test.cmd, lint.cmd, etc.)
 ├── docker/                             # Containerization and Compose configurations
 ├── docs/                               # Architecture and feature guides
+├── evals/                              # Golden Dataset and Family 1-3 LLM evaluation harness
 ├── src/
 │   └── aie_estimator/
 │       ├── __init__.py
@@ -167,6 +168,7 @@ Architecture and feature guides in [`docs/`](docs/):
 - [Dependency Injection & App Factory](docs/dependency-injection-and-app-factory.md): Application factory, composition root, and test dependency overrides.
 - [Estimations Service & Providers](docs/estimations-service.md): Orchestration, LiteLLM/native dispatch, Instructor extraction, and multi-layer retries.
 - [Guardrails & Semantic Validation](docs/guardrails.md): Input moderation/injection/PII checks and output low-confidence normalization.
+- [LLM Evaluation Harness](docs/llm-evaluation.md): Golden Dataset, Family 1-3 evaluators, and isolated CLI runner.
 - [Model Catalog](docs/model-catalog.md): Externalized model registry, logical profiles, and OpenAPI enrichment.
 - [Observability](docs/observability.md): Structlog event taxonomy, OpenTelemetry context injection, and Arize Phoenix tracing.
 - [Prompt Engine](docs/prompt-engine.md): Versioned Jinja2 templates and decoupled prompt/API versioning.
