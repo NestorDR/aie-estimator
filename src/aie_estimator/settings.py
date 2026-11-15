@@ -91,6 +91,10 @@ class Settings(BaseSettings):
     enable_metadata_extraction: bool = True
     metadata_extractor_model: str = DEFAULT_FAST_PROFILE
 
+    # Actor-Critic-Boss orchestration settings
+    acb_max_iterations: int = Field(default=2, ge=1, le=5)
+    acb_critic_model: str = DEFAULT_FAST_PROFILE
+
     # Configure env file handling
     model_config = SettingsConfigDict(
         env_file=f".env.{app_env.value}",

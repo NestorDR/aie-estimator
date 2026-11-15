@@ -145,6 +145,7 @@ Interactive documentation is available at `http://localhost:8000/docs` (Swagger 
 | `POST` | `/api/v1/sessions` | Creates a new conversational estimation session (`session_id`) |
 | `GET` | `/api/v1/sessions/{session_id}` | Inspects session turn counts, `ProjectMetadata`, and TTL timestamps |
 | `POST` | `/api/v1/sessions/{session_id}/estimate` | Executes a multi-turn `multipart/form-data` estimation with optional attachments |
+| `POST` | `/api/v1/sessions/{session_id}/estimate-acb` | Executes a bounded Actor-Critic-Boss conversational estimation returning `BossTrace` |
 
 See [API Schemas & Data Contracts](docs/api-schemas.md) and [Conversational Sessions](docs/conversational-sessions.md) for payload contracts, multipart examples, and error mappings.
 
@@ -162,6 +163,7 @@ See [API Schemas & Data Contracts](docs/api-schemas.md) and [Conversational Sess
 
 Architecture and feature guides in [`docs/`](docs/):
 
+- [Actor-Critic-Boss Role Composition](docs/actor-critic-boss.md): Bounded Actor generation, structured Critic auditing, and deterministic Boss governance.
 - [API Schemas & Data Contracts](docs/api-schemas.md): Request/response schemas, validators, and HTTP 400 guardrail contracts.
 - [Attachment Ingestion](docs/attachment-ingestion.md): Local `.pdf`/`.docx`/`.txt`/`.md` text extraction, budgets, and XML prompt-injection delimiting.
 - [Conversational Sessions](docs/conversational-sessions.md): In-memory session lifecycle, bounded sliding-window history, and `ProjectMetadata` merging.

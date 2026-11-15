@@ -19,6 +19,7 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 # --- App modules ---
 from aie_estimator.prompts.tier_config import TIER_CONFIG
+from aie_estimator.schemas.acb import CriticFeedback
 from aie_estimator.schemas.estimations import (
     BaseTierEstimation,
     DetailLevel,
@@ -74,6 +75,7 @@ def render_tier_estimation_prompt(
     tier: Tier | str,
     version: str | None = None,
     metadata: ProjectMetadata | None = None,
+    critic_feedback: CriticFeedback | None = None,
 ) -> tuple[str, str]:
     """
     Render tier-specific ``estimation/<version>/<tier>.j2`` and ``user.j2`` templates.
@@ -85,6 +87,7 @@ def render_tier_estimation_prompt(
     :param tier: Resolved stakeholder ``Tier`` selecting the persona template.
     :param version: Optional prompt template version override; defaults to ``active_prompt_version``.
     :param metadata: Optional distilled session ``ProjectMetadata`` for conversational sessions.
+    :param critic_feedback: Optional structured ``CriticFeedback`` for Actor revision passes.
 
     :return: Tuple of ``(system_prompt, user_prompt)`` ready for LLM provider dispatch.
     :raises ValueError: If the resolved prompt version or tier is invalid.
@@ -100,6 +103,7 @@ def render_tier_estimation_prompt(
         "output_format": _enum_value(output_format),
         "version": resolved_version,
         "metadata": metadata,
+        "critic_feedback": critic_feedback,
     }
     system = _ENV.get_template(f"estimation/{resolved_version}/{tier_config.template}").render(**context)
     user = _ENV.get_template(f"estimation/{resolved_version}/user.j2").render(**context)
@@ -133,4 +137,34 @@ def render_metadata_extraction_prompt(
         result=result,
         previous=previous,
     )
+    return system, user
+
+
+def render_critic_prompt(
+    *,
+    transcript: str,
+    metadata: ProjectMetadata,
+    tier: Tier | str,
+    result: BaseTierEstimation,
+) -> tuple[str, str]:
+    """
+    Render system and user prompts for structured Critic auditing of a candidate estimation.
+
+    :param transcript: Enriched user turn transcript under evaluation.
+    :param metadata: Accumulated session ``ProjectMetadata``.
+    :param tier: Resolved stakeholder ``Tier`` for the candidate estimation.
+    :param result: Validated candidate tier estimation to audit.
+
+    :return: Tuple of ``(system_prompt, user_prompt)`` ready for structured ``CriticFeedback`` dispatch.
+    :raises jinja2.exceptions.TemplateNotFound: If templates for ``critic/v1`` do not exist.
+    :raises jinja2.exceptions.UndefinedError: If required context parameters are missing during rendering.
+    """
+    context: dict[str, Any] = {
+        "transcript": transcript,
+        "metadata": metadata,
+        "tier": _enum_value(tier),
+        "result_json": result.model_dump_json(indent=2),
+    }
+    system = _ENV.get_template("critic/v1/system.j2").render(**context)
+    user = _ENV.get_template("critic/v1/user.j2").render(**context)
     return system, user

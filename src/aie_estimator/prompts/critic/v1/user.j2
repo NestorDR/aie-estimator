@@ -1,0 +1,23 @@
+<original_transcript>
+{{ transcript }}
+</original_transcript>
+
+<project_metadata>
+- project_name: {{ metadata.project_name or "unknown" }}
+- assumed_team_size: {{ metadata.assumed_team_size or "unknown" }}
+{% if metadata.mentioned_technologies %}- mentioned_technologies: {{ metadata.mentioned_technologies | join(", ") }}
+{% else %}- mentioned_technologies: none
+{% endif %}- agreed_scope: {{ metadata.agreed_scope or "not yet agreed" }}
+{% if metadata.explicit_constraints %}- explicit_constraints: {{ metadata.explicit_constraints | join("; ") }}
+{% else %}- explicit_constraints: none
+{% endif %}{% if metadata.rejected_options %}- rejected_options: {{ metadata.rejected_options | join("; ") }}
+{% else %}- rejected_options: none
+{% endif %}</project_metadata>
+
+<resolved_tier>{{ tier }}</resolved_tier>
+
+<estimation_under_review>
+{{ result_json }}
+</estimation_under_review>
+
+Audit this estimation against the checklist. Return a structured `CriticFeedback` object with specific `field_path` references.

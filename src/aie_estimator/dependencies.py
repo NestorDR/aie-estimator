@@ -11,12 +11,14 @@ import structlog
 
 # --- App modules ---
 from aie_estimator.guardrails.input import get_moderation_client
+from aie_estimator.services.boss_service import Boss
 from aie_estimator.services.cache import (
     EstimationExactCache,
     EstimationSemanticCache,
     get_exact_cache as _get_exact_cache,
     get_semantic_cache as _get_semantic_cache,
 )
+from aie_estimator.services.critic_service import Critic
 from aie_estimator.services.estimations_service import EstimationService
 from aie_estimator.sessions.store import SessionStore
 from aie_estimator.sessions.tier_resolver import Tier
@@ -83,6 +85,28 @@ def get_estimation_service(
         semantic_cache=semantic_cache,
         moderation_client=moderation_client,
     )
+
+
+def get_critic(settings: Settings = Depends(get_settings)) -> Critic:
+    """
+    Construct the stateless ``Critic`` service configured from application settings.
+
+    :param settings: Injected application configuration settings.
+
+    :return: Configured ``Critic`` instance.
+    """
+    return Critic(model=settings.acb_critic_model)
+
+
+def get_boss(settings: Settings = Depends(get_settings)) -> Boss:
+    """
+    Construct the deterministic ``Boss`` orchestrator configured from application settings.
+
+    :param settings: Injected application configuration settings.
+
+    :return: Configured ``Boss`` instance.
+    """
+    return Boss(max_iterations=settings.acb_max_iterations)
 
 
 @lru_cache(maxsize=1)

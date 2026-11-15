@@ -1,6 +1,7 @@
 # src/aie_estimator/services/estimations_service.py
 
 # --- Python Standard Library ---
+from dataclasses import dataclass
 import time
 from typing import Any, Final
 
@@ -21,6 +22,7 @@ from aie_estimator.prompts.loader import (
     resolve_prompt_version,
 )
 from aie_estimator.prompts.tier_config import TIER_CONFIG
+from aie_estimator.schemas.acb import CriticFeedback
 from aie_estimator.schemas.estimations import (
     BaseTierEstimation,
     DetailLevel,
@@ -28,7 +30,9 @@ from aie_estimator.schemas.estimations import (
     OutputFormat,
     ProjectType,
 )
+from aie_estimator.services.boss_service import Boss
 from aie_estimator.services.cache import EstimationExactCache, EstimationSemanticCache
+from aie_estimator.services.critic_service import Critic, CriticOutcome
 from aie_estimator.services.exceptions import LLMProviderError
 from aie_estimator.services.providers import GenerationOptions, call_llm
 from aie_estimator.sessions.metadata_extractor import update_metadata
@@ -37,6 +41,20 @@ from aie_estimator.sessions.tier_resolver import Tier, resolve_tier
 from aie_estimator.settings import get_settings
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
+
+
+@dataclass(frozen=True)
+class _PreparedSessionTurn:
+    """Validated and enriched session turn context shared across estimation pipelines."""
+
+    enriched_transcript: str
+    attachment_count: int
+    opts: GenerationOptions
+    version: str
+    tier: Tier
+    tier_rule: str
+    response_model: type[BaseTierEstimation]
+    t0: float
 
 
 class EstimationService:
@@ -212,7 +230,7 @@ class EstimationService:
         Execute a multi-turn conversational estimation bypassing Tier 1 and Tier 2 caches.
 
         Validates attachment count, executes input guardrails on ``transcript``, extracts and
-        sanitizes attachment text via ``extract_text`` and ``check_attachment_input`` (with PII
+        sanitizes attachment text via ``extract_text`` and ``sanitize_attachment_input`` (with PII
         redaction), enriches the transcript inside ``<attachments>`` XML delimiters, renders
         conversational templates with ``session.metadata``, dispatches prior ``session.history``
         turns plus the new user message, enforces output scope filtering, appends the completed
@@ -226,6 +244,8 @@ class EstimationService:
         :param output_format: Desired presentation layout.
         :param attachments: Optional list of ``(filename, content)`` raw attachment pairs.
         :param opts: Optional generation options controlling model, engine, and token limits.
+        :param caller_tier: Optional trusted stakeholder tier from request headers.
+        :param tier_override: Optional explicit stakeholder tier override.
 
         :return: Response dictionary matching :meth:`generate_estimation` with ``cache_hit=False``.
         :raises AttachmentExtractionError: If attachment count, byte size, or parsing fails.
@@ -234,10 +254,252 @@ class EstimationService:
         :raises LLMProviderError: If any LLM provider invocation fails.
         :raises ValueError: If ``transcript`` is blank.
         """
+        prepared = await self._prepare_session_turn(
+            session=session,
+            transcript=transcript,
+            attachments=attachments,
+            opts=opts,
+            caller_tier=caller_tier,
+            tier_override=tier_override,
+        )
+
+        log.info(
+            "estimation_session_started",
+            session_id=session.session_id,
+            tier=prepared.tier.value,
+            tier_rule=prepared.tier_rule,
+            history_messages=len(session.history.messages),
+            metadata_is_empty=session.metadata.is_empty(),
+            transcript_chars=len(transcript),
+            enriched_transcript_chars=len(prepared.enriched_transcript),
+            attachment_count=prepared.attachment_count,
+        )
+
+        result, structured_result = await self._dispatch_session_actor_turn(
+            session=session,
+            prepared=prepared,
+            project_type=project_type,
+            detail_level=detail_level,
+            output_format=output_format,
+        )
+
+        return await self._finalize_session_turn(
+            session=session,
+            prepared=prepared,
+            result=result,
+            structured_result=structured_result,
+        )
+
+    async def generate_session_estimation_acb(
+        self,
+        *,
+        session: Session,
+        transcript: str,
+        project_type: ProjectType,
+        detail_level: DetailLevel,
+        output_format: OutputFormat,
+        attachments: list[tuple[str, bytes]] | None = None,
+        opts: GenerationOptions | None = None,
+        caller_tier: Tier | None = None,
+        tier_override: Tier | None = None,
+        critic: Critic | None = None,
+        boss: Boss | None = None,
+    ) -> dict[str, Any]:
+        """
+        Execute a bounded Actor-Critic-Boss conversational estimation turn.
+
+        Reuses turn sanitization, attachment enrichment, and tier resolution, then delegates
+        iterative Actor generation and Critic auditing to ``Boss.run(...)`` before appending
+        only the final accepted or synthesized result to ``session.history`` and refreshing
+        ``session.metadata`` once.
+
+        :param session: Active conversational ``Session`` holding history and distilled metadata.
+        :param transcript: Current raw user turn transcript.
+        :param project_type: Target project domain category.
+        :param detail_level: Desired breakdown depth.
+        :param output_format: Desired presentation layout.
+        :param attachments: Optional list of ``(filename, content)`` raw attachment pairs.
+        :param opts: Optional generation options controlling model, engine, and token limits.
+        :param caller_tier: Optional trusted stakeholder tier from request headers.
+        :param tier_override: Optional explicit stakeholder tier override.
+        :param critic: Optional injected ``Critic`` service (defaults from settings).
+        :param boss: Optional injected ``Boss`` orchestrator (defaults from settings).
+
+        :return: Normalized response dictionary including ``boss_trace`` and aggregated telemetry.
+        :raises AttachmentExtractionError: If attachment count, byte size, or parsing fails.
+        :raises UnsupportedAttachmentError: If an attachment extension is unsupported.
+        :raises InputGuardrailViolation: If input guardrails reject ``transcript`` or attachment content.
+        :raises LLMProviderError: If any Actor LLM provider invocation fails.
+        :raises ValueError: If ``transcript`` is blank.
+        """
+        prepared = await self._prepare_session_turn(
+            session=session,
+            transcript=transcript,
+            attachments=attachments,
+            opts=opts,
+            caller_tier=caller_tier,
+            tier_override=tier_override,
+        )
+        settings = get_settings()
+        effective_critic = critic or Critic(model=settings.acb_critic_model)
+        effective_boss = boss or Boss(max_iterations=settings.acb_max_iterations)
+
+        log.info(
+            "estimation_acb_started",
+            session_id=session.session_id,
+            tier=prepared.tier.value,
+            tier_rule=prepared.tier_rule,
+            max_iterations=effective_boss.max_iterations,
+            critic_model=effective_critic.model,
+            history_messages=len(session.history.messages),
+            attachment_count=prepared.attachment_count,
+        )
+
+        actor_results: list[dict[str, Any]] = []
+        critic_outcomes: list[CriticOutcome] = []
+
+        async def _actor(feedback: CriticFeedback | None) -> BaseTierEstimation:
+            """
+            Execute one Actor generation pass with optional Critic revision feedback.
+
+            :param feedback: Optional structured ``CriticFeedback`` from the previous round.
+
+            :return: Validated and scope-filtered tier estimation candidate.
+            """
+            actor_result, structured = await self._dispatch_session_actor_turn(
+                session=session,
+                prepared=prepared,
+                project_type=project_type,
+                detail_level=detail_level,
+                output_format=output_format,
+                critic_feedback=feedback,
+            )
+            actor_results.append(actor_result)
+            return structured
+
+        async def _critic(candidate: BaseTierEstimation) -> CriticFeedback:
+            """
+            Audit one Actor candidate estimation and record Critic telemetry.
+
+            :param candidate: Structured tier estimation candidate to audit.
+
+            :return: Structured ``CriticFeedback`` verdict for Boss governance.
+            """
+            outcome = await effective_critic.review(
+                transcript=prepared.enriched_transcript,
+                metadata=session.metadata,
+                tier=prepared.tier,
+                result=candidate,
+                opts=prepared.opts,
+            )
+            critic_outcomes.append(outcome)
+            return outcome.feedback
+
+        final_structured, boss_trace = await effective_boss.run(actor=_actor, critic=_critic)
+
+        aggregated_usage, aggregated_cost = self._aggregate_acb_telemetry(
+            actor_results=actor_results,
+            critic_outcomes=critic_outcomes,
+        )
+        final_result = dict(actor_results[-1])
+        final_result["result"] = final_structured
+        final_result["usage"] = aggregated_usage
+        final_result["cost_usd"] = aggregated_cost
+        final_result["boss_trace"] = boss_trace
+
+        finalized = await self._finalize_session_turn(
+            session=session,
+            prepared=prepared,
+            result=final_result,
+            structured_result=final_structured,
+        )
+        log.info(
+            "estimation_acb_completed",
+            session_id=session.session_id,
+            tier=prepared.tier.value,
+            final_decision=boss_trace.final_decision,
+            iterations_run=boss_trace.iterations_run,
+            latency_ms=finalized["latency_ms"],
+            cost_usd=finalized.get("cost_usd"),
+            usage=finalized.get("usage"),
+        )
+        return finalized
+
+    async def _dispatch_session_actor_turn(
+        self,
+        *,
+        session: Session,
+        prepared: _PreparedSessionTurn,
+        project_type: ProjectType,
+        detail_level: DetailLevel,
+        output_format: OutputFormat,
+        critic_feedback: CriticFeedback | None = None,
+    ) -> tuple[dict[str, Any], BaseTierEstimation]:
+        """
+        Render tier-adaptive conversational prompts and dispatch one Actor turn.
+
+        :param session: Active conversational ``Session`` holding history and metadata.
+        :param prepared: Prepared turn context with enriched transcript and resolved tier.
+        :param project_type: Target project domain category.
+        :param detail_level: Desired breakdown depth.
+        :param output_format: Desired presentation layout.
+        :param critic_feedback: Optional ``CriticFeedback`` for Actor revision passes.
+
+        :return: Tuple of normalized response dictionary and scope-filtered tier estimate.
+        :raises LLMProviderError: If provider execution fails or returns an unexpected type.
+        """
+        system_prompt, user_prompt = render_tier_estimation_prompt(
+            description=prepared.enriched_transcript,
+            project_type=project_type,
+            detail_level=detail_level,
+            output_format=output_format,
+            tier=prepared.tier,
+            metadata=session.metadata,
+            version=prepared.version,
+            critic_feedback=critic_feedback,
+        )
+        turns = [*session.history.to_messages(), {"role": "user", "content": user_prompt}]
+        return await self._dispatch_and_normalize(
+            system_prompt=system_prompt,
+            opts=prepared.opts,
+            version=prepared.version,
+            tier=prepared.tier,
+            tier_rule=prepared.tier_rule,
+            response_model=prepared.response_model,
+            t0=prepared.t0,
+            user_prompt=None,
+            messages=turns,
+        )
+
+    async def _prepare_session_turn(
+        self,
+        *,
+        session: Session,
+        transcript: str,
+        attachments: list[tuple[str, bytes]] | None,
+        opts: GenerationOptions | None,
+        caller_tier: Tier | None,
+        tier_override: Tier | None,
+    ) -> _PreparedSessionTurn:
+        """
+        Validate inputs, sanitize attachments, enrich transcript, and resolve tier.
+
+        :param session: Active conversational ``Session`` holding history and metadata.
+        :param transcript: Current raw user turn transcript.
+        :param attachments: Optional list of ``(filename, content)`` raw attachment pairs.
+        :param opts: Optional generation options controlling model, engine, and token limits.
+        :param caller_tier: Optional trusted stakeholder tier from request headers.
+        :param tier_override: Optional explicit stakeholder tier override.
+
+        :return: Prepared turn context ready for prompt rendering and LLM dispatch.
+        :raises ValueError: If ``transcript`` is blank.
+        :raises AttachmentExtractionError: If attachment count, byte size, or parsing fails.
+        :raises UnsupportedAttachmentError: If an attachment extension is unsupported.
+        :raises InputGuardrailViolation: If input guardrails reject ``transcript`` or attachment content.
+        """
         if not transcript or not transcript.strip():
             raise ValueError("transcript must be provided.")
 
-        # Sanitize transcript and attachments
         raw_attachments = attachments or []
         validate_attachment_count(len(raw_attachments))
         await sanitize_input(transcript, openai_client=self.moderation_client)
@@ -252,13 +514,12 @@ class EstimationService:
             if sanitized_text:
                 extracted_pairs.append((filename, sanitized_text))
 
-        # Enrich transcript with attachment text
         enriched_transcript = enrich_transcript(
             transcript=transcript,
             attachments=extracted_pairs,
         )
 
-        opts = opts or GenerationOptions()
+        effective_opts = opts or GenerationOptions()
         version = resolve_prompt_version(get_settings().conversational_prompt_version)
         tier, tier_rule = resolve_tier(
             transcript=enriched_transcript,
@@ -266,63 +527,84 @@ class EstimationService:
             caller_tier=caller_tier,
             override=tier_override,
         )
-        tier_config = TIER_CONFIG[tier]
-        t0 = time.perf_counter()
-
-        # Render tier-adaptive conversational prompt
-        system_prompt, user_prompt = render_tier_estimation_prompt(
-            description=enriched_transcript,
-            project_type=project_type,
-            detail_level=detail_level,
-            output_format=output_format,
-            tier=tier,
-            metadata=session.metadata,
-            version=version,
-        )
-
-        # Build turns history from session history
-        turns = [*session.history.to_messages(), {"role": "user", "content": user_prompt}]
-        log.info(
-            "estimation_session_started",
-            session_id=session.session_id,
-            tier=tier.value,
-            tier_rule=tier_rule,
-            history_messages=len(session.history.messages),
-            metadata_is_empty=session.metadata.is_empty(),
-            transcript_chars=len(transcript),
-            enriched_transcript_chars=len(enriched_transcript),
+        return _PreparedSessionTurn(
+            enriched_transcript=enriched_transcript,
             attachment_count=len(extracted_pairs),
-        )
-
-        result, structured_result = await self._dispatch_and_normalize(
-            system_prompt=system_prompt,
-            opts=opts,
+            opts=effective_opts,
             version=version,
             tier=tier,
             tier_rule=tier_rule,
-            response_model=tier_config.schema,
-            t0=t0,
-            user_prompt=None,
-            messages=turns,
+            response_model=TIER_CONFIG[tier].schema,
+            t0=time.perf_counter(),
         )
 
-        session.last_tier = tier.value
-        session.history.append(user=enriched_transcript, assistant=structured_result.model_dump_json())
+    async def _finalize_session_turn(
+        self,
+        *,
+        session: Session,
+        prepared: _PreparedSessionTurn,
+        result: dict[str, Any],
+        structured_result: BaseTierEstimation,
+    ) -> dict[str, Any]:
+        """
+        Persist turn in session history, run post-turn metadata extraction, and update telemetry.
+
+        :param session: Active conversational ``Session`` to update.
+        :param prepared: Prepared turn context with enriched transcript and timing baseline.
+        :param result: Normalized response dictionary to enrich with metadata telemetry.
+        :param structured_result: Final validated tier estimation for this turn.
+
+        :return: Finalized response dictionary with metadata tokens, cost, and latency.
+        """
+        session.last_tier = prepared.tier.value
+        session.history.append(user=prepared.enriched_transcript, assistant=structured_result.model_dump_json())
 
         metadata_outcome = await update_metadata(
             previous=session.metadata,
-            transcript=enriched_transcript,
+            transcript=prepared.enriched_transcript,
             result=structured_result,
-            opts=opts,
+            opts=prepared.opts,
         )
         session.metadata = metadata_outcome.metadata
         result["usage"]["preprocessing_input_tokens"] = metadata_outcome.input_tokens
         result["usage"]["preprocessing_output_tokens"] = metadata_outcome.output_tokens
-        if result.get("cost_usd") is not None and metadata_outcome.cost_usd is not None:
-            result["cost_usd"] = round(float(result["cost_usd"]) + metadata_outcome.cost_usd, 6)
-        result["latency_ms"] = int((time.perf_counter() - t0) * 1000)
-
+        if metadata_outcome.cost_usd is not None:
+            base_cost = float(result["cost_usd"]) if result.get("cost_usd") is not None else 0.0
+            result["cost_usd"] = round(base_cost + metadata_outcome.cost_usd, 6)
+        result["latency_ms"] = int((time.perf_counter() - prepared.t0) * 1000)
         return result
+
+    @staticmethod
+    def _aggregate_acb_telemetry(
+        *,
+        actor_results: list[dict[str, Any]],
+        critic_outcomes: list[CriticOutcome],
+    ) -> tuple[dict[str, int], float | None]:
+        """
+        Sum token usage and non-null USD costs across all Actor and Critic calls.
+
+        :param actor_results: Response dictionaries from every Actor invocation in the loop.
+        :param critic_outcomes: ``CriticOutcome`` records from every Critic invocation in the loop.
+
+        :return: Tuple of aggregated ``usage`` dictionary and total ``cost_usd`` (or ``None``).
+        """
+        input_tokens = sum(int(res["usage"].get("input_tokens", 0)) for res in actor_results)
+        output_tokens = sum(int(res["usage"].get("output_tokens", 0)) for res in actor_results)
+        input_tokens += sum(outcome.input_tokens for outcome in critic_outcomes)
+        output_tokens += sum(outcome.output_tokens for outcome in critic_outcomes)
+
+        costs = [float(res["cost_usd"]) for res in actor_results if res.get("cost_usd") is not None]
+        costs.extend(outcome.cost_usd for outcome in critic_outcomes if outcome.cost_usd is not None)
+        total_cost = round(sum(costs), 6) if costs else None
+
+        usage = {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": input_tokens + output_tokens,
+            "preprocessing_input_tokens": 0,
+            "preprocessing_output_tokens": 0,
+        }
+        return usage, total_cost
 
     async def _dispatch_and_normalize(
         self,

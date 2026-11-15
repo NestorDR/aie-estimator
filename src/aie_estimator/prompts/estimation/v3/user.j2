@@ -4,4 +4,13 @@
 
 Project type: {{ project_type }}.
 Produce the structured estimate matching your stakeholder tier and output schema.
+{% if critic_feedback and critic_feedback.issues %}
+
+<critic_feedback>
+An independent review flagged the following issues in your previous draft (verdict={{ critic_feedback.verdict }}). Address every critical and major issue while preserving valid parts of your estimate:
+{% for issue in critic_feedback.issues %}
+- [{{ issue.severity }}] {{ issue.category }} @ {{ issue.field_path }}: {{ issue.description }}{% if issue.suggested_fix %} (Suggested fix: {{ issue.suggested_fix }}){% endif %}
+{% endfor %}
+</critic_feedback>
+{% endif %}
 

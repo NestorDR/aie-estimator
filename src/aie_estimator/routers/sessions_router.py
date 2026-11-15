@@ -10,7 +10,14 @@ import structlog
 
 # --- App modules ---
 from aie_estimator.attachments.extractor import validate_attachment_count
-from aie_estimator.dependencies import get_caller_tier, get_estimation_service, get_session_store
+from aie_estimator.dependencies import (
+    get_boss,
+    get_caller_tier,
+    get_critic,
+    get_estimation_service,
+    get_session_store,
+)
+from aie_estimator.schemas.acb import ACBResponse
 from aie_estimator.schemas.estimations import (
     DetailLevel,
     EstimationResponse,
@@ -20,6 +27,8 @@ from aie_estimator.schemas.estimations import (
     validate_catalog_model,
 )
 from aie_estimator.schemas.sessions import CreateSessionResponse, SessionInfoResponse
+from aie_estimator.services.boss_service import Boss
+from aie_estimator.services.critic_service import Critic
 from aie_estimator.services.estimations_service import EstimationService
 from aie_estimator.services.providers import GenerationOptions
 from aie_estimator.sessions.store import SessionStore
@@ -129,12 +138,8 @@ async def estimate_in_session(
     :return: Generated estimation payload with tier, prompt version, and telemetry metadata.
     """
     session = store.get_or_404(session_id)
-
-    named_uploads = [(upload.filename, upload) for upload in (attachments or []) if upload.filename]
-    validate_attachment_count(len(named_uploads))
-
-    raw_attachments: list[tuple[str, bytes]] = [(filename, await upload.read()) for filename, upload in named_uploads]
-
+    raw_attachments = await _read_session_attachments(attachments)
+    
     log.info(
         "session_estimation_request_received",
         session_id=session_id,
@@ -158,3 +163,93 @@ async def estimate_in_session(
     )
 
     return EstimationResponse.from_service_result(result)
+
+
+async def _read_session_attachments(attachments: list[UploadFile] | None) -> list[tuple[str, bytes]]:
+    """
+    Validate attachment count and read uploaded attachment bytes.
+
+    :param attachments: Optional list of uploaded files from the multipart form request.
+
+    :return: List of ``(filename, content_bytes)`` pairs for non-empty filenames.
+    :raises AttachmentExtractionError: If the attachment count exceeds the configured limit.
+    """
+    named_uploads = [(upload.filename, upload) for upload in (attachments or []) if upload.filename]
+    validate_attachment_count(len(named_uploads))
+    return [(filename, await upload.read()) for filename, upload in named_uploads]
+
+
+@router.post(
+    "/{session_id}/estimate-acb",
+    response_model=ACBResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Generate Actor-Critic-Boss conversational estimation",
+    description=(
+        "Execute a bounded Actor-Critic-Boss estimation turn inside an active session using "
+        "multipart/form-data fields and optional file attachments (.pdf, .docx, .md, .txt)."
+    ),
+)
+async def estimate_in_session_acb(
+    session_id: str,
+    transcript: Annotated[str, StringConstraints(strip_whitespace=True, min_length=20, max_length=2000), Form()],
+    project_type: Annotated[ProjectType, Form()],
+    detail_level: Annotated[DetailLevel, Form()],
+    output_format: Annotated[OutputFormat, Form()],
+    model: Annotated[str | None, Form(), AfterValidator(validate_catalog_model)] = None,
+    engine: Annotated[ProviderMode, Form()] = "litellm",
+    tier: Annotated[Tier | None, Form()] = None,
+    attachments: Annotated[list[UploadFile] | None, File()] = None,
+    caller_tier: Tier | None = Depends(get_caller_tier),
+    store: SessionStore = Depends(get_session_store),
+    service: EstimationService = Depends(get_estimation_service),
+    critic: Critic = Depends(get_critic),
+    boss: Boss = Depends(get_boss),
+) -> ACBResponse:
+    """
+    Execute an Actor-Critic-Boss software project estimation turn within an existing session.
+
+    :param session_id: Target session UUID string.
+    :param transcript: Current turn user transcript (20 to 2,000 characters after trimming).
+    :param project_type: Target project category.
+    :param detail_level: Granularity level for the estimation breakdown.
+    :param output_format: Presentation format for the response text.
+    :param model: Optional catalog model or profile alias override for the Actor.
+    :param engine: Provider dispatch mode (``"litellm"`` or ``"native"``).
+    :param tier: Optional explicit stakeholder tier override.
+    :param attachments: Optional list of uploaded specification files (up to 5 files).
+    :param caller_tier: Optional trusted stakeholder tier parsed from HTTP headers.
+    :param store: Injected ``SessionStore`` singleton.
+    :param service: Injected ``EstimationService`` orchestrator.
+    :param critic: Injected ``Critic`` service.
+    :param boss: Injected ``Boss`` orchestrator.
+
+    :return: Generated ``ACBResponse`` with tier estimation, aggregated telemetry, and ``boss_trace``.
+    """
+    session = store.get_or_404(session_id)
+    raw_attachments = await _read_session_attachments(attachments)
+
+    log.info(
+        "session_acb_estimation_request_received",
+        session_id=session_id,
+        model=model,
+        engine=engine,
+        tier_override=tier.value if tier else None,
+        caller_tier=caller_tier.value if caller_tier else None,
+        attachment_count=len(raw_attachments),
+    )
+
+    result = await service.generate_session_estimation_acb(
+        session=session,
+        transcript=transcript,
+        project_type=project_type,
+        detail_level=detail_level,
+        output_format=output_format,
+        opts=GenerationOptions(model=model, engine=engine),
+        attachments=raw_attachments,
+        caller_tier=caller_tier,
+        tier_override=tier,
+        critic=critic,
+        boss=boss,
+    )
+
+    return ACBResponse.from_service_result(result)

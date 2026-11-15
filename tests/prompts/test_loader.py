@@ -7,11 +7,29 @@ import pytest
 # --- App modules ---
 from aie_estimator.prompts.loader import (
     _ENV,
+    render_critic_prompt,
     render_metadata_extraction_prompt,
+    render_tier_estimation_prompt,
     resolve_prompt_version,
 )
-from aie_estimator.schemas.estimations import Phase, PmEstimation, TeamComposition
+from aie_estimator.schemas.acb import CriticFeedback, CriticIssue
+from aie_estimator.schemas.estimations import (
+    BaseTierEstimation,
+    ComponentEstimation,
+    CostRange,
+    DetailLevel,
+    DeveloperEstimation,
+    DurationRange,
+    ExecutiveEstimation,
+    HoursRange,
+    OutputFormat,
+    Phase,
+    PmEstimation,
+    ProjectType,
+    TeamComposition,
+)
 from aie_estimator.sessions.models import ProjectMetadata
+from aie_estimator.sessions.tier_resolver import Tier
 
 
 def _sample_estimation_result() -> PmEstimation:
@@ -117,4 +135,104 @@ def test_render_metadata_extraction_user_template_strict_undefined() -> None:
     template = _ENV.get_template("metadata_extraction/v1/user.j2")
     with pytest.raises(UndefinedError, match=r"transcript"):
         template.render(previous=ProjectMetadata(), result=_sample_estimation_result())
+
+
+@pytest.mark.parametrize(
+    ("tier", "candidate_factory", "expected_json_snippet"),
+    [
+        (
+            Tier.DEVELOPER,
+            lambda: DeveloperEstimation(
+                summary="Developer breakdown for auth and API.",
+                confidence_pct=80,
+                components=[ComponentEstimation(name="Auth Service", estimated_hours=40)],
+                total_hours_range=HoursRange(min_hours=35, max_hours=50),
+            ),
+            "Auth Service",
+        ),
+        (
+            Tier.PM,
+            _sample_estimation_result,
+            "total_duration_weeks",
+        ),
+        (
+            Tier.EXECUTIVE,
+            lambda: ExecutiveEstimation(
+                summary="Executive estimate for B2B portal.",
+                confidence_pct=78,
+                headline_cost_range=CostRange(min_eur=25000, max_eur=35000),
+                headline_duration_range=DurationRange(min_weeks=6, max_weeks=9),
+                confidence_level="medium",
+                top_three_risks=["SSO scope"],
+                go_no_go_recommendation="Go with discovery phase.",
+            ),
+            "headline_cost_range",
+        ),
+    ],
+)
+def test_render_critic_prompt_across_all_tiers(
+    tier: Tier,
+    candidate_factory: object,
+    expected_json_snippet: str,
+) -> None:
+    """
+    GIVEN a candidate estimation for any stakeholder tier
+    WHEN render_critic_prompt renders critic/v1 templates
+    THEN both system and user prompts render under StrictUndefined with serialized candidate JSON.
+    """
+    candidate: BaseTierEstimation = candidate_factory()  # type: ignore[operator]
+    system_prompt, user_prompt = render_critic_prompt(
+        transcript="Build an authenticated B2B portal in 8 weeks.",
+        metadata=ProjectMetadata(project_name="Portal", mentioned_technologies=["FastAPI"]),
+        tier=tier,
+        result=candidate,
+    )
+
+    assert "arithmetic_error" in system_prompt
+    assert f"<resolved_tier>{tier.value}</resolved_tier>" in user_prompt
+    assert expected_json_snippet in user_prompt
+
+
+def test_render_tier_estimation_prompt_with_and_without_critic_feedback() -> None:
+    """
+    GIVEN estimation/v3/user.j2 rendered with and without CriticFeedback
+    WHEN render_tier_estimation_prompt is invoked
+    THEN initial passes omit <critic_feedback> and revision passes include all flagged issues.
+    """
+    _, initial_user = render_tier_estimation_prompt(
+        description="Build an internal reporting tool with RBAC.",
+        project_type=ProjectType.INTERNAL_TOOL,
+        detail_level=DetailLevel.MEDIUM,
+        output_format=OutputFormat.PHASES_TABLE,
+        tier=Tier.PM,
+        version="v3",
+    )
+    assert "<critic_feedback>" not in initial_user
+
+    feedback = CriticFeedback(
+        verdict="needs_iteration",
+        issues=[
+            CriticIssue(
+                category="missing_component",
+                severity="major",
+                field_path="phases",
+                description="RBAC implementation is missing from phases.",
+                suggested_fix="Add an RBAC task to the backend phase.",
+            )
+        ],
+        confidence_in_review=85,
+    )
+    _, revision_user = render_tier_estimation_prompt(
+        description="Build an internal reporting tool with RBAC.",
+        project_type=ProjectType.INTERNAL_TOOL,
+        detail_level=DetailLevel.MEDIUM,
+        output_format=OutputFormat.PHASES_TABLE,
+        tier=Tier.PM,
+        version="v3",
+        critic_feedback=feedback,
+    )
+    assert "<critic_feedback>" in revision_user
+    assert "[major] missing_component @ phases" in revision_user
+    assert "Add an RBAC task to the backend phase." in revision_user
+
 
