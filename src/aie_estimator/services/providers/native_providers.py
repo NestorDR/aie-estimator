@@ -175,7 +175,7 @@ async def call_anthropic(
 
     :param user_prompt: Pre-rendered user prompt string for single-turn calls, or ``None`` when ``messages`` is passed.
     :param system_prompt: Optional system instructions and reference context passed as Anthropic's top-level ``system``.
-    :param opts: Generation options specifying model, max_tokens, temperature, and reasoning_effort.
+    :param opts: Generation options specifying model, max_tokens, and reasoning_effort.
     :param messages: Optional multi-turn list of non-system ``user``/``assistant`` message dictionaries.
     :param response_model: Target Pydantic model class for structured output extraction.
 
@@ -201,8 +201,6 @@ async def call_anthropic(
     if opts.reasoning_effort is not None:
         kwargs["thinking"] = {"type": "adaptive"}
         kwargs["output_config"] = {"effort": opts.reasoning_effort}
-    elif opts.temperature is not None:
-        kwargs["temperature"] = opts.temperature
 
     try:
         structured_result, response = await client.messages.create_with_completion(

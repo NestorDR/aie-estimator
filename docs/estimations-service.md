@@ -8,7 +8,7 @@ Provider execution supports two engines configured via [`src/aie_estimator/llm_p
 - **LiteLLM Router (`engine="litellm"`, default)**: Dynamic multi-provider routing and cross-tier failover across OpenAI, Anthropic, Gemini, Mistral, Scaleway, and Nebius via [`litellm_provider.py`](../src/aie_estimator/services/providers/litellm_provider.py).
 - **Native SDKs (`engine="native"`)**: Direct vendor SDK dispatch to OpenAI or Anthropic via [`native_providers.py`](../src/aie_estimator/services/providers/native_providers.py).
 
-Unified dispatch is exposed through `call_llm(user_prompt, system_prompt, opts, *, messages=None, response_model=EstimationResult)` in [`src/aie_estimator/services/providers/dispatcher.py`](../src/aie_estimator/services/providers/dispatcher.py).
+Unified dispatch is exposed through `call_llm(user_prompt, system_prompt, opts, *, messages=None, response_model=PmEstimation)` in [`src/aie_estimator/services/providers/dispatcher.py`](../src/aie_estimator/services/providers/dispatcher.py).
 
 ---
 
@@ -57,11 +57,11 @@ response = await call_llm(
 
 1. **Provider Subpackage Structure**: [`src/aie_estimator/services/providers/`](../src/aie_estimator/services/providers/) isolates engine implementations:
    - [`dispatcher.py`](../src/aie_estimator/services/providers/dispatcher.py): Single entry point routing between `litellm` and `native`.
-   - [`litellm_provider.py`](../src/aie_estimator/services/providers/litellm_provider.py): Router client wrapped with `instructor.from_litellm` and zero-telemetry configuration (`litellm.telemetry = False`).
+   - [`litellm_provider.py`](../src/aie_estimator/services/providers/litellm_provider.py): Router client wrapped with `instructor.from_litellm` and zero-telemetry configuration (`litellm.telemetry = False`). Raises `LLMProviderError` when given a non-profile model instead of silently falling back.
    - [`native_providers.py`](../src/aie_estimator/services/providers/native_providers.py): Vendor SDK callers wrapped with Instructor, featuring 2-attempt parameter recovery on `BadRequestError` (stripping unsupported `temperature` or remapping `max_tokens` to `max_completion_tokens`).
-   - [`formatting.py`](../src/aie_estimator/services/providers/formatting.py): Normalizes output dictionaries across engines for any validated Pydantic `BaseModel` (`EstimationResult` by default).
+   - [`formatting.py`](../src/aie_estimator/services/providers/formatting.py): Normalizes output dictionaries across engines for any validated Pydantic `BaseModel` (`PmEstimation` by default).
    - [`pricing.py`](../src/aie_estimator/services/providers/pricing.py): Fallback token pricing estimation via `MODEL_COSTS` when upstream routers omit cost metadata.
-2. **Structured Extraction with Instructor**: The service enforces typed extraction into `response_model` (defaulting to [`EstimationResult`](../src/aie_estimator/schemas/estimations.py), and parameterized for auxiliary calls such as [`MetadataExtractionResult`](../src/aie_estimator/sessions/models.py)). If validation fails (such as phase cost mismatch), Instructor feeds errors back to the LLM up to `max_retries`. Exception unwrapping via `unwrap_exception` ([`exceptions.py`](../src/aie_estimator/services/exceptions.py)) inspects root causes before raising `LLMProviderError`.
+2. **Structured Extraction with Instructor**: The service enforces typed extraction into `response_model` (defaulting to [`PmEstimation`](../src/aie_estimator/schemas/estimations.py), and parameterized for tier schemas or auxiliary calls such as [`MetadataExtractionResult`](../src/aie_estimator/sessions/models.py)). If validation fails (such as phase cost mismatch), Instructor feeds errors back to the LLM up to `max_retries`. Exception unwrapping via `unwrap_exception` ([`exceptions.py`](../src/aie_estimator/services/exceptions.py)) inspects root causes before raising `LLMProviderError`.
 3. **Multi-Layer Resilience Hierarchy**:
    - **Layer 1 (Transport)**: HTTP client retries and exponential backoff (`httpx` / vendor SDKs).
    - **Layer 2 (Schema Adherence)**: Instructor validation re-prompting loop.

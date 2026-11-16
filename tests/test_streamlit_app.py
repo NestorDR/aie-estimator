@@ -31,17 +31,25 @@ def _build_fake_estimation(
     total_cost_eur: int = 25000,
     total_duration_weeks: int = 10,
     phases: list[dict[str, Any]] | None = None,
+    tier: str | None = "pm",
+    tier_rule: str | None = "default",
+    result_override: dict[str, Any] | None = None,
+    boss_trace: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
-    Build a deterministic EstimationResponse dictionary for tests.
+    Build a deterministic EstimationResponse or ACBResponse dictionary for tests.
 
     :param summary: Estimation summary text.
     :param confidence_pct: Confidence percentage (0-100).
     :param total_cost_eur: Total estimated cost in EUR.
     :param total_duration_weeks: Total estimated duration in weeks.
     :param phases: Optional list of phase dictionaries.
+    :param tier: Resolved stakeholder tier (or ``None`` to test fallback).
+    :param tier_rule: Tier resolution rule identifier.
+    :param result_override: Optional custom tier result payload dictionary.
+    :param boss_trace: Optional ``BossTrace`` dictionary for ACB responses.
 
-    :return: Dictionary conforming to ``EstimationResponse``.
+    :return: Dictionary conforming to ``EstimationResponse`` or ``ACBResponse``.
     """
     default_phases = [
         {
@@ -57,8 +65,10 @@ def _build_fake_estimation(
             "summary": "Frontend Implementation",
         },
     ]
-    return {
-        "result": {
+    payload: dict[str, Any] = {
+        "result": result_override
+        if result_override is not None
+        else {
             "summary": summary,
             "confidence_pct": confidence_pct,
             "phases": default_phases if phases is None else phases,
@@ -66,9 +76,9 @@ def _build_fake_estimation(
             "total_cost_eur": total_cost_eur,
         },
         "cached": False,
-        "prompt_version": "v2",
+        "prompt_version": "v3",
         "model": "reasoner-fast",
-        "provider": "openrouter",
+        "provider": "litellm",
         "cost_usd": 0.0084,
         "usage": {
             "input_tokens": 300,
@@ -78,6 +88,13 @@ def _build_fake_estimation(
             "preprocessing_output_tokens": 5,
         },
     }
+    if tier is not None:
+        payload["tier"] = tier
+    if tier_rule is not None:
+        payload["tier_rule"] = tier_rule
+    if boss_trace is not None:
+        payload["boss_trace"] = boss_trace
+    return payload
 
 
 def _build_fake_session_info(
@@ -106,6 +123,7 @@ def _build_fake_session_info(
             "explicit_constraints": ["EU hosting"],
             "rejected_options": ["Rails"],
         },
+        "last_tier": "pm",
         "created_at": "2026-11-12T10:00:00Z",
         "last_accessed_at": "2026-11-12T10:05:00Z",
     }
@@ -182,32 +200,37 @@ async def test_get_session_info_fetches_session_payload() -> None:
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    ("extra_kwargs", "expected_extra_data", "expected_files"),
+    ("extra_kwargs", "expected_url_suffix", "expected_extra_data", "expected_files"),
     [
-        ({}, {"engine": "litellm"}, None),
+        ({}, "estimate", {"engine": "litellm"}, None),
         (
             {
                 "model": "gpt-6-luna",
                 "engine": "native",
+                "tier": "executive",
+                "use_acb": True,
                 "attachments": [("spec.pdf", b"%PDF-1.4", "application/pdf")],
             },
-            {"model": "gpt-6-luna", "engine": "native"},
+            "estimate-acb",
+            {"model": "gpt-6-luna", "engine": "native", "tier": "executive"},
             [("attachments", ("spec.pdf", b"%PDF-1.4", "application/pdf"))],
         ),
     ],
-    ids=["defaults_no_attachments", "overrides_with_attachment"],
+    ids=["defaults_no_attachments", "overrides_acb_with_attachment"],
 )
 async def test_send_session_turn_dispatches_multipart_payload(
     extra_kwargs: dict[str, Any],
+    expected_url_suffix: str,
     expected_extra_data: dict[str, Any],
     expected_files: list[tuple[str, tuple[str, bytes, str]]] | None,
 ) -> None:
     """
-    GIVEN valid conversational turn parameters and optional file attachments
+    GIVEN valid conversational turn parameters, optional tier, ACB flag, and file attachments
     WHEN send_session_turn is executed
-    THEN an async POST request is dispatched with multipart form data and files.
+    THEN an async POST request is dispatched to the expected endpoint without X-User-Tier.
 
-    :param extra_kwargs: Optional overrides (model, engine, attachments).
+    :param extra_kwargs: Optional overrides (model, engine, tier, use_acb, attachments).
+    :param expected_url_suffix: Expected endpoint suffix (``estimate`` or ``estimate-acb``).
     :param expected_extra_data: Expected form fields in ``data=``.
     :param expected_files: Expected attachment tuples in ``files=``.
     """
@@ -232,7 +255,8 @@ async def test_send_session_turn_dispatches_multipart_payload(
     assert result == fake_response
     mock_client.post.assert_called_once()
     call_args = mock_client.post.call_args
-    assert call_args.args[0] == "http://test/api/v1/sessions/sess-1/estimate"
+    assert call_args.args[0] == f"http://test/api/v1/sessions/sess-1/{expected_url_suffix}"
+    assert "headers" not in call_args.kwargs
     assert call_args.kwargs["data"] == {
         "transcript": transcript,
         "project_type": "web_saas",
@@ -623,6 +647,193 @@ def test_apptest_submission_network_request_error() -> None:
 
     assert len(at.error) > 0
     assert any("Could not reach the estimator backend" in err.value for err in at.error)
+
+
+def test_apptest_engine_switch_updates_model_options_and_routing_caption() -> None:
+    """
+    GIVEN an initialized Streamlit app defaulting to litellm
+    WHEN the user switches Execution engine to native
+    THEN Target model options update to native models and the Model routing caption is hidden.
+    """
+    at = AppTest.from_file(_APP_PATH, default_timeout=_DEFAULT_TIMEOUT)
+    at.run()
+
+    assert any("Cheapest model first, with failover if it fails" in c.value for c in at.sidebar.caption)
+    litellm_model_box = at.sidebar.selectbox(key="target_model_litellm")
+    assert litellm_model_box.value == "reasoner-fast"
+    assert "Reasoner Fast" in litellm_model_box.options
+    assert "Gpt 6 Luna" not in litellm_model_box.options
+
+    at.sidebar.segmented_control(key="execution_engine").set_value("native").run()
+
+    assert not at.exception
+    assert not any("Cheapest model first" in c.value for c in at.sidebar.caption)
+    native_model_box = at.sidebar.selectbox(key="target_model_native")
+    assert native_model_box.value == "gpt-6-luna"
+    assert "Gpt 6 Luna" in native_model_box.options
+    assert "Reasoner Fast" not in native_model_box.options
+
+
+@pytest.mark.parametrize(
+    ("tier", "tier_rule", "result_override", "expected_metric_labels", "expected_text"),
+    [
+        (
+            "developer",
+            "technical_audience",
+            {
+                "summary": "Developer architecture breakdown.",
+                "confidence_pct": 82,
+                "components": [
+                    {
+                        "name": "Backend API",
+                        "estimated_hours": 120,
+                        "technical_risks": ["Rate limit spikes"],
+                        "stack_assumptions": ["FastAPI + PostgreSQL"],
+                    }
+                ],
+                "technical_risks": ["OAuth token rotation"],
+                "stack_assumptions": ["Redis 7"],
+                "uncertainty_drivers": ["Legacy ERP webhook latency"],
+                "total_hours_range": {"min_hours": 100, "max_hours": 140},
+            },
+            ["Total effort", "Confidence"],
+            "OAuth token rotation",
+        ),
+        (
+            "executive",
+            "explicit_override",
+            {
+                "summary": "Executive steering summary.",
+                "confidence_pct": 78,
+                "headline_cost_range": {"min_eur": 30000, "max_eur": 45000},
+                "headline_duration_range": {"min_weeks": 6, "max_weeks": 9},
+                "confidence_level": "medium",
+                "top_three_risks": ["Regulatory audit delay"],
+                "go_no_go_recommendation": "Proceed with phase-1 discovery.",
+            },
+            ["Budget range", "Timeline range", "Confidence"],
+            "Proceed with phase-1 discovery.",
+        ),
+        (
+            None,
+            None,
+            None,
+            ["Total cost", "Total duration", "Confidence"],
+            "Comprehensive Project Estimation",
+        ),
+    ],
+    ids=["developer_tier", "executive_tier", "missing_tier_pm_fallback"],
+)
+def test_apptest_renders_tier_specific_bodies(
+    tier: str | None,
+    tier_rule: str | None,
+    result_override: dict[str, Any] | None,
+    expected_metric_labels: list[str],
+    expected_text: str,
+) -> None:
+    """
+    GIVEN a thread turn with developer, executive, or missing tier payload
+    WHEN rendered in the Streamlit application
+    THEN the matching tier-specific metrics and details render without errors.
+
+    :param tier: Response tier value or ``None``.
+    :param tier_rule: Response tier rule or ``None``.
+    :param result_override: Tier-specific result payload dictionary.
+    :param expected_metric_labels: Expected metric labels rendered on the page.
+    :param expected_text: Expected text snippet in markdown or info alert.
+    """
+    estimation = _build_fake_estimation(tier=tier, tier_rule=tier_rule, result_override=result_override)
+    at = AppTest.from_file(_APP_PATH, default_timeout=_DEFAULT_TIMEOUT)
+    at.run()
+
+    at.session_state.thread = [
+        {"user_text": "Estimate project across stakeholder tiers.", "attachment_names": [], "estimation": estimation}
+    ]
+    at.run()
+
+    assert not at.exception
+    metric_labels = [m.label for m in at.metric]
+    for label in expected_metric_labels:
+        assert label in metric_labels
+    rendered_text = " ".join([*(m.value for m in at.markdown), *(i.value for i in at.info)])
+    assert expected_text in rendered_text
+
+
+def test_apptest_acb_toggle_routes_to_acb_and_renders_boss_trace() -> None:
+    """
+    GIVEN an initialized Streamlit app with Actor-Critic-Boss review toggled on and explicit tier selected
+    WHEN a valid chat transcript is submitted
+    THEN the client posts to /estimate-acb with tier='executive' and renders Boss audit trail and Last tier.
+    """
+    fake_session_id = "11111111-1111-4111-8111-111111111111"
+    acb_estimation = _build_fake_estimation(
+        tier="executive",
+        tier_rule="explicit_override",
+        result_override={
+            "summary": "Executive ACB-verified estimate.",
+            "confidence_pct": 88,
+            "headline_cost_range": {"min_eur": 20000, "max_eur": 30000},
+            "headline_duration_range": {"min_weeks": 5, "max_weeks": 7},
+            "confidence_level": "high",
+            "top_three_risks": ["Vendor API quota"],
+            "go_no_go_recommendation": "Go.",
+        },
+        boss_trace={
+            "iterations": [
+                {
+                    "iteration": 0,
+                    "decision_after": "iterate",
+                    "critic_verdict": "needs_iteration",
+                    "critic_confidence": 80,
+                    "issue_summary": ["Missing QA buffer"],
+                },
+                {
+                    "iteration": 1,
+                    "decision_after": "accept",
+                    "critic_verdict": "accept",
+                    "critic_confidence": 92,
+                    "issue_summary": [],
+                },
+            ],
+            "final_decision": "accept",
+            "iterations_run": 2,
+        },
+    )
+    fake_info = _build_fake_session_info(session_id=fake_session_id)
+    fake_info["last_tier"] = "executive"
+
+    create_resp = MagicMock()
+    create_resp.json.return_value = {"session_id": fake_session_id}
+    create_resp.raise_for_status.return_value = None
+
+    turn_resp = MagicMock()
+    turn_resp.json.return_value = acb_estimation
+    turn_resp.raise_for_status.return_value = None
+
+    info_resp = MagicMock()
+    info_resp.json.return_value = fake_info
+    info_resp.raise_for_status.return_value = None
+
+    mock_client = _make_async_client_mock(
+        post_responses=[create_resp, turn_resp],
+        get_responses=[info_resp],
+    )
+
+    at = AppTest.from_file(_APP_PATH, default_timeout=_DEFAULT_TIMEOUT)
+    at.run()
+
+    at.sidebar.segmented_control(key="stakeholder_tier").set_value("executive")
+    at.sidebar.toggle(key="use_acb").set_value(True).run()
+
+    with patch("httpx.AsyncClient", return_value=mock_client):
+        at.chat_input[0].set_value("Executive summary for regulated healthcare analytics platform.").run()
+
+    assert not at.exception
+    turn_call = mock_client.post.call_args_list[1]
+    assert turn_call.args[0].endswith(f"/{fake_session_id}/estimate-acb")
+    assert turn_call.kwargs["data"]["tier"] == "executive"
+    assert any("Final decision:" in m.value for m in at.markdown)
+    assert any("Last tier:" in m.value for m in at.sidebar.markdown)
 
 
 # endregion

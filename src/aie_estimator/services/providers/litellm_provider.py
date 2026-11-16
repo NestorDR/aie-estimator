@@ -20,7 +20,6 @@ from aie_estimator.services.exceptions import LLMProviderError, unwrap_exception
 from aie_estimator.services.providers.formatting import build_chat_messages, format_provider_response
 from aie_estimator.services.providers.generation_options import GenerationOptions
 from aie_estimator.settings import get_settings
-from aie_estimator.utils.model_constants import DEFAULT_FAST_PROFILE
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
 
@@ -124,12 +123,16 @@ async def call_litellm_router(
     :raises LLMProviderError: If the LiteLLM router call fails.
     :raises ValueError: If ``user_prompt`` and ``messages`` violate turn normalization rules.
     """
-    formatted_messages = build_chat_messages(user_prompt, system_prompt, messages)
-    router = get_litellm_router()
     catalog = get_model_catalog()
     model = opts.effective_model
     model_spec = catalog.get(model)
-    target_profile = model if (model_spec and model_spec.is_profile) else DEFAULT_FAST_PROFILE
+    if not model_spec or not model_spec.is_profile:
+        log.error("litellm_router_unsupported_model", model=model)
+        raise LLMProviderError(f"Model '{model}' is not a valid LiteLLM routing profile.")
+    target_profile = model
+
+    formatted_messages = build_chat_messages(user_prompt, system_prompt, messages)
+    router = get_litellm_router()
 
     kwargs: dict[str, Any] = {
         "model": target_profile,
@@ -186,12 +189,7 @@ async def call_litellm_router(
     cost_usd = float(raw_cost) if raw_cost is not None else None
     actual_model = getattr(response, "model", None) or model
 
-    # Derive provider identifier
-    if model_spec and model_spec.is_profile:
-        provider = "litellm"
-    else:
-        custom_provider = hidden_params.get("custom_llm_provider")
-        provider = custom_provider or (model_spec.provider if model_spec else "litellm")
+    provider = "litellm"
 
     log.info(
         "litellm_response_received",

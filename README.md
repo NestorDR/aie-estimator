@@ -12,33 +12,35 @@ AIE Estimator processes software project descriptions and domain parameters (`pr
 
 ## Architecture
 
-- **Schemas** ([`src/aie_estimator/schemas/`](src/aie_estimator/schemas/)): Pydantic v2 contracts (`EstimationRequest`, `EstimationResponse`, `EstimationResult`, `CreateSessionResponse`, `SessionInfoResponse`).
+- **Schemas** ([`src/aie_estimator/schemas/`](src/aie_estimator/schemas/)): Pydantic v2 contracts (`EstimationRequest`, `EstimationResponse`, `DeveloperEstimation`, `PmEstimation`, `ExecutiveEstimation`, `ACBResponse`, `CreateSessionResponse`, `SessionInfoResponse`).
 - **Attachments** ([`src/aie_estimator/attachments/`](src/aie_estimator/attachments/)): Local text extraction (`.pdf`, `.docx`, `.txt`, `.md`), per-file and per-turn character budgets, and XML delimiter wrapping.
 - **Sessions** ([`src/aie_estimator/sessions/`](src/aie_estimator/sessions/)): In-memory conversational session store, sliding-window `ConversationHistory`, 6-field `ProjectMetadata`, and post-turn metadata extractor.
-- **Routers** ([`src/aie_estimator/routers/`](src/aie_estimator/routers/)): HTTP routes (`POST /api/v1/estimate`, `POST /api/v1/sessions`, `GET /api/v1/sessions/{session_id}`, `POST /api/v1/sessions/{session_id}/estimate`, `GET /health`, `GET /`).
+- **Routers** ([`src/aie_estimator/routers/`](src/aie_estimator/routers/)): HTTP routes (`POST /api/v1/estimate`, `POST /api/v1/sessions`, `GET /api/v1/sessions/{session_id}`, `POST /api/v1/sessions/{session_id}/estimate`, `POST /api/v1/sessions/{session_id}/estimate-acb`, `GET /health`, `GET /`).
 - **Guardrails** ([`src/aie_estimator/guardrails/`](src/aie_estimator/guardrails/)): Input validation (`omni-moderation-latest`, prompt injection, PII heuristics) and low-confidence output normalization.
 - **Services** ([`src/aie_estimator/services/`](src/aie_estimator/services/)): Estimation orchestration, two-tier Redis caching (Tier 1 exact SHA-256, Tier 2 RediSearch vector similarity), and multi-provider dispatch with intra-tier rotation and cross-tier failover.
-- **Prompts** ([`src/aie_estimator/prompts/`](src/aie_estimator/prompts/)): Versioned Jinja2 templates (`estimation/v1`, `estimation/v2`, `metadata_extraction/v1`) and loader.
+- **Prompts** ([`src/aie_estimator/prompts/`](src/aie_estimator/prompts/)): Versioned Jinja2 templates (`estimation/v1`, `estimation/v2`, `estimation/v3`, `critic/v1`, `metadata_extraction/v1`) and loader.
 - **Configuration & Composition** ([`settings.py`](src/aie_estimator/settings.py), [`dependencies.py`](src/aie_estimator/dependencies.py), [`server.py`](src/aie_estimator/server.py)): `pydantic-settings` environment management, cached dependency injection factories, and FastAPI application factory (`create_app`).
-- **Frontend** ([`streamlit_app.py`](streamlit_app.py)): Session-only conversational Streamlit chat UI with multi-file upload, sidebar `ProjectMetadata` inspection, and telemetry viewer.
+- **Frontend** ([`streamlit_app.py`](streamlit_app.py)): Session-only conversational Streamlit chat UI with tier selector, opt-in ACB review + `BossTrace` viewer, multi-file upload, sidebar `ProjectMetadata` inspection, and telemetry viewer.
 
 ### Context-Augmented Generation (CAG) Workflow
 
 ```mermaid
 flowchart TD
     Client(["Client (Streamlit / API)"]) -->|"POST /api/v1/estimate"| Router["FastAPI Routers + DI"]
-    Client -->|"POST /api/v1/sessions/{id}/estimate (+ attachments)"| Attachments["Attachment Extractor (PDF / DOCX / Text)"]
+    Client -->|"POST /api/v1/sessions/{id}/estimate[-acb] (+ attachments)"| Attachments["Attachment Extractor (PDF / DOCX / Text)"]
     Attachments --> Router
 
     Router --> Guardrails["Input Guardrails (Moderation, Injection, PII)"]
-    Guardrails -->|"Transactional"| Cache{"Two-Tier Cache (Exact & Semantic)"}
-    Guardrails -->|"Conversational"| SessionCtx["Load Session (Sliding Window + ProjectMetadata)"]
+    Guardrails -->|"Transactional (Tier)"| Cache{"Two-Tier Cache (Exact & Semantic)"}
+    Guardrails -->|"Conversational (Tier)"| SessionCtx["Load Session (History + ProjectMetadata)"]
 
-    Cache -->|"Cache Hit"| Response["EstimationResponse (HTTP 200)"]
-    Cache -->|"Cache Miss (v1)"| LLM["LLM Dispatch (LiteLLM / Native)"]
-    SessionCtx -->|"v2 + History"| LLM
+    Cache -->|"Cache Hit"| Response["EstimationResponse / ACBResponse"]
+    Cache -->|"Cache Miss (v3)"| LLM["LLM Dispatch (LiteLLM / Native)"]
+    SessionCtx -->|"Single-Pass (v3)"| LLM
+    SessionCtx -->|"Opt-In ACB (v3)"| ACB["Actor-Critic-Boss Loop"]
 
     LLM --> OutputGuard["Output Scope Filter"]
+    ACB --> OutputGuard
     OutputGuard -->|"Transactional"| CacheWrite["Dual-Write Cache"]
     OutputGuard -->|"Conversational"| MemoryUpdate["Append Turn + Update ProjectMetadata"]
 
@@ -176,5 +178,6 @@ Architecture and feature guides in [`docs/`](docs/):
 - [Prompt Engine](docs/prompt-engine.md): Versioned Jinja2 templates and decoupled prompt/API versioning.
 - [Reasoning Profiles](docs/reasoning-profiles.md): Reasoning effort normalization, two-level failover, and credential pruning.
 - [Semantic Response Caching](docs/semantic-response-caching.md): Tier 1 exact SHA-256 cache, Tier 2 RediSearch vector cache, and shadow mode.
-- [Streamlit UI](docs/streamlit-conversational-ui.md): Session-only conversational chat UI, multi-file upload, 404 recovery, and telemetry inspection.
+- [Streamlit UI](docs/streamlit-conversational-ui.md): Session-only conversational chat UI, tier adaptation, ACB review toggle, multi-file upload, 404 recovery, and telemetry inspection.
 - [Testing Guidelines](docs/testing.md): Suite layout, shared fixtures, coverage gate, and Windows async execution policy.
+- [User Tier Adaptation](docs/user-tier-adaptation.md): Stakeholder tier resolution, `TIER_CONFIG` registry, modular `v3` templates, and tier-specific schemas.

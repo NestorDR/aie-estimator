@@ -283,12 +283,21 @@ class EstimationService:
             output_format=output_format,
         )
 
-        return await self._finalize_session_turn(
+        finalized = await self._finalize_session_turn(
             session=session,
             prepared=prepared,
             result=result,
             structured_result=structured_result,
         )
+        log.info(
+            "estimation_session_completed",
+            session_id=session.session_id,
+            tier=prepared.tier.value,
+            latency_ms=finalized["latency_ms"],
+            cost_usd=finalized.get("cost_usd"),
+            usage=finalized.get("usage"),
+        )
+        return finalized
 
     async def generate_session_estimation_acb(
         self,

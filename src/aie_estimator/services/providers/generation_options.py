@@ -5,9 +5,7 @@ from dataclasses import dataclass
 from typing import Final, Literal
 
 # --- App modules ---
-from aie_estimator.model_catalog import get_model_provider
-from aie_estimator.schemas.estimations import ProviderMode
-from aie_estimator.settings import get_settings
+from aie_estimator.model_catalog import ProviderMode, get_model_provider, resolve_engine_model
 
 
 ReasoningEffort = Literal["low", "medium", "high"]
@@ -31,11 +29,11 @@ class GenerationOptions:
     @property
     def effective_model(self) -> str:
         """
-        Return the requested model override or the default model from settings.
+        Return the requested model override or the default model for the active engine.
 
         :return: Resolved model or logical profile identifier.
         """
-        return self.model or get_settings().llm_model
+        return self.model if self.model is not None else resolve_engine_model(self.engine, None)
 
     @property
     def provider(self) -> str:

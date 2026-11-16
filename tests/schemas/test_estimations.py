@@ -112,7 +112,7 @@ def test_estimation_request_invalid_or_missing_field_raises_validation_error(
 
 def test_estimation_request_valid_model_accepted() -> None:
     """
-    GIVEN a valid model registered in the catalog
+    GIVEN a valid native model registered in the catalog paired with engine='native'
     WHEN EstimationRequest is instantiated
     THEN the instance is created with the expected model value.
     """
@@ -121,9 +121,54 @@ def test_estimation_request_valid_model_accepted() -> None:
         project_type=ProjectType.WEB_SAAS,
         detail_level=DetailLevel.MEDIUM,
         output_format=OutputFormat.PHASES_TABLE,
+        engine="native",
         model=DEFAULT_GPT_LLM,
     )
     assert req.model == DEFAULT_GPT_LLM
+
+
+def test_estimation_request_native_omitted_model_defaults_to_first_native_model() -> None:
+    """
+    GIVEN an EstimationRequest with engine='native' and omitted model
+    WHEN the instance is validated
+    THEN model resolves to the first native model in the catalog.
+    """
+    req = EstimationRequest(
+        description="Client requires a scalable notification service supporting email and SMS.",
+        project_type=ProjectType.WEB_SAAS,
+        detail_level=DetailLevel.MEDIUM,
+        output_format=OutputFormat.PHASES_TABLE,
+        engine="native",
+    )
+    assert req.model == DEFAULT_GPT_LLM
+
+
+@pytest.mark.parametrize(
+    ("engine", "model"),
+    [
+        ("litellm", DEFAULT_GPT_LLM),
+        ("native", DEFAULT_FAST_PROFILE),
+    ],
+    ids=["litellm_with_physical_model", "native_with_logical_profile"],
+)
+def test_estimation_request_rejects_engine_model_mismatch(engine: str, model: str) -> None:
+    """
+    GIVEN an EstimationRequest pairing an incompatible engine and model
+    WHEN the request is validated
+    THEN a ValidationError is raised indicating the model is unsupported for that engine.
+
+    :param engine: Target execution engine.
+    :param model: Incompatible model or profile identifier.
+    """
+    with pytest.raises(ValidationError, match=r"is not supported for engine"):
+        EstimationRequest(
+            description="Client requires a scalable notification service supporting email and SMS.",
+            project_type=ProjectType.WEB_SAAS,
+            detail_level=DetailLevel.MEDIUM,
+            output_format=OutputFormat.PHASES_TABLE,
+            engine=engine,  # type: ignore[arg-type]
+            model=model,
+        )
 
 
 def test_estimation_request_none_model_defaults_to_settings_llm_model() -> None:

@@ -122,10 +122,10 @@ class EstimationSemanticCache:
 
         Schema Architecture:
         - `TagField("bucket")`: Partitions the search space by exact category string
-          (`prompt_version:project_type:detail_level:output_format`). It prevents linguistic
+          (request options, tier, and prompt version, separated by underscores). It prevents linguistic
           stemming or tokenization, ensuring exact literal equality filtering.
         - `TextField("result_json")`: Stores the serialized JSON representation of the validated
-          `EstimationResult` for immediate retrieval upon a cache hit.
+          `BaseTierEstimation` for immediate retrieval upon a cache hit.
         - `VectorField("embedding", "FLAT", ...)`: Stores the 1,536-dimensional FLOAT32 vector representation.
           Uses FLAT indexing with COSINE distance metric for exact nearest-neighbor search.
 
@@ -218,21 +218,21 @@ class EstimationSemanticCache:
         Search the semantic vector cache for a previously cached response matching the request intent.
 
         Steps:
-        1. Form the deterministic bucket tag (`@bucket:{...}`).
+        1. Form the deterministic bucket tag (``@bucket:{...}``).
         2. Compute the 1,536-dim vector embedding of `request.description`.
         3. Issue a RediSearch KNN vector query:
-           `(@bucket:{<bucket>})=>[KNN 1 @embedding $vec AS vector_distance]`
-           - `@bucket`: Filters to documents possessing the identical bucket tag.
-           - `=>[KNN 1 ...]`: Finds the 1-nearest neighbor to vector `$vec`.
-           - `AS vector_distance`: Aliases the cosine distance metric (0 = identical, 2 = opposite).
-           - `.dialect(2)`: Activates RediSearch vector syntax Dialect 2.
-        4. Calculate cosine similarity = `1.0 - vector_distance`.
-        5. Verify `similarity >= self.threshold`. If below, return None.
-        6. If `self.log_only` is active, record telemetry and return None to allow LLM execution.
+           ``(@bucket:{<bucket>})=>[KNN 1 @embedding $vec AS vector_distance]``
+           - ``@bucket``: Filters to documents possessing the identical bucket tag.
+           - ``=>[KNN 1 ...]``: Finds the 1-nearest neighbor to vector ``$vec``.
+           - ``AS vector_distance`: Aliases the cosine distance metric (0 = identical, 2 = opposite).
+           - ``.dialect(2)``: Activates RediSearch vector syntax Dialect 2.
+        4. Calculate cosine similarity = ``1.0 - vector_distance``.
+        5. Verify ``similarity >= self.threshold``. If below, return None.
+        6. If ``self.log_only`` is active, record telemetry and return None to allow LLM execution.
 
         :param request: User estimation request containing natural language description.
         :param prompt_version: Active prompt version for bucket partitioning.
-        :return: Deserialized `EstimationResult` on hit, or None on miss or error.
+        :return: Deserialized ``BaseTierEstimation`` subclass on hit, or None on miss or error.
         """
         bucket = self.bucket_for(request, prompt_version, tier=tier)
         embedding = await self.get_embedding(request.description)

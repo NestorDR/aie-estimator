@@ -51,6 +51,33 @@ def test_create_estimation_invalid_field_returns_422(client: TestClient) -> None
     assert any("at least 20 characters" in err.get("msg", "") for err in errors)
 
 
+@pytest.mark.parametrize(
+    ("engine", "model"),
+    [
+        ("litellm", DEFAULT_GPT_LLM),
+        ("native", DEFAULT_FAST_PROFILE),
+    ],
+    ids=["litellm_with_physical_model", "native_with_logical_profile"],
+)
+def test_create_estimation_engine_model_mismatch_returns_422(
+    client: TestClient,
+    engine: str,
+    model: str,
+) -> None:
+    """
+    GIVEN an estimation payload pairing an incompatible engine and model
+    WHEN a POST request is sent to /api/v1/estimate
+    THEN HTTP 422 Unprocessable Content is returned before invoking the service.
+
+    :param client: Shared TestClient fixture.
+    :param engine: Target execution engine.
+    :param model: Incompatible model or profile identifier.
+    """
+    response = client.post("/api/v1/estimate", json={**VALID_PAYLOAD, "engine": engine, "model": model})
+    assert response.status_code == 422
+    assert "is not supported for engine" in str(response.json())
+
+
 def test_create_estimation_valid_request_returns_200(
     client: TestClient,
     make_estimation_result: Callable[..., dict[str, Any]],
@@ -107,10 +134,10 @@ def test_create_estimation_valid_request_returns_200(
     ("payload_override", "result_override", "expected_response", "expected_engine"),
     [
         (
-            {"model": DEFAULT_GPT_LLM},
+            {"engine": "native", "model": DEFAULT_GPT_LLM},
             {"model": DEFAULT_GPT_LLM, "provider": "openai"},
             {"model": DEFAULT_GPT_LLM, "provider": "openai", "cost_usd": None},
-            "litellm",
+            "native",
         ),
         (
             {"model": DEFAULT_FAST_PROFILE},

@@ -5,27 +5,16 @@ from typing import Annotated, Final
 
 # --- Third Party Libraries ---
 from fastapi import APIRouter, Depends, File, Form, UploadFile, status
-from pydantic import AfterValidator, StringConstraints
+from fastapi.exceptions import RequestValidationError
+from pydantic import StringConstraints
 import structlog
 
 # --- App modules ---
 from aie_estimator.attachments.extractor import validate_attachment_count
-from aie_estimator.dependencies import (
-    get_boss,
-    get_caller_tier,
-    get_critic,
-    get_estimation_service,
-    get_session_store,
-)
+from aie_estimator.dependencies import get_boss, get_caller_tier, get_critic, get_estimation_service, get_session_store
+from aie_estimator.model_catalog import ProviderMode, resolve_engine_model
 from aie_estimator.schemas.acb import ACBResponse
-from aie_estimator.schemas.estimations import (
-    DetailLevel,
-    EstimationResponse,
-    OutputFormat,
-    ProjectType,
-    ProviderMode,
-    validate_catalog_model,
-)
+from aie_estimator.schemas.estimations import DetailLevel, EstimationResponse, OutputFormat, ProjectType
 from aie_estimator.schemas.sessions import CreateSessionResponse, SessionInfoResponse
 from aie_estimator.services.boss_service import Boss
 from aie_estimator.services.critic_service import Critic
@@ -50,7 +39,7 @@ router = APIRouter(
     description="Provision an empty in-memory conversational estimation session and return its UUID v4 identifier.",
 )
 async def create_session(
-    store: SessionStore = Depends(get_session_store),
+        store: SessionStore = Depends(get_session_store),
 ) -> CreateSessionResponse:
     """
     Create a new empty conversational estimation session.
@@ -72,8 +61,8 @@ async def create_session(
     description="Return current sliding-window message count, distilled project metadata, and timestamps for a session.",
 )
 async def get_session(
-    session_id: str,
-    store: SessionStore = Depends(get_session_store),
+        session_id: str,
+        store: SessionStore = Depends(get_session_store),
 ) -> SessionInfoResponse:
     """
     Inspect an active conversational session by identifier.
@@ -101,23 +90,23 @@ async def get_session(
     status_code=status.HTTP_200_OK,
     summary="Generate conversational session estimation",
     description=(
-        "Execute a multi-turn estimation turn inside an active session using multipart/form-data fields "
-        "and optional file attachments (.pdf, .docx, .md, .txt)."
+            "Execute a multi-turn estimation turn inside an active session using multipart/form-data fields "
+            "and optional file attachments (.pdf, .docx, .md, .txt)."
     ),
 )
 async def estimate_in_session(
-    session_id: str,
-    transcript: Annotated[str, StringConstraints(strip_whitespace=True, min_length=20, max_length=2000), Form()],
-    project_type: Annotated[ProjectType, Form()],
-    detail_level: Annotated[DetailLevel, Form()],
-    output_format: Annotated[OutputFormat, Form()],
-    model: Annotated[str | None, Form(), AfterValidator(validate_catalog_model)] = None,
-    engine: Annotated[ProviderMode, Form()] = "litellm",
-    tier: Annotated[Tier | None, Form()] = None,
-    attachments: Annotated[list[UploadFile] | None, File()] = None,
-    caller_tier: Tier | None = Depends(get_caller_tier),
-    store: SessionStore = Depends(get_session_store),
-    service: EstimationService = Depends(get_estimation_service),
+        session_id: str,
+        transcript: Annotated[str, StringConstraints(strip_whitespace=True, min_length=20, max_length=2000), Form()],
+        project_type: Annotated[ProjectType, Form()],
+        detail_level: Annotated[DetailLevel, Form()],
+        output_format: Annotated[OutputFormat, Form()],
+        model: Annotated[str | None, Form()] = None,
+        engine: Annotated[ProviderMode, Form()] = "litellm",
+        tier: Annotated[Tier | None, Form()] = None,
+        attachments: Annotated[list[UploadFile] | None, File()] = None,
+        caller_tier: Tier | None = Depends(get_caller_tier),
+        store: SessionStore = Depends(get_session_store),
+        service: EstimationService = Depends(get_estimation_service),
 ) -> EstimationResponse:
     """
     Execute a multi-turn software project estimation turn within an existing session.
@@ -137,13 +126,14 @@ async def estimate_in_session(
 
     :return: Generated estimation payload with tier, prompt version, and telemetry metadata.
     """
+    resolved_model = _resolve_session_model(engine, model)
     session = store.get_or_404(session_id)
     raw_attachments = await _read_session_attachments(attachments)
-    
+
     log.info(
         "session_estimation_request_received",
         session_id=session_id,
-        model=model,
+        model=resolved_model,
         engine=engine,
         tier_override=tier.value if tier else None,
         caller_tier=caller_tier.value if caller_tier else None,
@@ -156,13 +146,31 @@ async def estimate_in_session(
         project_type=project_type,
         detail_level=detail_level,
         output_format=output_format,
-        opts=GenerationOptions(model=model, engine=engine),
+        opts=GenerationOptions(model=resolved_model, engine=engine),
         attachments=raw_attachments,
         caller_tier=caller_tier,
         tier_override=tier,
     )
 
     return EstimationResponse.from_service_result(result)
+
+
+def _resolve_session_model(engine: ProviderMode, model: str | None) -> str:
+    """
+    Resolve and validate the session estimation model against the selected engine.
+
+    :param engine: Target execution engine (``"litellm"`` or ``"native"``).
+    :param model: Optional form model override.
+
+    :return: Validated model or logical profile identifier.
+    :raises RequestValidationError: If ``model`` is incompatible with ``engine``.
+    """
+    try:
+        return resolve_engine_model(engine, model)
+    except ValueError as e:
+        raise RequestValidationError(
+            [{"type": "value_error", "loc": ("body", "model"), "msg": str(e), "input": model}]
+        ) from e
 
 
 async def _read_session_attachments(attachments: list[UploadFile] | None) -> list[tuple[str, bytes]]:
@@ -185,25 +193,25 @@ async def _read_session_attachments(attachments: list[UploadFile] | None) -> lis
     status_code=status.HTTP_200_OK,
     summary="Generate Actor-Critic-Boss conversational estimation",
     description=(
-        "Execute a bounded Actor-Critic-Boss estimation turn inside an active session using "
-        "multipart/form-data fields and optional file attachments (.pdf, .docx, .md, .txt)."
+            "Execute a bounded Actor-Critic-Boss estimation turn inside an active session using "
+            "multipart/form-data fields and optional file attachments (.pdf, .docx, .md, .txt)."
     ),
 )
 async def estimate_in_session_acb(
-    session_id: str,
-    transcript: Annotated[str, StringConstraints(strip_whitespace=True, min_length=20, max_length=2000), Form()],
-    project_type: Annotated[ProjectType, Form()],
-    detail_level: Annotated[DetailLevel, Form()],
-    output_format: Annotated[OutputFormat, Form()],
-    model: Annotated[str | None, Form(), AfterValidator(validate_catalog_model)] = None,
-    engine: Annotated[ProviderMode, Form()] = "litellm",
-    tier: Annotated[Tier | None, Form()] = None,
-    attachments: Annotated[list[UploadFile] | None, File()] = None,
-    caller_tier: Tier | None = Depends(get_caller_tier),
-    store: SessionStore = Depends(get_session_store),
-    service: EstimationService = Depends(get_estimation_service),
-    critic: Critic = Depends(get_critic),
-    boss: Boss = Depends(get_boss),
+        session_id: str,
+        transcript: Annotated[str, StringConstraints(strip_whitespace=True, min_length=20, max_length=2000), Form()],
+        project_type: Annotated[ProjectType, Form()],
+        detail_level: Annotated[DetailLevel, Form()],
+        output_format: Annotated[OutputFormat, Form()],
+        model: Annotated[str | None, Form()] = None,
+        engine: Annotated[ProviderMode, Form()] = "litellm",
+        tier: Annotated[Tier | None, Form()] = None,
+        attachments: Annotated[list[UploadFile] | None, File()] = None,
+        caller_tier: Tier | None = Depends(get_caller_tier),
+        store: SessionStore = Depends(get_session_store),
+        service: EstimationService = Depends(get_estimation_service),
+        critic: Critic = Depends(get_critic),
+        boss: Boss = Depends(get_boss),
 ) -> ACBResponse:
     """
     Execute an Actor-Critic-Boss software project estimation turn within an existing session.
@@ -225,13 +233,14 @@ async def estimate_in_session_acb(
 
     :return: Generated ``ACBResponse`` with tier estimation, aggregated telemetry, and ``boss_trace``.
     """
+    resolved_model = _resolve_session_model(engine, model)
     session = store.get_or_404(session_id)
     raw_attachments = await _read_session_attachments(attachments)
 
     log.info(
-        "session_acb_estimation_request_received",
+        "session_estimation_acb_request_received",
         session_id=session_id,
-        model=model,
+        model=resolved_model,
         engine=engine,
         tier_override=tier.value if tier else None,
         caller_tier=caller_tier.value if caller_tier else None,
@@ -244,7 +253,7 @@ async def estimate_in_session_acb(
         project_type=project_type,
         detail_level=detail_level,
         output_format=output_format,
-        opts=GenerationOptions(model=model, engine=engine),
+        opts=GenerationOptions(model=resolved_model, engine=engine),
         attachments=raw_attachments,
         caller_tier=caller_tier,
         tier_override=tier,

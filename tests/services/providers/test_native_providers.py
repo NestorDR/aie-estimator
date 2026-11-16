@@ -351,12 +351,12 @@ async def test_call_openai_retry_exhaustion(
 @pytest.mark.parametrize(
     ("reasoning_effort", "expected_params", "absent_params"),
     [
-        (None, {"temperature": 0.3}, ("thinking", "output_config")),
+        (None, {}, ("thinking", "output_config", "temperature")),
         ("medium", {"thinking": {"type": "adaptive"}, "output_config": {"effort": "medium"}}, ("temperature",)),
     ],
     ids=["thinking_disabled", "effort_medium"],
 )
-async def test_call_anthropic_thinking_and_temperature_exclusivity(
+async def test_call_anthropic_thinking_and_omits_temperature(
     sample_transcription: str,
     mock_async_anthropic_client: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
@@ -367,7 +367,7 @@ async def test_call_anthropic_thinking_and_temperature_exclusivity(
     """
     GIVEN Anthropic configuration with or without qualitative reasoning effort
     WHEN call_anthropic executes
-    THEN adaptive thinking and temperature are strictly mutually exclusive.
+    THEN adaptive thinking is sent only when reasoning_effort is set and temperature is never forwarded.
 
     :param sample_transcription: Sample transcript fixture.
     :param mock_async_anthropic_client: Reusable typed AsyncAnthropic mock fixture.

@@ -26,9 +26,10 @@ class InputGuardrailViolation(Exception):  # noqa: N818
         self.reason: Final[Reason] = reason
 
 
+# --- OpenAI Moderation Model -------------------------------------------------
 _MODERATION_MODEL: Final[str] = "omni-moderation-latest"
 
-# --- Prompt injection patterns ----------------------------------------------
+# --- Prompt injection patterns -----------------------------------------------
 # Precompiled regular expressions targeting common prompt injection, context wipe,
 # and system-boundary escape attacks:
 _PROMPT_INJECTION_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
@@ -66,7 +67,7 @@ _PROMPT_INJECTION_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
     # Fake role delimiter / ChatML injections
     # Detects synthetic turn boundaries or role tags injected into text to simulate elevated system blocks
     # (e.g., "<|im_start|>system", "<|system|>", "[SYSTEM]", or "system:").
-    re.compile(r"<\|im_start\|>|<\|system\|>|\[SYSTEM\]|^\s*system\s*:", re.IGNORECASE | re.MULTILINE),
+    re.compile(r"<\|im_start\|>|<\|system\|>|\[SYSTEM]|^\s*system\s*:", re.IGNORECASE | re.MULTILINE),
     # Explicit jailbreak modes
     # Catches explicit developer mode or jailbreak activation phrases
     # (e.g., "developer mode enabled", "jailbreak mode", "dan mode").

@@ -307,3 +307,26 @@ async def test_call_router_supports_custom_response_model(
     assert result["result"].mentioned_technologies == ["FastAPI"]
     assert result["cost_usd"] == 0.00012
 
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "invalid_model",
+    [DEFAULT_GPT_LLM, "unknown-unsupported-model"],
+    ids=["physical_model", "unknown_model"],
+)
+async def test_call_router_rejects_non_profile_model(invalid_model: str) -> None:
+    """
+    GIVEN a physical or unknown model identifier passed to call_litellm_router
+    WHEN call_litellm_router executes
+    THEN LLMProviderError is raised instead of silently falling back to a default profile.
+
+    :param invalid_model: Non-profile model identifier.
+    """
+    opts = GenerationOptions(model=invalid_model, max_tokens=500)
+    with pytest.raises(LLMProviderError, match=r"not a valid LiteLLM routing profile"):
+        await call_litellm_router(
+            user_prompt="Analyze project",
+            system_prompt="System prompt",
+            opts=opts,
+        )
+

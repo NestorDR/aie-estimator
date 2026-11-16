@@ -11,7 +11,9 @@ import pytest
 from aie_estimator.model_catalog import (
     get_model_catalog,
     get_model_provider,
+    get_models_for_engine,
     get_supported_models,
+    resolve_engine_model,
     resolve_provider,
 )
 from aie_estimator.utils.model_constants import (
@@ -141,3 +143,66 @@ def test_model_catalog_loads_config_or_falls_back(tmp_path: Path, file_content: 
     assert "test-model-unknown" not in supported_models
     if expect_loaded_model:
         assert catalog["test-model-beta"].provider == "mistral"
+
+
+@pytest.mark.parametrize(
+    ("engine", "expected_models", "excluded_models"),
+    [
+        (
+            "litellm",
+            (DEFAULT_FAST_PROFILE, DEFAULT_DEEP_PROFILE),
+            (DEFAULT_GPT_LLM, DEFAULT_CLAUDE_LLM, "test-model-beta"),
+        ),
+        (
+            "native",
+            (DEFAULT_GPT_LLM, DEFAULT_CLAUDE_LLM, "test-model-beta", "test-openai-extra"),
+            (DEFAULT_FAST_PROFILE, DEFAULT_DEEP_PROFILE),
+        ),
+    ],
+    ids=["litellm_profiles_only", "native_physical_models_only"],
+)
+def test_get_models_for_engine_filters_catalog(
+    tmp_path: Path,
+    engine: str,
+    expected_models: tuple[str, ...],
+    excluded_models: tuple[str, ...],
+) -> None:
+    """
+    GIVEN a model catalog containing logical profiles and physical models
+    WHEN get_models_for_engine is called for 'litellm' or 'native'
+    THEN 'litellm' returns only profiles and 'native' returns only non-profile physical models.
+
+    :param tmp_path: Pytest temporary directory fixture.
+    :param engine: Target execution engine ('litellm' or 'native').
+    :param expected_models: Models expected in the returned tuple.
+    :param excluded_models: Models that must be excluded from the returned tuple.
+    """
+    profiles_file = tmp_path / "profiles.yml"
+    profiles_file.write_text(
+        VALID_PROFILES_YAML
+        + "  - model_name: 'test-openai-extra'\n"
+        + "    litellm_params:\n"
+        + "      model: 'openai/gpt-6-mini'\n",
+        encoding="utf-8",
+    )
+    get_model_catalog.cache_clear()
+    models = get_models_for_engine(engine, profiles_path=profiles_file)  # type: ignore[arg-type]
+    get_model_catalog.cache_clear()
+
+    for expected in expected_models:
+        assert expected in models
+    for excluded in excluded_models:
+        assert excluded not in models
+
+
+def test_resolve_engine_model_raises_clear_error_when_catalog_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    GIVEN get_models_for_engine returning no models for the requested engine
+    WHEN resolve_engine_model is called
+    THEN ValueError is raised with a clear configuration message instead of IndexError.
+
+    :param monkeypatch: Pytest monkeypatch fixture.
+    """
+    monkeypatch.setattr("aie_estimator.model_catalog.get_models_for_engine", lambda _engine: ())
+    with pytest.raises(ValueError, match=r"No models are configured for engine 'native'"):
+        resolve_engine_model("native", None)

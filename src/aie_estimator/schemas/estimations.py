@@ -5,17 +5,14 @@ from enum import Enum
 from typing import Any, Final, Literal, Self
 
 # --- Third Party Libraries ---
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 # --- App modules ---
-from aie_estimator.model_catalog import get_supported_models
+from aie_estimator.model_catalog import ProviderMode, resolve_engine_model
 from aie_estimator.sessions.tier_resolver import Tier
-from aie_estimator.settings import get_settings
 
 OUT_OF_SCOPE_PREFIX: Final[str] = "Out of scope:"
 LOW_CONFIDENCE_THRESHOLD: Final[int] = 30
-
-ProviderMode = Literal["litellm", "native"]
 
 
 class ProjectType(str, Enum):
@@ -43,24 +40,6 @@ class OutputFormat(str, Enum):
     NARRATIVE = "narrative"
 
 
-def validate_catalog_model(value: str | None) -> str:
-    """
-    Validate that the model is registered in the model catalog or logical profiles.
-
-    :param value: Optional model identifier from request.
-
-    :return: Validated model identifier, defaulting to settings.llm_model if None or empty.
-    :raises ValueError: If a model is not registered in the catalog.
-    """
-    if value is None or value in ("none", ""):
-        return get_settings().llm_model
-    supported = get_supported_models()
-    if value not in supported:
-        supported_str = ", ".join(supported)
-        raise ValueError(f"Input should be one of: {supported_str}")
-    return value
-
-
 class EstimationRequest(BaseModel):
     """Payload schema for software project estimation requests."""
 
@@ -75,8 +54,7 @@ class EstimationRequest(BaseModel):
     output_format: OutputFormat = Field(description="Shape of the rendered estimation.")
     model: str | None = Field(
         default=None,
-        validate_default=True,
-        description="Override the default LLM model for this request. Must be one of the catalog supported models.",
+        description="Override the default LLM model for this request. Must be compatible with the selected engine.",
     )
     engine: ProviderMode = Field(
         default="litellm",
@@ -87,18 +65,16 @@ class EstimationRequest(BaseModel):
         description="Optional stakeholder tier override ('developer', 'pm', 'executive').",
     )
 
-    @field_validator("model", mode="after")
-    @classmethod
-    def validate_model(cls, value: str | None) -> str:
+    @model_validator(mode="after")
+    def validate_engine_model_compatibility(self) -> Self:
         """
-        Validate that the model is registered in the model catalog or logical profiles.
+        Resolve omitted model defaults and enforce engine/model compatibility.
 
-        :param value: Optional model identifier from request.
-
-        :return: Validated model identifier, defaulting to settings.llm_model if None.
-        :raises ValueError: If a model is not registered in the catalog.
+        :return: Self with ``model`` resolved to a valid identifier for ``engine``.
+        :raises ValueError: If ``model`` is incompatible with ``engine``.
         """
-        return validate_catalog_model(value)
+        self.model = resolve_engine_model(self.engine, self.model)
+        return self
 
 
 class TokenUsage(BaseModel):

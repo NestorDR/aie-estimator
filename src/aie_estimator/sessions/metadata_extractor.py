@@ -122,7 +122,7 @@ async def update_metadata(
 
     :param previous: Current ``ProjectMetadata`` stored on the session.
     :param transcript: Latest user turn transcript (optionally enriched with attachments).
-    :param result: Scope-filtered ``EstimationResult`` produced for the latest turn.
+    :param result: Scope-filtered ``BaseTierEstimation`` produced for the latest turn.
     :param opts: Primary turn generation options used to select engine and native fallback model.
 
     :return: ``MetadataExtractionOutcome`` with updated metadata, token counts, and optional cost.

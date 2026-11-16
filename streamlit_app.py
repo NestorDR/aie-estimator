@@ -2,6 +2,7 @@
 
 # --- Python Standard Library ---
 import asyncio
+from collections.abc import Callable
 import os
 from typing import Any, Final
 
@@ -12,8 +13,9 @@ import streamlit as st
 from streamlit import runtime
 
 # --- App modules ---
-from aie_estimator.model_catalog import get_supported_models
-from aie_estimator.schemas.estimations import DetailLevel, OutputFormat, ProjectType, ProviderMode
+from aie_estimator.model_catalog import get_models_for_engine, ProviderMode
+from aie_estimator.schemas.estimations import DetailLevel, OutputFormat, ProjectType
+from aie_estimator.sessions.tier_resolver import Tier
 from aie_estimator.settings import get_settings
 
 load_dotenv()
@@ -23,6 +25,7 @@ PAGE_TITLE: Final[str] = "Software Estimator"
 PAGE_ICON: Final[str] = "🧮"  # :abacus: - Visit: https://streamlit-emoji-shortcodes-streamlit-app-gwckff.streamlit.app/
 MIN_DESCRIPTION_LENGTH: Final[int] = 20
 MAX_DESCRIPTION_LENGTH: Final[int] = 2000
+_AUTO_TIER: Final[str] = "auto"
 _REQUEST_TIMEOUT: Final[httpx.Timeout] = httpx.Timeout(120.0, connect=10.0)
 
 api_base_url: Final[str] = os.getenv("ESTIMATOR_API_BASE_URL", DEFAULT_API_BASE_URL).rstrip("/")
@@ -69,6 +72,8 @@ async def send_session_turn(
     *,
     model: str | None = None,
     engine: str = "litellm",
+    tier: str | None = None,
+    use_acb: bool = False,
     attachments: list[tuple[str, bytes, str]] | None = None,
     endpoint: str = sessions_endpoint,
 ) -> dict[str, Any]:
@@ -82,10 +87,12 @@ async def send_session_turn(
     :param output_format: Target output format (``phases_table``, ``line_items``, ``narrative``).
     :param model: Optional model identifier override from supported catalog.
     :param engine: Provider dispatch engine (``litellm`` or ``native``).
+    :param tier: Optional explicit stakeholder tier override (omitted when ``None``).
+    :param use_acb: When ``True``, route to ``/estimate-acb`` instead of ``/estimate``.
     :param attachments: Optional list of ``(filename, content_bytes, content_type)`` tuples.
     :param endpoint: Base sessions endpoint URL.
 
-    :return: Deserialized JSON estimation response dictionary conforming to ``EstimationResponse``.
+    :return: Deserialized JSON estimation response dictionary conforming to ``EstimationResponse`` or ``ACBResponse``.
     :raises httpx.HTTPError: If the backend service is unreachable or returns an HTTP error status code.
     """
     form_data: dict[str, str] = {
@@ -97,15 +104,18 @@ async def send_session_turn(
     }
     if model:
         form_data["model"] = model
+    if tier:
+        form_data["tier"] = tier
 
     files = [
         ("attachments", (filename, content, content_type or "application/octet-stream"))
         for filename, content, content_type in (attachments or [])
     ]
+    action = "estimate-acb" if use_acb else "estimate"
 
     async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT) as client:
         response = await client.post(
-            f"{endpoint}/{session_id}/estimate",
+            f"{endpoint}/{session_id}/{action}",
             data=form_data,
             files=files or None,
         )
@@ -209,14 +219,152 @@ def render_telemetry_container(metadata: dict[str, Any]) -> None:
         )
 
 
+def _render_string_list(heading: str, items: list[str]) -> None:
+    """
+    Render a labeled bullet list when ``items`` is non-empty.
+
+    :param heading: Section label displayed above the list.
+    :param items: String items to render as bullets.
+    """
+    if not items:
+        return
+    st.markdown(f"**{heading}:**")
+    st.markdown("\n".join(f"- {item}" for item in items))
+
+
+def _render_developer_body(res: dict[str, Any], confidence_pct: int) -> None:
+    """
+    Render developer-tier component effort, risks, stack assumptions, and uncertainty drivers.
+
+    :param res: Deserialized ``DeveloperEstimation`` dictionary.
+    :param confidence_pct: Confidence percentage (0-100).
+    """
+    hours_range = res.get("total_hours_range", {})
+    col_hours, col_conf = st.columns(2)
+    with col_hours:
+        st.metric("Total effort", f"{hours_range.get('min_hours', 0)}–{hours_range.get('max_hours', 0)} h")
+    with col_conf:
+        st.metric("Confidence", f"{confidence_pct}%")
+
+    components = res.get("components", [])
+    if components:
+        st.subheader("Component breakdown")
+        components_table = [
+            {
+                "Component": comp.get("name", ""),
+                "Hours": comp.get("estimated_hours", 0),
+                "Technical risks": "; ".join(comp.get("technical_risks", [])),
+                "Stack assumptions": "; ".join(comp.get("stack_assumptions", [])),
+            }
+            for comp in components
+        ]
+        st.table(components_table, hide_index=True, alt="Component breakdown table")
+
+    _render_string_list("Technical risks", res.get("technical_risks", []))
+    _render_string_list("Stack assumptions", res.get("stack_assumptions", []))
+    _render_string_list("Uncertainty drivers", res.get("uncertainty_drivers", []))
+
+
+def _render_pm_body(res: dict[str, Any], confidence_pct: int) -> None:
+    """
+    Render PM-tier cost, duration, phase breakdown, and delivery metadata.
+
+    :param res: Deserialized ``PmEstimation`` dictionary.
+    :param confidence_pct: Confidence percentage (0-100).
+    """
+    col_cost, col_dur, col_conf = st.columns(3)
+    with col_cost:
+        st.metric("Total cost", f"€{res.get('total_cost_eur', 0):,}")
+    with col_dur:
+        st.metric("Total duration", f"{res.get('total_duration_weeks', 0)} weeks")
+    with col_conf:
+        st.metric("Confidence", f"{confidence_pct}%")
+
+    phases = res.get("phases", [])
+    if phases:
+        st.subheader("Phase breakdown")
+        phases_table = [
+            {
+                "Phase": phase.get("name", ""),
+                "Duration (weeks)": phase.get("duration_weeks", 0),
+                "Cost (€)": f"€{phase.get('cost_eur', 0):,}",
+                "Summary": phase.get("summary", ""),
+            }
+            for phase in phases
+        ]
+        st.table(phases_table, hide_index=True, alt="Phase breakdown table")
+
+    _render_string_list("Blockers", res.get("blockers", []))
+
+
+def _render_executive_body(res: dict[str, Any], confidence_pct: int) -> None:
+    """
+    Render executive-tier budget/timeline ranges, qualitative confidence, top risks, and go/no-go guidance.
+
+    :param res: Deserialized ``ExecutiveEstimation`` dictionary.
+    :param confidence_pct: Confidence percentage (0-100).
+    """
+    cost_range = res.get("headline_cost_range", {})
+    dur_range = res.get("headline_duration_range", {})
+    col_cost, col_dur, col_conf = st.columns(3)
+    with col_cost:
+        st.metric("Budget range", f"€{cost_range.get('min_eur', 0):,}–€{cost_range.get('max_eur', 0):,}")
+    with col_dur:
+        st.metric("Timeline range", f"{dur_range.get('min_weeks', 0)}–{dur_range.get('max_weeks', 0)} weeks")
+    with col_conf:
+        level = str(res.get("confidence_level", "N/A")).capitalize()
+        st.metric("Confidence", f"{level} ({confidence_pct}%)")
+
+    _render_string_list("Top risks", res.get("top_three_risks", []))
+    recommendation = res.get("go_no_go_recommendation")
+    if recommendation:
+        st.markdown(f"**Go / No-Go recommendation:** {recommendation}")
+
+
+_TIER_RENDERERS: Final[dict[str, Callable[[dict[str, Any], int], None]]] = {
+    Tier.DEVELOPER.value: _render_developer_body,
+    Tier.PM.value: _render_pm_body,
+    Tier.EXECUTIVE.value: _render_executive_body,
+}
+
+
+def render_boss_trace(boss_trace: dict[str, Any]) -> None:
+    """
+    Render the Actor-Critic-Boss governance audit trail in a collapsed expander.
+
+    :param boss_trace: Deserialized ``BossTrace`` dictionary from ``ACBResponse``.
+    """
+    with st.expander(":material/gavel: Boss audit trail", expanded=False):
+        final_decision = boss_trace.get("final_decision", "N/A")
+        iterations_run = boss_trace.get("iterations_run", 0)
+        st.markdown(f"**Final decision:** `{final_decision}` · **Iterations run:** `{iterations_run}`")
+
+        iterations = boss_trace.get("iterations", [])
+        if iterations:
+            trace_rows = [
+                {
+                    "Iteration": item.get("iteration", 0),
+                    "Critic verdict": item.get("critic_verdict", ""),
+                    "Confidence": f"{item.get('critic_confidence', 0)}%",
+                    "Decision after": item.get("decision_after", ""),
+                    "Issues": "; ".join(item.get("issue_summary") or []) or "None",
+                }
+                for item in iterations
+            ]
+            st.table(trace_rows, hide_index=True, alt="Boss audit trail table")
+
+
 def render_estimation(estimation_data: dict[str, Any]) -> None:
     """
-    Render a structured or text estimation response alongside execution telemetry.
+    Render a tier-adapted estimation response alongside optional Boss trace and execution telemetry.
 
-    :param estimation_data: Deserialized ``EstimationResponse`` dictionary.
+    :param estimation_data: Deserialized ``EstimationResponse`` or ``ACBResponse`` dictionary.
     """
     prompt_version = estimation_data.get("prompt_version", "?")
-    st.markdown(f"**Prompt version:** `{prompt_version}`")
+    tier = estimation_data.get("tier")
+    tier_rule = estimation_data.get("tier_rule")
+    tier_suffix = f" · **Tier:** `{tier}` (rule: `{tier_rule or '?'}`)" if tier else ""
+    st.markdown(f"**Prompt version:** `{prompt_version}`{tier_suffix}")
 
     res = estimation_data.get("result")
     if isinstance(res, dict):
@@ -228,29 +376,14 @@ def render_estimation(estimation_data: dict[str, Any]) -> None:
         else:
             st.info(summary, icon=":material/info:")
 
-        col_cost, col_dur, col_conf = st.columns(3)
-        with col_cost:
-            st.metric("Total cost", f"€{res.get('total_cost_eur', 0):,}")
-        with col_dur:
-            st.metric("Total duration", f"{res.get('total_duration_weeks', 0)} weeks")
-        with col_conf:
-            st.metric("Confidence", f"{confidence_pct}%")
-
-        phases = res.get("phases", [])
-        if phases:
-            st.subheader("Phase breakdown")
-            phases_table = [
-                {
-                    "Phase": phase.get("name", ""),
-                    "Duration (weeks)": phase.get("duration_weeks", 0),
-                    "Cost (€)": f"€{phase.get('cost_eur', 0):,}",
-                    "Summary": phase.get("summary", ""),
-                }
-                for phase in phases
-            ]
-            st.table(phases_table, hide_index=True, alt="Phase breakdown table")
+        renderer = _TIER_RENDERERS.get(str(tier or ""), _render_pm_body)
+        renderer(res, confidence_pct)
     elif "text" in estimation_data:
         st.markdown(estimation_data.get("text", ""))
+
+    boss_trace = estimation_data.get("boss_trace")
+    if isinstance(boss_trace, dict):
+        render_boss_trace(boss_trace)
 
     render_telemetry_container(estimation_data)
 
@@ -288,6 +421,8 @@ def render_session_sidebar(session_info: dict[str, Any] | None, session_id: str 
     msg_count = int(session_info.get("message_count", 0))
     max_turns = int(session_info.get("max_turns", 6))
     st.markdown(f"**Window:** `{msg_count} / {max_turns * 2}` messages")
+    if session_info.get("last_tier"):
+        st.markdown(f"**Last tier:** `{session_info['last_tier']}`")
 
     metadata = session_info.get("metadata", {})
     has_metadata = False
@@ -347,12 +482,14 @@ def _dispatch_turn_with_recovery(
     output_format: str,
     model: str | None,
     engine: str,
+    tier: str | None,
+    use_acb: bool,
     attachments: list[tuple[str, bytes, str]],
 ) -> dict[str, Any] | None:
     """
     Execute a session estimation turn with lazy creation and single-retry 404 recovery.
 
-    :return: Deserialized ``EstimationResponse`` dictionary, or ``None`` if an error alert was shown.
+    :return: Deserialized ``EstimationResponse`` or ``ACBResponse`` dictionary, or ``None`` if an error alert was shown.
     """
     try:
         if st.session_state.session_id is None:
@@ -368,6 +505,8 @@ def _dispatch_turn_with_recovery(
                     output_format=output_format,
                     model=model,
                     engine=engine,
+                    tier=tier,
+                    use_acb=use_acb,
                     attachments=attachments,
                 )
             )
@@ -392,6 +531,8 @@ def _dispatch_turn_with_recovery(
                     output_format=output_format,
                     model=model,
                     engine=engine,
+                    tier=tier,
+                    use_acb=use_acb,
                     attachments=attachments,
                 )
             )
@@ -420,7 +561,6 @@ if runtime.exists():
 
         configured_model = settings.llm_model
         st.markdown(f"**Configured model:** `{configured_model}`")
-        st.markdown("**Resilience tier:** `Tier 1 (cost-based failover to Tier 2)`")
 
         if st.button(":material/refresh: New conversation", type="primary", width="stretch", key="new_conversation_btn"):
             reset_conversation()
@@ -428,20 +568,48 @@ if runtime.exists():
         st.header("Generation parameters")
         with st.container(border=True):
             st.subheader(":material/tune: Model and engine")
-            supported_models = get_supported_models()
-            default_index = supported_models.index(configured_model) if configured_model in supported_models else 0
+            supported_engines = list(ProviderMode.__args__)
+            selected_engine: str = (
+                st.segmented_control(
+                    "Execution engine",
+                    options=supported_engines,
+                    format_func=option_to_text,
+                    default=supported_engines[0],
+                    key="execution_engine",
+                    help="LiteLLM provides dynamic profile routing; Native dispatches directly via vendor SDK.",
+                )
+                or supported_engines[0]
+            )
+            engine_models = list(get_models_for_engine(selected_engine))  # type: ignore[arg-type]
+            default_index = engine_models.index(configured_model) if configured_model in engine_models else 0
             selected_model: str = st.selectbox(
                 "Target model",
-                options=[option_to_text(m, "-") for m in supported_models],
+                options=engine_models,
                 index=default_index,
-                help="Choose an available LLM or dynamic routing profile from the catalog.",
+                format_func=lambda m: option_to_text(m, "-"),
+                key=f"target_model_{selected_engine}",
+                help="Logical profiles for LiteLLM routing, or direct models for Native SDK execution.",
             )
-            supported_engines = [option_to_text(e) for e in ProviderMode.__args__]
-            selected_engine: str | None = st.segmented_control(
-                "Execution engine",
-                options=supported_engines,
-                default=supported_engines[0],
-                help="LiteLLM provides dynamic provider routing; Native dispatches directly via SDK.",
+            if selected_engine == "litellm":
+                st.caption("**Model routing:** Cheapest model first, with failover if it fails")
+
+            tier_options = [_AUTO_TIER, *(t.value for t in Tier)]
+            selected_tier: str = (
+                st.segmented_control(
+                    "Stakeholder tier",
+                    options=tier_options,
+                    format_func=option_to_text,
+                    default=_AUTO_TIER,
+                    key="stakeholder_tier",
+                    help="Auto infers tier from your prompt and metadata; selecting a tier sends an explicit override.",
+                )
+                or _AUTO_TIER
+            )
+            use_acb: bool = st.toggle(
+                "Actor-Critic-Boss review",
+                value=False,
+                key="use_acb",
+                help="Run bounded Actor-Critic-Boss quality review (uses Target model for Actor; Critic and Boss use configured profiles).",
             )
 
         with st.container(border=True):
@@ -539,8 +707,10 @@ if runtime.exists():
                     project_type=text_to_option(project_type),
                     detail_level=text_to_option(detail_level),
                     output_format=text_to_option(output_format),
-                    model=text_to_option(selected_model, "-"),
-                    engine=text_to_option(selected_engine or "litellm"),
+                    model=selected_model,
+                    engine=selected_engine,
+                    tier=None if selected_tier == _AUTO_TIER else selected_tier,
+                    use_acb=use_acb,
                     attachments=attachment_payloads,
                 )
 

@@ -92,7 +92,8 @@ class Critic:
                 raise TypeError(f"Unexpected Critic result type: {type(raw_result).__name__}")
         except Exception as exc:  # noqa: BLE001
             log.warning(
-                "critic_review_failed_fallback_accept",
+                "critic_review_failed",
+                fallback="accept",
                 error_type=type(exc).__name__,
                 error=str(exc)[:200],
             )

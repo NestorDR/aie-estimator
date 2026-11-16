@@ -16,6 +16,7 @@ from aie_estimator.dependencies import get_session_store
 from aie_estimator.services.exceptions import LLMProviderError
 from aie_estimator.sessions.metadata_extractor import MetadataExtractionOutcome
 from aie_estimator.sessions.models import ProjectMetadata
+from aie_estimator.utils.model_constants import DEFAULT_FAST_PROFILE, DEFAULT_GPT_LLM
 
 _VALID_FORM_DATA: Final[dict[str, str]] = {
     "transcript": "We are building MyProject, a multi-tenant B2B analytics platform with FastAPI and PostgreSQL.",
@@ -310,3 +311,72 @@ def test_estimate_in_session_llm_provider_error_returns_500(client: TestClient) 
     assert response.status_code == 500
     assert "An error occurred while generating the estimation" in response.json()["detail"]
     assert session.history.messages == []
+
+
+@pytest.mark.parametrize("endpoint_suffix", ["estimate", "estimate-acb"])
+@pytest.mark.parametrize(
+    ("engine", "model"),
+    [
+        ("litellm", DEFAULT_GPT_LLM),
+        ("native", DEFAULT_FAST_PROFILE),
+    ],
+    ids=["litellm_with_physical_model", "native_with_logical_profile"],
+)
+def test_session_endpoints_reject_engine_model_mismatch_with_422(
+    client: TestClient,
+    endpoint_suffix: str,
+    engine: str,
+    model: str,
+) -> None:
+    """
+    GIVEN an active session and an incompatible engine/model form pair
+    WHEN POST /api/v1/sessions/{session_id}/{endpoint_suffix} is called
+    THEN HTTP 422 Unprocessable Content is returned before invoking the service.
+
+    :param client: Shared TestClient fixture.
+    :param endpoint_suffix: Target session estimation endpoint suffix.
+    :param engine: Target execution engine.
+    :param model: Incompatible model or profile identifier.
+    """
+    session_id = client.post("/api/v1/sessions").json()["session_id"]
+    response = client.post(
+        f"/api/v1/sessions/{session_id}/{endpoint_suffix}",
+        data={**_VALID_FORM_DATA, "engine": engine, "model": model},
+    )
+    assert response.status_code == 422
+    assert "is not supported for engine" in str(response.json())
+
+
+def test_estimate_in_session_native_omitted_model_defaults_to_native_model(
+    client: TestClient,
+    make_estimation_result: Callable[..., dict[str, Any]],
+) -> None:
+    """
+    GIVEN an active session and engine='native' with model omitted
+    WHEN POST /api/v1/sessions/{session_id}/estimate is called
+    THEN the router resolves model to the first native catalog model before invoking the service.
+
+    :param client: Shared TestClient fixture.
+    :param make_estimation_result: Factory fixture returning valid LLM estimation result payloads.
+    """
+    session_id = client.post("/api/v1/sessions").json()["session_id"]
+    with (
+        patch("aie_estimator.services.estimations_service.sanitize_input", new_callable=AsyncMock),
+        patch(
+            "aie_estimator.services.estimations_service.call_llm",
+            new_callable=AsyncMock,
+            return_value=make_estimation_result(model=DEFAULT_GPT_LLM, provider="openai"),
+        ) as mock_call_llm,
+        patch(
+            "aie_estimator.services.estimations_service.update_metadata",
+            new_callable=AsyncMock,
+            return_value=MetadataExtractionOutcome(metadata=ProjectMetadata()),
+        ),
+    ):
+        response = client.post(
+            f"/api/v1/sessions/{session_id}/estimate",
+            data={**_VALID_FORM_DATA, "engine": "native"},
+        )
+
+    assert response.status_code == 200
+    assert mock_call_llm.await_args.kwargs["opts"].effective_model == DEFAULT_GPT_LLM

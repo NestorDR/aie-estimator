@@ -4,7 +4,7 @@
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 # --- Third Party Libraries ---
 import structlog
@@ -22,6 +22,7 @@ from aie_estimator.utils.model_constants import (
     UNKNOWN_PROVIDER,
 )
 
+ProviderMode = Literal["litellm", "native"]
 
 @dataclass(frozen=True, slots=True)
 class ModelSpec:
@@ -152,3 +153,47 @@ def get_supported_models(profiles_path: Path | str | None = None) -> tuple[str, 
     :return: Tuple containing supported model and profile names.
     """
     return tuple(get_model_catalog(profiles_path=profiles_path).keys())
+
+
+def get_models_for_engine(
+    engine: ProviderMode,
+    profiles_path: Path | str | None = None,
+) -> tuple[str, ...]:
+    """
+    Return supported model or logical profile identifiers filtered for the given execution engine.
+
+    :param engine: Target execution engine (``"litellm"`` or ``"native"``).
+    :param profiles_path: Explicit filesystem path override, or None to use Settings.llm_profiles_path.
+
+    :return: Ordered tuple of model or profile identifiers valid for ``engine``.
+    """
+    catalog = get_model_catalog(profiles_path=profiles_path)
+
+    if engine == "litellm":
+        return tuple(name for name, spec in catalog.items() if spec.is_profile)
+
+    return tuple(name for name, spec in catalog.items() if not spec.is_profile)
+
+
+def resolve_engine_model(engine: ProviderMode, model: str | None) -> str:
+    """
+    Resolve and validate a model identifier against the allowed models for ``engine``.
+
+    :param engine: Target execution engine (``"litellm"`` or ``"native"``).
+    :param model: Optional model or profile identifier from the request.
+
+    :return: Validated model or logical profile identifier for ``engine``.
+    :raises ValueError: If ``model`` is not supported for ``engine``.
+    """
+    allowed = get_models_for_engine(engine)
+    if not allowed:
+        raise ValueError(f"No models are configured for engine '{engine}'.")
+
+    if not model:
+        default_model = get_settings().llm_model
+        return default_model if default_model in allowed else allowed[0]
+
+    if model not in allowed:
+        allowed_str = ", ".join(allowed)
+        raise ValueError(f"Model '{model}' is not supported for engine '{engine}'. Input should be one of: {allowed_str}")
+    return model
