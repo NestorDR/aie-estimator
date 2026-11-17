@@ -5,9 +5,12 @@ from datetime import UTC, datetime
 from typing import Final
 
 # --- App modules ---
-from aie_estimator.sessions.models import DEFAULT_MAX_TURNS, ConversationHistory, Session
-
-DEFAULT_SESSION_TTL_SECONDS: Final[int] = 86_400
+from aie_estimator.sessions.models import ConversationHistory, Session
+from aie_estimator.utils.constants import (
+    DEFAULT_SESSION_MAX_ANCHOR_PAIRS,
+    DEFAULT_SESSION_MAX_TURNS,
+    DEFAULT_SESSION_TTL_SECONDS,
+)
 
 
 class SessionNotFoundError(LookupError):
@@ -35,17 +38,20 @@ class SessionStore:
     def __init__(
         self,
         *,
-        max_turns: int = DEFAULT_MAX_TURNS,
+        max_turns: int = DEFAULT_SESSION_MAX_TURNS,
+        max_anchor_pairs: int = DEFAULT_SESSION_MAX_ANCHOR_PAIRS,
         ttl_seconds: int = DEFAULT_SESSION_TTL_SECONDS,
     ) -> None:
         """
-        Initialize the in-memory session store with sliding-window and TTL policies.
+        Initialize the in-memory session store with sliding-window, anchor cap, and TTL policies.
 
         :param max_turns: Maximum user/assistant pairs retained in each new session's history.
+        :param max_anchor_pairs: Maximum anchored pairs retained verbatim in each new session.
         :param ttl_seconds: Inactivity expiration threshold in seconds.
         """
         self._sessions: dict[str, Session] = {}
         self.max_turns: Final[int] = max_turns
+        self.max_anchor_pairs: Final[int] = max_anchor_pairs
         self.ttl_seconds: Final[int] = ttl_seconds
 
     def _is_expired(self, session: Session, now: datetime) -> bool:
@@ -75,7 +81,7 @@ class SessionStore:
             del self._sessions[session_id]
 
         session = Session(
-            history=ConversationHistory(max_turns=self.max_turns),
+            history=ConversationHistory(max_turns=self.max_turns, max_anchor_pairs=self.max_anchor_pairs),
             created_at=now,
             last_accessed_at=now,
         )

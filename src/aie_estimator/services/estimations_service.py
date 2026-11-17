@@ -35,6 +35,7 @@ from aie_estimator.services.cache import EstimationExactCache, EstimationSemanti
 from aie_estimator.services.critic_service import Critic, CriticOutcome
 from aie_estimator.services.exceptions import LLMProviderError
 from aie_estimator.services.providers import GenerationOptions, call_llm
+from aie_estimator.sessions.compression.policy import CompressionPolicy
 from aie_estimator.sessions.metadata_extractor import update_metadata
 from aie_estimator.sessions.models import Session
 from aie_estimator.sessions.tier_resolver import Tier, resolve_tier
@@ -70,17 +71,22 @@ class EstimationService:
         exact_cache: EstimationExactCache | None = None,
         semantic_cache: EstimationSemanticCache | None = None,
         moderation_client: AsyncOpenAI | None = None,
+        compression_policy: CompressionPolicy | None = None,
     ) -> None:
         """
-        Initialize the EstimationService with caching and content moderation collaborators.
+        Initialize the EstimationService with caching, moderation, and compression collaborators.
 
         :param exact_cache: Optional Tier 1 exact-match hash cache instance.
         :param semantic_cache: Optional Tier 2 semantic vector cache instance.
         :param moderation_client: Optional AsyncOpenAI client used for moderation guardrails.
+        :param compression_policy: Optional history compression policy for conversational turns.
         """
         self.exact_cache: Final[EstimationExactCache | None] = exact_cache
         self.semantic_cache: Final[EstimationSemanticCache | None] = semantic_cache
         self.moderation_client: Final[AsyncOpenAI | None] = moderation_client
+        self.compression_policy: Final[CompressionPolicy] = (
+            compression_policy or CompressionPolicy.from_settings(get_settings())
+        )
 
     async def generate_estimation(
         self,
@@ -464,6 +470,8 @@ class EstimationService:
             output_format=output_format,
             tier=prepared.tier,
             metadata=session.metadata,
+            conversation_summary=session.history.summary,
+            anchored_turns=session.history.anchors,
             version=prepared.version,
             critic_feedback=critic_feedback,
         )
@@ -568,6 +576,7 @@ class EstimationService:
         session.last_tier = prepared.tier.value
         session.history.append(user=prepared.enriched_transcript, assistant=structured_result.model_dump_json())
 
+        compression_outcome = await self.compression_policy.apply(session.history)
         metadata_outcome = await update_metadata(
             previous=session.metadata,
             transcript=prepared.enriched_transcript,
@@ -575,11 +584,12 @@ class EstimationService:
             opts=prepared.opts,
         )
         session.metadata = metadata_outcome.metadata
-        result["usage"]["preprocessing_input_tokens"] = metadata_outcome.input_tokens
-        result["usage"]["preprocessing_output_tokens"] = metadata_outcome.output_tokens
-        if metadata_outcome.cost_usd is not None:
+        result["usage"]["preprocessing_input_tokens"] = metadata_outcome.input_tokens + compression_outcome.input_tokens
+        result["usage"]["preprocessing_output_tokens"] = metadata_outcome.output_tokens + compression_outcome.output_tokens
+        extra_costs = [cost for cost in (metadata_outcome.cost_usd, compression_outcome.cost_usd) if cost is not None]
+        if extra_costs:
             base_cost = float(result["cost_usd"]) if result.get("cost_usd") is not None else 0.0
-            result["cost_usd"] = round(base_cost + metadata_outcome.cost_usd, 6)
+            result["cost_usd"] = round(base_cost + sum(extra_costs), 6)
         result["latency_ms"] = int((time.perf_counter() - prepared.t0) * 1000)
         return result
 

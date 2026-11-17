@@ -12,7 +12,7 @@ import yaml
 
 # --- App modules ---
 from aie_estimator.settings import get_settings
-from aie_estimator.utils.model_constants import (
+from aie_estimator.utils.constants import (
     DEFAULT_CLAUDE_LLM,
     DEFAULT_DEEP_PROFILE,
     DEFAULT_FAST_PROFILE,

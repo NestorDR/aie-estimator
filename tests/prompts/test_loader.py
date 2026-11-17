@@ -236,3 +236,31 @@ def test_render_tier_estimation_prompt_with_and_without_critic_feedback() -> Non
     assert "Add an RBAC task to the backend phase." in revision_user
 
 
+def test_render_conversation_summary_prompt_renders_prior_and_evicted() -> None:
+    """
+    GIVEN a prior rolling summary and evicted user/assistant messages
+    WHEN render_conversation_summary_prompt is invoked
+    THEN system and user prompts render under StrictUndefined with both prior summary and evicted turns.
+    """
+    from aie_estimator.prompts.loader import render_conversation_summary_prompt
+    from aie_estimator.sessions.models import Message
+
+    system, user = render_conversation_summary_prompt(
+        previous_summary="Team agreed on FastAPI backend.",
+        evicted=[
+            Message(role="user", content="Add PostgreSQL and Redis."),
+            Message(role="assistant", content="Added 16 hours for data layer."),
+        ],
+    )
+    assert "conversation summarizer" in system
+    assert "Team agreed on FastAPI backend." in user
+    assert "[user] Add PostgreSQL and Redis." in user
+    assert "[assistant] Added 16 hours for data layer." in user
+
+    _, first_pass_user = render_conversation_summary_prompt(
+        previous_summary=None,
+        evicted=[Message(role="user", content="Initial scope.")],
+    )
+    assert "(no previous summary" in first_pass_user
+
+

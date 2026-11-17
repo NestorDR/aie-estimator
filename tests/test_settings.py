@@ -414,3 +414,28 @@ def test_settings_session_defaults_and_env_overrides(monkeypatch: pytest.MonkeyP
     overridden = Settings(app_env=Environment.TEST)
     assert overridden.session_max_turns == 10
     assert overridden.session_ttl_seconds == 3600
+
+
+def test_settings_history_compression_defaults_and_env_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    GIVEN default Settings and history compression env overrides
+    WHEN Settings is instantiated
+    THEN defaults match expected values and env overrides take effect.
+
+    :param monkeypatch: Pytest monkeypatch fixture.
+    """
+    default_settings = Settings(app_env=Environment.TEST)
+    assert default_settings.enable_history_compression is True
+    assert default_settings.anchor_strategy == "heuristic"
+    assert default_settings.compression_model == "reasoner-fast"
+    assert default_settings.session_max_anchor_pairs == 4
+
+    monkeypatch.setenv("ENABLE_HISTORY_COMPRESSION", "false")
+    monkeypatch.setenv("ANCHOR_STRATEGY", "llm")
+    monkeypatch.setenv("COMPRESSION_MODEL", "reasoner-deep")
+    monkeypatch.setenv("SESSION_MAX_ANCHOR_PAIRS", "2")
+    overridden = Settings(app_env=Environment.TEST)
+    assert overridden.enable_history_compression is False
+    assert overridden.anchor_strategy == "llm"
+    assert overridden.compression_model == "reasoner-deep"
+    assert overridden.session_max_anchor_pairs == 2

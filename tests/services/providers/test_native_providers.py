@@ -23,7 +23,7 @@ from aie_estimator.services.providers.native_providers import (
 )
 from aie_estimator.sessions.models import MetadataExtractionResult
 from aie_estimator.settings import Environment, Settings
-from aie_estimator.utils.model_constants import DEFAULT_CLAUDE_LLM, DEFAULT_GPT_LLM
+from aie_estimator.utils.constants import DEFAULT_CLAUDE_LLM, DEFAULT_GPT_LLM
 
 VALID_RESULT_DICT: Final[dict[str, Any]] = {
     "summary": "Full-stack web application delivery breakdown.",

@@ -23,6 +23,8 @@ class SessionInfoResponse(BaseModel):
     session_id: str
     message_count: int
     max_turns: int
+    has_summary: bool = False
+    anchors_count: int = 0
     metadata: ProjectMetadata
     last_tier: Tier | None = None
     created_at: datetime

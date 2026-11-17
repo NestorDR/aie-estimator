@@ -14,7 +14,7 @@ from aie_estimator.services.providers.dispatcher import call_llm
 from aie_estimator.services.providers.generation_options import GenerationOptions
 from aie_estimator.sessions.models import MetadataExtractionResult
 from aie_estimator.settings import get_settings
-from aie_estimator.utils.model_constants import (
+from aie_estimator.utils.constants import (
     DEFAULT_CLAUDE_LLM,
     DEFAULT_FAST_PROFILE,
     DEFAULT_GPT_LLM,

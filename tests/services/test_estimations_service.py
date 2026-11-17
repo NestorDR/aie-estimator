@@ -25,7 +25,7 @@ from aie_estimator.services.providers import GenerationOptions
 from aie_estimator.sessions.metadata_extractor import MetadataExtractionOutcome
 from aie_estimator.sessions.models import MetadataExtractionResult, ProjectMetadata, Session
 from aie_estimator.sessions.tier_resolver import Tier
-from aie_estimator.utils.model_constants import (
+from aie_estimator.utils.constants import (
     DEFAULT_FAST_PROFILE,
     DEFAULT_GPT_LLM,
 )
@@ -997,4 +997,55 @@ async def test_generate_session_estimation_attachment_errors_abort_before_llm(
 
     mock_call_llm.assert_not_called()
     assert session.history.messages == []
+
+
+@pytest.mark.anyio
+async def test_generate_session_estimation_aggregates_compression_tokens_and_cost(
+    estimation_service: EstimationService,
+    make_estimation_result: Callable[..., dict[str, Any]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    GIVEN a session whose compression_policy returns token usage and USD cost
+    WHEN generate_session_estimation completes
+    THEN compression tokens and cost aggregate into preprocessing_* tokens and cost_usd.
+
+    :param estimation_service: Injected EstimationService fixture.
+    :param make_estimation_result: Shared estimation result factory fixture.
+    :param monkeypatch: Pytest monkeypatch fixture.
+    """
+    from aie_estimator.sessions.compression.policy import CompressionOutcome
+    from aie_estimator.sessions.metadata_extractor import MetadataExtractionOutcome
+
+    session = Session()
+    monkeypatch.setattr("aie_estimator.services.estimations_service.sanitize_input", AsyncMock())
+    monkeypatch.setattr("aie_estimator.services.estimations_service.call_llm", AsyncMock(return_value=make_estimation_result(cost_usd=0.001)))
+    monkeypatch.setattr(
+        estimation_service.compression_policy,
+        "apply",
+        AsyncMock(return_value=CompressionOutcome(input_tokens=70, output_tokens=20, cost_usd=0.0003)),
+    )
+    monkeypatch.setattr(
+        "aie_estimator.services.estimations_service.update_metadata",
+        AsyncMock(
+            return_value=MetadataExtractionOutcome(
+                metadata=session.metadata,
+                input_tokens=30,
+                output_tokens=10,
+                cost_usd=0.0002,
+            )
+        ),
+    )
+
+    response = await estimation_service.generate_session_estimation(
+        session=session,
+        transcript="Estimate the MyProject analytics portal with FastAPI.",
+        project_type=ProjectType.WEB_SAAS,
+        detail_level=DetailLevel.MEDIUM,
+        output_format=OutputFormat.PHASES_TABLE,
+    )
+
+    assert response["usage"]["preprocessing_input_tokens"] == 100
+    assert response["usage"]["preprocessing_output_tokens"] == 30
+    assert response["cost_usd"] == pytest.approx(0.0015)
 

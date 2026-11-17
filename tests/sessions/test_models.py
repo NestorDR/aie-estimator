@@ -18,45 +18,28 @@ def test_message_rejects_system_role() -> None:
         Message(role="system", content="System prompt")  # type: ignore[arg-type]
 
 
-def test_conversation_history_append_within_capacity() -> None:
+def test_conversation_history_append_and_compression_defaults() -> None:
     """
     GIVEN a ConversationHistory with max_turns=2
-    WHEN two user/assistant pairs are appended
-    THEN no messages are evicted and to_messages preserves alternating roles.
+    WHEN three user/assistant pairs are appended
+    THEN append stores all pairs in chronological order without inline eviction and initializes compression state.
     """
     history = ConversationHistory(max_turns=2)
 
-    evicted_1 = history.append(user="Turn 1 user", assistant="Turn 1 assistant")
-    evicted_2 = history.append(user="Turn 2 user", assistant="Turn 2 assistant")
+    history.append(user="Turn 1 user", assistant="Turn 1 assistant")
+    history.append(user="Turn 2 user", assistant="Turn 2 assistant")
+    history.append(user="Turn 3 user", assistant="Turn 3 assistant")
 
-    assert evicted_1 == []
-    assert evicted_2 == []
+    assert history.summary is None
+    assert history.anchors == []
+    assert history.max_anchor_pairs == 4
     assert history.to_messages() == [
         {"role": "user", "content": "Turn 1 user"},
         {"role": "assistant", "content": "Turn 1 assistant"},
         {"role": "user", "content": "Turn 2 user"},
         {"role": "assistant", "content": "Turn 2 assistant"},
-    ]
-
-
-def test_conversation_history_append_evicts_oldest_pairs_in_order() -> None:
-    """
-    GIVEN a ConversationHistory with max_turns=2 already holding two pairs
-    WHEN a third pair is appended
-    THEN the oldest pair is evicted and returned in chronological order while preserving user-first alternation.
-    """
-    history = ConversationHistory(max_turns=2)
-    history.append(user="U1", assistant="A1")
-    history.append(user="U2", assistant="A2")
-
-    evicted = history.append(user="U3", assistant="A3")
-
-    assert [(m.role, m.content) for m in evicted] == [("user", "U1"), ("assistant", "A1")]
-    assert history.to_messages() == [
-        {"role": "user", "content": "U2"},
-        {"role": "assistant", "content": "A2"},
-        {"role": "user", "content": "U3"},
-        {"role": "assistant", "content": "A3"},
+        {"role": "user", "content": "Turn 3 user"},
+        {"role": "assistant", "content": "Turn 3 assistant"},
     ]
 
 

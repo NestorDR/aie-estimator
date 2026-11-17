@@ -1,0 +1,8 @@
+{% if anchored_turns is defined and anchored_turns %}
+<anchored_turns>
+The following earlier turns contain durable commitments and MUST be honored verbatim:
+{% for message in anchored_turns %}
+[{{ message.role }}] {{ message.content }}
+{% endfor %}
+</anchored_turns>
+{% endif %}

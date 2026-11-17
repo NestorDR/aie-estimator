@@ -26,7 +26,7 @@ from aie_estimator.schemas.estimations import (
     OutputFormat,
     ProjectType,
 )
-from aie_estimator.sessions.models import ProjectMetadata
+from aie_estimator.sessions.models import Message, ProjectMetadata
 from aie_estimator.sessions.tier_resolver import Tier
 from aie_estimator.settings import get_settings
 
@@ -75,6 +75,8 @@ def render_tier_estimation_prompt(
     tier: Tier | str,
     version: str | None = None,
     metadata: ProjectMetadata | None = None,
+    conversation_summary: str | None = None,
+    anchored_turns: list[Message] | None = None,
     critic_feedback: CriticFeedback | None = None,
 ) -> tuple[str, str]:
     """
@@ -87,6 +89,8 @@ def render_tier_estimation_prompt(
     :param tier: Resolved stakeholder ``Tier`` selecting the persona template.
     :param version: Optional prompt template version override; defaults to ``active_prompt_version``.
     :param metadata: Optional distilled session ``ProjectMetadata`` for conversational sessions.
+    :param conversation_summary: Optional rolling summary of older evicted turns.
+    :param anchored_turns: Optional verbatim anchored turns retained across compression.
     :param critic_feedback: Optional structured ``CriticFeedback`` for Actor revision passes.
 
     :return: Tuple of ``(system_prompt, user_prompt)`` ready for LLM provider dispatch.
@@ -103,6 +107,8 @@ def render_tier_estimation_prompt(
         "output_format": _enum_value(output_format),
         "version": resolved_version,
         "metadata": metadata,
+        "conversation_summary": conversation_summary,
+        "anchored_turns": anchored_turns or [],
         "critic_feedback": critic_feedback,
     }
     system = _ENV.get_template(f"estimation/{resolved_version}/{tier_config.template}").render(**context)
@@ -167,4 +173,28 @@ def render_critic_prompt(
     }
     system = _ENV.get_template("critic/v1/system.j2").render(**context)
     user = _ENV.get_template("critic/v1/user.j2").render(**context)
+    return system, user
+
+
+def render_conversation_summary_prompt(
+    *,
+    previous_summary: str | None,
+    evicted: list[Message],
+) -> tuple[str, str]:
+    """
+    Render system and user prompts for cumulative summarization of evicted conversation turns.
+
+    :param previous_summary: Optional prior rolling summary text.
+    :param evicted: Chronologically ordered ``Message`` entries evicted from the sliding window.
+
+    :return: Tuple of ``(system_prompt, user_prompt)`` ready for structured LLM summarization.
+    :raises jinja2.exceptions.TemplateNotFound: If templates for ``conversation_summary/v1`` do not exist.
+    :raises jinja2.exceptions.UndefinedError: If required context parameters are missing during rendering.
+    """
+    context: dict[str, Any] = {
+        "previous_summary": previous_summary,
+        "evicted": evicted,
+    }
+    system = _ENV.get_template("conversation_summary/v1/system.j2").render(**context)
+    user = _ENV.get_template("conversation_summary/v1/user.j2").render(**context)
     return system, user

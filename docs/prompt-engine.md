@@ -2,61 +2,39 @@
 
 ## Overview
 
-The prompt template engine in [`src/aie_estimator/prompts/loader.py`](../src/aie_estimator/prompts/loader.py) externalizes LLM prompt composition from Python service logic into versioned Jinja2 templates under [`src/aie_estimator/prompts/<use_case>/<version>/`](../src/aie_estimator/prompts/estimation/v1/):
-- `system.j2`: System instructions defining consultant role, hourly rates, format conditionals, JSON constraints, and dynamic inclusion of reference examples (`v2/` adds `<project_metadata>` injection and conversational authority rules; `metadata_extraction/v1/` defines incremental delta and retraction extraction rules).
-- `user.j2`: User message block wrapping `<project_description>` (or `<previous_metadata>`, `<latest_user_transcript>`, and `<latest_assistant_estimation>` for `metadata_extraction`).
-- `examples.j2`: Canonical few-shot reference estimations used as calibration anchors (required only for `estimation`).
-
-Transactional estimations resolve `active_prompt_version` (default `"v1"`) and multi-turn sessions resolve `conversational_prompt_version` (default `"v2"`) from [`src/aie_estimator/settings.py`](../src/aie_estimator/settings.py), while post-turn metadata extraction renders `metadata_extraction/v1/`.
+The prompt template engine in [`src/aie_estimator/prompts/loader.py`](../src/aie_estimator/prompts/loader.py) externalizes LLM prompt composition into versioned Jinja2 templates under [`src/aie_estimator/prompts/`](../src/aie_estimator/prompts/):
+- `estimation/v3/`: Tier-specific system templates (`developer.j2`, `pm.j2`, `executive.j2`) sharing `{% include %}` partials (`_project_metadata.j2`, `_conversation_summary.j2`, `_anchored_turns.j2`, `_scope_rates.j2`, `_rules.j2`, `_examples.j2`) plus `user.j2` (with optional `<critic_feedback>`).
+- `critic/v1/`: Structured Critic audit templates (`system.j2`, `user.j2`).
+- `metadata_extraction/v1/`: Post-turn `ProjectMetadata` delta and retraction extraction (`system.j2`, `user.j2`).
+- `conversation_summary/v1/`: Cumulative rolling summarization of evicted turns (`system.j2`, `user.j2`).
 
 ---
 
 ## Usage Examples
 
-### 1. Rendering Transactional and Conversational Prompts
-
 ```python
-from aie_estimator.prompts.loader import render_conversational_prompt, render_estimation_prompt
-from aie_estimator.schemas.estimations import DetailLevel, EstimationRequest, OutputFormat, ProjectType
-from aie_estimator.sessions.models import ProjectMetadata
-
-request = EstimationRequest(
-    description="A microservices platform for real-time fleet telematics.",
-    project_type=ProjectType.WEB_SAAS,
-    detail_level=DetailLevel.DETAILED,
-    output_format=OutputFormat.PHASES_TABLE,
+from aie_estimator.prompts.loader import (
+    render_conversation_summary_prompt,
+    render_tier_estimation_prompt,
 )
+from aie_estimator.schemas.estimations import DetailLevel, OutputFormat, ProjectType
+from aie_estimator.sessions.models import Message, ProjectMetadata
+from aie_estimator.sessions.tier_resolver import Tier
 
-# Transactional estimation prompt (defaults to active_prompt_version="v1")
-system_prompt, user_prompt = render_estimation_prompt(request)
-
-# Conversational estimation prompt (defaults to conversational_prompt_version="v2")
-conv_system, conv_user = render_conversational_prompt(
+system_prompt, user_prompt = render_tier_estimation_prompt(
     description="Add OAuth2 SSO and audit logging.",
     project_type=ProjectType.WEB_SAAS,
     detail_level=DetailLevel.DETAILED,
     output_format=OutputFormat.PHASES_TABLE,
+    tier=Tier.PM,
     metadata=ProjectMetadata(project_name="FleetOps"),
-)
-```
-
-### 2. Listing and Validating Prompt Versions
-
-```python
-from aie_estimator.prompts.loader import (
-    list_prompt_versions,
-    render_metadata_extraction_prompt,
-    validate_prompt_version,
+    conversation_summary="Earlier turns established a 3-developer team.",
+    anchored_turns=[Message(role="user", content="Scope is frozen under NDA.")],
 )
 
-available = list_prompt_versions("estimation")  # ["v1", "v2"]
-extraction_versions = list_prompt_versions("metadata_extraction")  # ["v1"]
-validated_version = validate_prompt_version("v2")
-
-ext_system, ext_user = render_metadata_extraction_prompt(
-    transcript="Drop Rails and use Node.",
-    result=estimation_result,
-    previous=ProjectMetadata(mentioned_technologies=["Rails"]),
+sum_system, sum_user = render_conversation_summary_prompt(
+    previous_summary="Initial discovery complete.",
+    evicted=[Message(role="user", content="Use FastAPI and PostgreSQL.")],
 )
 ```
 
@@ -66,6 +44,5 @@ ext_system, ext_user = render_metadata_extraction_prompt(
 
 1. **Strict Undefined Variables**: The Jinja2 environment in [`src/aie_estimator/prompts/loader.py`](../src/aie_estimator/prompts/loader.py) uses `StrictUndefined`, halting immediately with `UndefinedError` if any template context variable is missing.
 2. **Whitespace Trimming**: Configured with `trim_blocks=True` and `lstrip_blocks=True` to strip control block newlines, ensuring deterministic whitespace across model providers.
-3. **Dynamic Version Inclusion**: `system.j2` includes canonical calibration examples via `{% include "estimation/" ~ version ~ "/examples.j2" %}`, while `estimation/v2/examples.j2` explicitly delegates to `estimation/v1/examples.j2` without duplicating examples.
-4. **Per-Use-Case Completeness Validation**: `list_prompt_versions()` validates required files per use case (`system.j2`, `user.j2`, and `examples.j2` for `estimation`; `system.j2` and `user.j2` by default for other use cases), preventing runtime `TemplateNotFound` errors.
-5. **Conditional `<project_metadata>` Injection**: `estimation/v2/system.j2` renders an empty-state note when `ProjectMetadata.is_empty()` is `True` and renders only populated fields among all six metadata attributes otherwise, avoiding placeholder noise and asserting authority over established facts.
+3. **Version Resolution**: [`resolve_prompt_version`](../src/aie_estimator/prompts/loader.py) validates that `prompts/<use_case>/<version>` exists before rendering, raising `ValueError` otherwise.
+4. **Conditional Session Context Injection**: `estimation/v3` partials inject `<project_metadata>`, `<conversation_summary>`, and `<anchored_turns>` only when present, keeping `ConversationHistory.to_messages()` strictly alternating `user`/`assistant` turns.

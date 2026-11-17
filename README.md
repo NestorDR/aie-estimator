@@ -14,11 +14,11 @@ AIE Estimator processes software project descriptions and domain parameters (`pr
 
 - **Schemas** ([`src/aie_estimator/schemas/`](src/aie_estimator/schemas/)): Pydantic v2 contracts (`EstimationRequest`, `EstimationResponse`, `DeveloperEstimation`, `PmEstimation`, `ExecutiveEstimation`, `ACBResponse`, `CreateSessionResponse`, `SessionInfoResponse`).
 - **Attachments** ([`src/aie_estimator/attachments/`](src/aie_estimator/attachments/)): Local text extraction (`.pdf`, `.docx`, `.txt`, `.md`), per-file and per-turn character budgets, and XML delimiter wrapping.
-- **Sessions** ([`src/aie_estimator/sessions/`](src/aie_estimator/sessions/)): In-memory conversational session store, sliding-window `ConversationHistory`, 6-field `ProjectMetadata`, and post-turn metadata extractor.
+- **Sessions** ([`src/aie_estimator/sessions/`](src/aie_estimator/sessions/)): In-memory conversational session store, `ConversationHistory` with bounded anchor compression, 6-field `ProjectMetadata`, and post-turn metadata extractor.
 - **Routers** ([`src/aie_estimator/routers/`](src/aie_estimator/routers/)): HTTP routes (`POST /api/v1/estimate`, `POST /api/v1/sessions`, `GET /api/v1/sessions/{session_id}`, `POST /api/v1/sessions/{session_id}/estimate`, `POST /api/v1/sessions/{session_id}/estimate-acb`, `GET /health`, `GET /`).
 - **Guardrails** ([`src/aie_estimator/guardrails/`](src/aie_estimator/guardrails/)): Input validation (`omni-moderation-latest`, prompt injection, PII heuristics) and low-confidence output normalization.
 - **Services** ([`src/aie_estimator/services/`](src/aie_estimator/services/)): Estimation orchestration, two-tier Redis caching (Tier 1 exact SHA-256, Tier 2 RediSearch vector similarity), and multi-provider dispatch with intra-tier rotation and cross-tier failover.
-- **Prompts** ([`src/aie_estimator/prompts/`](src/aie_estimator/prompts/)): Versioned Jinja2 templates (`estimation/v3`, `critic/v1`, `metadata_extraction/v1`) and loader.
+- **Prompts** ([`src/aie_estimator/prompts/`](src/aie_estimator/prompts/)): Versioned Jinja2 templates (`estimation/v3`, `metadata_extraction/v1`, `conversation_summary/v1`, `critic/v1`) and loader.
 - **Configuration & Composition** ([`settings.py`](src/aie_estimator/settings.py), [`dependencies.py`](src/aie_estimator/dependencies.py), [`server.py`](src/aie_estimator/server.py)): `pydantic-settings` environment management, cached dependency injection factories, and FastAPI application factory (`create_app`).
 - **Frontend** ([`streamlit_app.py`](streamlit_app.py)): Session-only conversational Streamlit chat UI with tier selector, opt-in ACB review + `BossTrace` viewer, multi-file upload, sidebar `ProjectMetadata` inspection, and telemetry viewer.
 
@@ -77,7 +77,7 @@ aie-estimator/
 │       ├── services/                   # Core business logic, caching, and provider dispatch
 │       │   ├── cache/                  # Two-tier Redis response caching (exact & semantic)
 │       │   └── providers/              # LiteLLM Router and native SDK integrations
-│       └── utils/                      # Canonical model and profile constants
+│       └── utils/                      # Canonical time, model, and session constants
 ├── tests/                              # Unit and integration test suites
 ├── .dockerignore
 ├── .gitignore

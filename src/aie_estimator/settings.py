@@ -6,7 +6,7 @@ from functools import lru_cache
 import importlib.metadata
 from os import environ
 from pathlib import Path
-from typing import Final
+from typing import Final, Literal
 
 # --- Third Party Libraries ---
 from pydantic import Field, SecretStr, ValidationError
@@ -14,7 +14,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 import structlog
 
 # --- App modules ---
-from aie_estimator.utils.model_constants import DEFAULT_FAST_PROFILE, PROVIDER_PREFIXES
+from aie_estimator.utils.constants import (
+    DEFAULT_FAST_PROFILE,
+    DEFAULT_SESSION_MAX_ANCHOR_PAIRS,
+    DEFAULT_SESSION_MAX_TURNS,
+    DEFAULT_SESSION_TTL_SECONDS,
+    PROVIDER_PREFIXES,
+    SECONDS_PER_DAY,
+)
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
 
@@ -66,13 +73,13 @@ class Settings(BaseSettings):
 
     # Exact cache settings
     enable_exact_cache: bool = True
-    exact_cache_ttl: int = 86_400
+    exact_cache_ttl: int = SECONDS_PER_DAY
 
     # Semantic cache settings
     enable_semantic_cache: bool = True
     semantic_cache_threshold: float = 0.92
     semantic_cache_log_only: bool = False
-    semantic_cache_ttl: int = 86_400
+    semantic_cache_ttl: int = SECONDS_PER_DAY
 
     # Attachment ingestion settings
     max_attachments_per_turn: int = Field(default=5, gt=0)
@@ -84,8 +91,14 @@ class Settings(BaseSettings):
     )
 
     # Conversational session settings
-    session_max_turns: int = Field(default=6, gt=0)
-    session_ttl_seconds: int = Field(default=86_400, gt=0)
+    session_max_turns: int = Field(default=DEFAULT_SESSION_MAX_TURNS, gt=0)
+    session_ttl_seconds: int = Field(default=DEFAULT_SESSION_TTL_SECONDS, gt=0)
+    session_max_anchor_pairs: int = Field(default=DEFAULT_SESSION_MAX_ANCHOR_PAIRS, ge=0)
+
+    # History compression settings
+    enable_history_compression: bool = True
+    anchor_strategy: Literal["heuristic", "llm"] = "heuristic"
+    compression_model: str = DEFAULT_FAST_PROFILE
 
     # Metadata extraction settings
     enable_metadata_extraction: bool = True

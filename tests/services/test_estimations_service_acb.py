@@ -23,7 +23,7 @@ from aie_estimator.services.estimations_service import EstimationService
 from aie_estimator.sessions.metadata_extractor import MetadataExtractionOutcome
 from aie_estimator.sessions.models import ProjectMetadata, Session
 from aie_estimator.sessions.tier_resolver import Tier
-from aie_estimator.utils.model_constants import DEFAULT_FAST_PROFILE
+from aie_estimator.utils.constants import DEFAULT_FAST_PROFILE
 
 
 def _pm_estimate(summary: str = "PM estimate for B2B platform.", confidence_pct: int = 84) -> PmEstimation:

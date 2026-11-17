@@ -19,7 +19,7 @@ from aie_estimator.sessions.metadata_extractor import (
 )
 from aie_estimator.sessions.models import MetadataExtractionResult, ProjectMetadata
 from aie_estimator.settings import Environment, Settings
-from aie_estimator.utils.model_constants import DEFAULT_FAST_PROFILE, DEFAULT_GPT_LLM
+from aie_estimator.utils.constants import DEFAULT_FAST_PROFILE, DEFAULT_GPT_LLM
 
 
 def _sample_estimation(*, confidence_pct: int = 85) -> PmEstimation:

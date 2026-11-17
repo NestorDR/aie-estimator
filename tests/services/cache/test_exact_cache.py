@@ -24,7 +24,7 @@ from aie_estimator.services.cache.exact import (
 )
 from aie_estimator.services.providers.generation_options import GenerationOptions
 from aie_estimator.settings import Environment, Settings
-from aie_estimator.utils.model_constants import DEFAULT_CLAUDE_LLM, DEFAULT_GPT_LLM
+from aie_estimator.utils.constants import DEFAULT_CLAUDE_LLM, DEFAULT_GPT_LLM
 
 
 def test_make_key_deterministic_output() -> None:

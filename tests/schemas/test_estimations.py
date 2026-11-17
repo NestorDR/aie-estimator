@@ -21,7 +21,7 @@ from aie_estimator.schemas.estimations import (
 )
 from aie_estimator.sessions.tier_resolver import Tier
 from aie_estimator.settings import get_settings
-from aie_estimator.utils.model_constants import (
+from aie_estimator.utils.constants import (
     DEFAULT_DEEP_PROFILE,
     DEFAULT_FAST_PROFILE,
     DEFAULT_GPT_LLM,

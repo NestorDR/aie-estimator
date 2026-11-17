@@ -16,7 +16,7 @@ from aie_estimator.model_catalog import (
     resolve_engine_model,
     resolve_provider,
 )
-from aie_estimator.utils.model_constants import (
+from aie_estimator.utils.constants import (
     DEFAULT_CLAUDE_LLM,
     DEFAULT_DEEP_PROFILE,
     DEFAULT_FAST_PROFILE,

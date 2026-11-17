@@ -13,7 +13,7 @@ import pytest
 from aie_estimator.dependencies import get_estimation_service
 from aie_estimator.guardrails.input import InputGuardrailViolation
 from aie_estimator.services.estimations_service import EstimationService
-from aie_estimator.utils.model_constants import DEFAULT_FAST_PROFILE, DEFAULT_GPT_LLM
+from aie_estimator.utils.constants import DEFAULT_FAST_PROFILE, DEFAULT_GPT_LLM
 
 VALID_PAYLOAD: Final[dict[str, Any]] = {
     "description": "This is a comprehensive description of an inventory management SaaS system.",

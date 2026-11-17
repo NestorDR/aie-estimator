@@ -1,13 +1,20 @@
-# src/aie_estimator/utils/model_constants.py
+# src/aie_estimator/utils/constants.py
 
 # --- Python Standard Library ---
 from typing import Final
+
+# region Time
+
+SECONDS_PER_DAY: Final[int] = 86_400
+
+# endregion
+
+# region Models & Providers
 
 # Logical names to group model categories, decoupling the app from specific vendors
 DEFAULT_FAST_PROFILE: Final[str] = "reasoner-fast"
 DEFAULT_DEEP_PROFILE: Final[str] = "reasoner-deep"
 
-# Logical names to group model categories, decoupling the app from specific vendors
 LOGICAL_PROFILE_NAMES: Final[set[str]] = {DEFAULT_FAST_PROFILE, DEFAULT_DEEP_PROFILE}
 
 # Default vendor models for direct native calls and fallback configuration
@@ -25,3 +32,13 @@ PROVIDER_PREFIXES: Final[dict[str, tuple[str, ...]]] = {
     "scaleway": ("scaleway/",),
     "nebius": ("nebius/",),
 }
+
+# endregion
+
+# region Conversational Sessions
+
+DEFAULT_SESSION_MAX_TURNS: Final[int] = 6
+DEFAULT_SESSION_MAX_ANCHOR_PAIRS: Final[int] = 4
+DEFAULT_SESSION_TTL_SECONDS: Final[int] = SECONDS_PER_DAY
+
+# endregion

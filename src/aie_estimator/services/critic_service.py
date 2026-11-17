@@ -83,13 +83,7 @@ class Critic:
                 opts=critic_opts,
                 response_model=CriticFeedback,
             )
-            raw_result = response.get("result")
-            if isinstance(raw_result, dict):
-                feedback = CriticFeedback.model_validate(raw_result)
-            elif isinstance(raw_result, CriticFeedback):
-                feedback = raw_result
-            else:
-                raise TypeError(f"Unexpected Critic result type: {type(raw_result).__name__}")
+            feedback = CriticFeedback.model_validate(response.get("result"))
         except Exception as exc:  # noqa: BLE001
             log.warning(
                 "critic_review_failed",

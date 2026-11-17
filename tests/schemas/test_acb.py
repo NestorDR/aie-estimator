@@ -15,7 +15,7 @@ from aie_estimator.schemas.acb import (
 from aie_estimator.schemas.estimations import CostRange, DurationRange, ExecutiveEstimation, TokenUsage
 from aie_estimator.sessions.tier_resolver import Tier
 from aie_estimator.settings import Environment, Settings
-from aie_estimator.utils.model_constants import DEFAULT_FAST_PROFILE
+from aie_estimator.utils.constants import DEFAULT_FAST_PROFILE
 
 
 def test_critic_feedback_accepts_minor_issues() -> None:

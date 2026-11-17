@@ -16,7 +16,7 @@ from aie_estimator.dependencies import get_session_store
 from aie_estimator.services.exceptions import LLMProviderError
 from aie_estimator.sessions.metadata_extractor import MetadataExtractionOutcome
 from aie_estimator.sessions.models import ProjectMetadata
-from aie_estimator.utils.model_constants import DEFAULT_FAST_PROFILE, DEFAULT_GPT_LLM
+from aie_estimator.utils.constants import DEFAULT_FAST_PROFILE, DEFAULT_GPT_LLM
 
 _VALID_FORM_DATA: Final[dict[str, str]] = {
     "transcript": "We are building MyProject, a multi-tenant B2B analytics platform with FastAPI and PostgreSQL.",
@@ -80,6 +80,8 @@ def test_get_session_returns_200_with_state_and_timestamps(client: TestClient) -
     assert payload["session_id"] == session_id
     assert payload["message_count"] == 2
     assert payload["max_turns"] == 6
+    assert payload["has_summary"] is False
+    assert payload["anchors_count"] == 0
     assert payload["metadata"]["project_name"] == "MyProject"
     assert payload["metadata"]["rejected_options"] == ["Microservices"]
 

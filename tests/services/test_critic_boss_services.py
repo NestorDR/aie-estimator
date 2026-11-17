@@ -18,7 +18,7 @@ from aie_estimator.services.boss_service import Boss
 from aie_estimator.services.critic_service import Critic
 from aie_estimator.sessions.models import ProjectMetadata
 from aie_estimator.sessions.tier_resolver import Tier
-from aie_estimator.utils.model_constants import DEFAULT_FAST_PROFILE
+from aie_estimator.utils.constants import DEFAULT_FAST_PROFILE
 
 
 def _sample_developer_estimate(confidence_pct: int = 80) -> DeveloperEstimation:

@@ -20,6 +20,7 @@ from aie_estimator.services.cache import (
 )
 from aie_estimator.services.critic_service import Critic
 from aie_estimator.services.estimations_service import EstimationService
+from aie_estimator.sessions.compression.policy import CompressionPolicy
 from aie_estimator.sessions.store import SessionStore
 from aie_estimator.sessions.tier_resolver import Tier
 from aie_estimator.settings import Settings, get_settings as _get_settings
@@ -66,17 +67,30 @@ def get_semantic_cache(settings: Settings = Depends(get_settings)) -> Estimation
         return None
 
 
+def get_compression_policy(settings: Settings = Depends(get_settings)) -> CompressionPolicy:
+    """
+    Construct the ``CompressionPolicy`` orchestrator configured from application settings.
+
+    :param settings: Injected application configuration settings.
+
+    :return: Configured ``CompressionPolicy`` instance.
+    """
+    return CompressionPolicy.from_settings(settings)
+
+
 def get_estimation_service(
         exact_cache: EstimationExactCache | None = Depends(get_exact_cache),
         semantic_cache: EstimationSemanticCache | None = Depends(get_semantic_cache),
         moderation_client: AsyncOpenAI | None = Depends(get_moderation_client),
+        compression_policy: CompressionPolicy = Depends(get_compression_policy),
 ) -> EstimationService:
     """
-    Compose the primary EstimationService instance with its caching and moderation collaborators.
+    Compose the primary EstimationService instance with its caching, moderation, and compression collaborators.
 
     :param exact_cache: Resolved Tier 1 exact-match hash cache.
     :param semantic_cache: Optional Tier 2 vector similarity cache.
     :param moderation_client: Optional AsyncOpenAI client for content moderation.
+    :param compression_policy: Hybrid history compression policy for conversational turns.
 
     :return: Fully wired EstimationService instance.
     """
@@ -84,6 +98,7 @@ def get_estimation_service(
         exact_cache=exact_cache,
         semantic_cache=semantic_cache,
         moderation_client=moderation_client,
+        compression_policy=compression_policy,
     )
 
 
@@ -119,6 +134,7 @@ def get_session_store() -> SessionStore:
     settings = get_settings()
     return SessionStore(
         max_turns=settings.session_max_turns,
+        max_anchor_pairs=settings.session_max_anchor_pairs,
         ttl_seconds=settings.session_ttl_seconds,
     )
 

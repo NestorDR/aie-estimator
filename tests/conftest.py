@@ -23,7 +23,7 @@ from aie_estimator.services.cache import get_exact_cache, get_semantic_cache
 from aie_estimator.services.providers.litellm_provider import get_litellm_router
 from aie_estimator.services.providers.native_providers import get_anthropic_client, get_openai_client
 from aie_estimator.settings import get_settings
-from aie_estimator.utils.model_constants import DEFAULT_GPT_LLM
+from aie_estimator.utils.constants import DEFAULT_GPT_LLM
 
 
 def _clear_all_caches() -> None:

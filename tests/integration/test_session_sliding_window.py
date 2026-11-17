@@ -11,6 +11,7 @@ from httpx import ASGITransport, AsyncClient
 import pytest
 
 # --- App modules ---
+from aie_estimator.sessions.compression.summarizer import _SummaryEnvelope
 from aie_estimator.sessions.models import MetadataExtractionResult
 
 _TOTAL_TURNS: Final[int] = 8
@@ -62,6 +63,15 @@ async def test_eight_turn_conversation_respects_sliding_window_and_retains_turn_
             new_callable=AsyncMock,
             side_effect=extractor_responses,
         ),
+        patch(
+            "aie_estimator.sessions.compression.summarizer.call_llm",
+            new_callable=AsyncMock,
+            return_value={
+                "result": _SummaryEnvelope(summary="Turns 1-2 established MyProject core SaaS scope."),
+                "usage": {"input_tokens": 40, "output_tokens": 15},
+                "cost_usd": 0.0001,
+            },
+        ),
     ):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as async_client:
             session_id = (await async_client.post("/api/v1/sessions")).json()["session_id"]
@@ -94,9 +104,13 @@ async def test_eight_turn_conversation_respects_sliding_window_and_retains_turn_
     assert "<project_metadata>" in turn_8_kwargs["system_prompt"]
     assert "MyProject" in turn_8_kwargs["system_prompt"]
     assert "ISO 27001" in turn_8_kwargs["system_prompt"]
+    assert "<conversation_summary>" in turn_8_kwargs["system_prompt"]
+    assert "Turns 1-2 established MyProject core SaaS scope." in turn_8_kwargs["system_prompt"]
 
     assert final_session_info["message_count"] == _MAX_TURNS * 2
     assert final_session_info["max_turns"] == _MAX_TURNS
+    assert final_session_info["has_summary"] is True
+    assert final_session_info["anchors_count"] == 0
     assert final_session_info["metadata"]["project_name"] == "MyProject"
     assert final_session_info["metadata"]["assumed_team_size"] == 5
     assert final_session_info["metadata"]["agreed_scope"] == "Core SaaS platform"

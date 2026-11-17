@@ -77,6 +77,8 @@ async def get_session(
         session_id=session.session_id,
         message_count=len(session.history.messages),
         max_turns=session.history.max_turns,
+        has_summary=bool(session.history.summary),
+        anchors_count=len(session.history.anchors),
         metadata=session.metadata,
         last_tier=Tier(session.last_tier) if session.last_tier else None,
         created_at=session.created_at,

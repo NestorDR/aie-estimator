@@ -12,7 +12,7 @@ from aie_estimator.schemas.acb import CriticFeedback
 from aie_estimator.schemas.estimations import Phase, PmEstimation, TeamComposition
 from aie_estimator.sessions.metadata_extractor import MetadataExtractionOutcome
 from aie_estimator.sessions.models import ProjectMetadata
-from aie_estimator.utils.model_constants import DEFAULT_FAST_PROFILE
+from aie_estimator.utils.constants import DEFAULT_FAST_PROFILE
 
 _VALID_FORM_DATA: Final[dict[str, str]] = {
     "transcript": "We are building MyProject, a multi-tenant B2B analytics platform with FastAPI and PostgreSQL.",

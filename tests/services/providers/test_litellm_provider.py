@@ -17,7 +17,7 @@ from aie_estimator.services.exceptions import LLMProviderError
 from aie_estimator.services.providers.generation_options import GenerationOptions
 from aie_estimator.services.providers.litellm_provider import call_litellm_router, get_litellm_router
 from aie_estimator.sessions.models import MetadataExtractionResult
-from aie_estimator.utils.model_constants import DEFAULT_FAST_PROFILE, DEFAULT_GPT_LLM
+from aie_estimator.utils.constants import DEFAULT_FAST_PROFILE, DEFAULT_GPT_LLM
 
 VALID_RESULT_DICT: Final[dict[str, Any]] = {
     "summary": "Full-stack web application delivery breakdown.",

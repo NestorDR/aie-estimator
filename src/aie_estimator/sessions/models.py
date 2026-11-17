@@ -8,7 +8,12 @@ from uuid import uuid4
 # --- Third Party Libraries ---
 from pydantic import BaseModel, Field
 
-DEFAULT_MAX_TURNS: Final[int] = 6
+# --- App modules ---
+from aie_estimator.utils.constants import (
+    DEFAULT_SESSION_MAX_ANCHOR_PAIRS,
+    DEFAULT_SESSION_MAX_TURNS,
+)
+
 _PROJECT_NAME_MAX_LENGTH: Final[int] = 120
 _AGREED_SCOPE_MAX_LENGTH: Final[int] = 2000
 _MAX_TEAM_SIZE: Final[int] = 50
@@ -25,7 +30,7 @@ def _merge_unique(existing: list[str], updates: list[str]) -> list[str]:
 
     :return: Deduplicated list combining existing and new values.
     """
-    merged = list(existing)
+    merged = list(existing)  # Shallow copy
     seen = {item.lower() for item in merged}
     for item in updates:
         key = item.lower()
@@ -59,28 +64,26 @@ class Message(BaseModel):
 
 
 class ConversationHistory(BaseModel):
-    """Bounded sliding window of alternating user and assistant messages."""
+    """Bounded sliding window of alternating user and assistant messages with compression state."""
 
-    max_turns: int = Field(default=DEFAULT_MAX_TURNS, ge=1)
+    max_turns: int = Field(default=DEFAULT_SESSION_MAX_TURNS, ge=1)
+    max_anchor_pairs: int = Field(default=DEFAULT_SESSION_MAX_ANCHOR_PAIRS, ge=0)
     messages: list[Message] = Field(default_factory=list)
+    summary: str | None = None
+    anchors: list[Message] = Field(default_factory=list)
 
-    def append(self, *, user: str, assistant: str) -> list[Message]:
+    def append(self, *, user: str, assistant: str) -> None:
         """
-        Append one user/assistant pair and evict oldest overflow pairs from the front.
+        Append one user/assistant pair to the history window.
+
+        Overflow eviction, anchor promotion, and summarization are handled post-turn
+        by ``CompressionPolicy.apply()``.
 
         :param user: User turn text.
         :param assistant: Assistant turn text.
-
-        :return: Evicted messages in chronological order, or an empty list if within capacity.
         """
         self.messages.append(Message(role="user", content=user))
         self.messages.append(Message(role="assistant", content=assistant))
-        overflow = len(self.messages) - (self.max_turns * 2)
-        if overflow <= 0:
-            return []
-        evicted = self.messages[:overflow]
-        del self.messages[:overflow]
-        return evicted
 
     def to_messages(self) -> list[dict[str, str]]:
         """
