@@ -1,4 +1,50 @@
 # evals/judge.py
+"""
+Family 3 selective LLM-as-Judge evaluation for the estimation harness.
+
+Some quality properties cannot be checked with schema assertions, numeric ranges, or run-to-run
+variance: whether the estimate is logically consistent with the project description, whether its
+deliverables and risks are concrete enough to act on, and whether its depth and framing suit the
+stakeholder tier. This module covers those properties with a secondary LLM call that scores the
+primary output against a rubric. It is the most expensive layer of the evaluation pyramid and
+complements the deterministic and statistical metrics in ``evals.metrics``. It does not replace them.
+
+Rubric
+------
+The judge applies a pointwise rubric and returns a ``JudgeVerdict`` with three 1-5 Likert ratings
+and a short ``reasoning`` string:
+
+- ``coherence``: logical consistency between the input description and the estimate.
+- ``actionability``: concreteness and usefulness of deliverables, risks, or guidance.
+- ``tier_appropriateness``: alignment of depth and framing with the resolved stakeholder tier.
+
+The three ratings are normalized to ``[0.0, 1.0]`` as ``(rating - 1) / 4``, then averaged into a
+single score. ``evaluate_with_judge`` compares that score with ``DEFAULT_JUDGE_PASS_THRESHOLD``.
+
+Execution flow
+--------------
+1. ``render_judge_prompt`` renders the ``judge.j2`` template under ``StrictUndefined``, so a missing
+   variable fails loudly instead of producing a silently degraded prompt. The prompt includes the
+   resolved tier, request parameters, the original description, and the serialized estimation result.
+2. ``evaluate_with_judge`` calls the provider dispatcher with ``JudgeVerdict`` as the structured
+   response model. It uses ``temperature=0.0`` and a bounded token budget to keep verdicts as
+   reproducible as possible. ``judge_model`` can override the model or profile.
+3. The verdict is converted into the same immutable ``MetricResult`` used by Family 1 and Family 2,
+   with the ratings and reasoning in ``details``.
+
+Failure handling
+----------------
+Judge failures (provider errors, schema violations) never abort an evaluation run. They are logged
+and reported as a failed ``MetricResult`` with ``score=0.0`` and the error in ``details``, so they
+stay visible in the report.
+
+Caveats
+-------
+The judge is itself an LLM and can show systematic bias, such as favoring verbose outputs. The pass
+threshold is a starting point and should be calibrated against human-scored samples. Because every
+call adds cost and latency, run this family selectively, only for properties that deterministic
+checks cannot validate. The live runner (``evals.run``) enables it with the ``--llm-judge`` flag.
+"""
 
 # --- Python Standard Library ---
 from pathlib import Path

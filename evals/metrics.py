@@ -1,5 +1,51 @@
 # evals/metrics.py
 
+"""
+Deterministic and statistical evaluation metrics for the estimation harness.
+
+LLM outputs are probabilistic, so strict equality assertions (``assert hours == 16``) produce false
+negatives on valid answers and false positives on degenerate ones. This module instead verifies
+**invariant properties** of an ``EstimationResponse`` against the expectations annotated in a
+``GoldenCase``. It implements the two inexpensive layers of the evaluation pyramid. Neither layer
+makes a secondary LLM call, so both are cheap, fast, and reproducible:
+
+- **Family 1: Hard deterministic invariants.** The same response always yields the same verdict.
+  Evaluators: ``evaluate_schema_and_tier`` (tier resolution, out-of-scope confidence, phase count
+  and top-risk shape), ``evaluate_numeric_bounds`` (effort, cost, duration, and confidence ranges),
+  and ``evaluate_component_recall`` (case-insensitive coverage of required components and expected
+  technologies). ``run_family1_metrics`` runs all three for one response.
+
+- **Family 2: Soft statistical consistency.** ``evaluate_consistency_cv`` takes repeated responses
+  for the same case and checks that ``Tier`` stays stable and that the Coefficient of Variation
+  (``CV = stdev / mean``) of the scalar anchor stays within ``DEFAULT_COEF_OF_VARIATION_THRESHOLD``.
+
+- **Family 3 (LLM-as-judge for subjective quality)** is intentionally out of scope here and lives in
+``evals.judge``.
+
+Tier-aware dispatch
+-------------------
+The estimator returns a different payload per stakeholder tier (``DeveloperEstimation``,
+``PmEstimation``, ``ExecutiveEstimation``). ``_tier_metrics_view`` projects each payload into a
+uniform scalar view: the midpoint of ``total_hours_range``, ``total_cost_eur``, or the midpoint of
+``headline_cost_range``, respectively. All checks compare that anchor against ranges instead of
+exact strings, so they tolerate legitimate variation between runs and providers.
+
+Scoring contract
+----------------
+Every evaluator returns an immutable ``MetricResult`` with ``name``, ``score`` in ``[0.0, 1.0]``,
+a boolean ``passed``, and a human-readable ``details`` string. Family 1 invariant checks score
+``1.0`` or ``0.0``. Component recall and consistency report fractional scores.
+Thresholds (``DEFAULT_COMPONENT_RECALL_THRESHOLD``, ``DEFAULT_COEF_OF_VARIATION_THRESHOLD``) are deliberately
+generous. They are meant to catch catastrophic regressions, such as a landing page estimated at 800
+hours, and can be tightened as the system stabilizes.
+
+Out-of-scope cases are validated as a zero-cost, zero-effort, low-confidence envelope rather than
+against numeric ranges.
+
+The module has no I/O and no provider dependencies. It can be unit-tested offline, and the live
+runner (``evals.run``) supplies the responses.
+"""
+
 # --- Python Standard Library ---
 from dataclasses import dataclass
 import statistics
@@ -16,8 +62,8 @@ from aie_estimator.schemas.estimations import (
 )
 from evals.dataset import GoldenCase
 
+DEFAULT_COEF_OF_VARIATION_THRESHOLD: Final[float] = 0.25
 DEFAULT_COMPONENT_RECALL_THRESHOLD: Final[float] = 0.5
-DEFAULT_CV_THRESHOLD: Final[float] = 0.25
 _MAX_EXECUTIVE_RISKS: Final[int] = 3
 
 
@@ -173,7 +219,7 @@ def run_family1_metrics(case: GoldenCase, response: EstimationResponse) -> list[
 def evaluate_consistency_cv(
     responses: list[EstimationResponse],
     *,
-    max_cv: float = DEFAULT_CV_THRESHOLD,
+    max_cv: float = DEFAULT_COEF_OF_VARIATION_THRESHOLD,
 ) -> MetricResult:
     """
     Evaluate Family 2 statistical consistency across multiple runs of the same scenario.
