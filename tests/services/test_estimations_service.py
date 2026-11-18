@@ -22,6 +22,7 @@ from aie_estimator.schemas.estimations import (
 from aie_estimator.services.estimations_service import EstimationService
 from aie_estimator.services.exceptions import LLMProviderError
 from aie_estimator.services.providers import GenerationOptions
+from aie_estimator.sessions.compression.policy import CompressionOutcome
 from aie_estimator.sessions.metadata_extractor import MetadataExtractionOutcome
 from aie_estimator.sessions.models import MetadataExtractionResult, ProjectMetadata, Session
 from aie_estimator.sessions.tier_resolver import Tier
@@ -123,7 +124,7 @@ async def test_generate_estimation_cache_hit_bypasses_provider(
 
         assert isinstance(result["result"], PmEstimation)
         assert result["result"].total_cost_eur == 20000
-        assert result["cache_hit"] is True
+        assert result["cached"] is True
         mock_call_llm.assert_not_called()
         mock_cache.set.assert_not_called()
         mock_render.assert_not_called()
@@ -161,7 +162,7 @@ async def test_generate_estimation_cache_miss_calls_provider_and_stores(
 
     assert isinstance(result["result"], PmEstimation)
     assert result["provider"] == "litellm"
-    assert result["cache_hit"] is False
+    assert result["cached"] is False
     assert mock_call_llm.await_count == 1
     call_kwargs = mock_call_llm.call_args.kwargs
     assert call_kwargs["opts"] == opts
@@ -409,7 +410,7 @@ async def test_generate_estimation_semantic_cache_hit_bypasses_provider(
             request=sample_estimation_request,
         )
 
-        assert result["cache_hit"] is True
+        assert result["cached"] is True
         assert result["result"] == semantic_result
         mock_semantic_cache.lookup.assert_awaited_once_with(
             sample_estimation_request,
@@ -451,7 +452,7 @@ async def test_generate_estimation_cache_miss_dual_writes_to_exact_and_semantic_
         request=sample_estimation_request,
     )
 
-    assert result["cache_hit"] is False
+    assert result["cached"] is False
     assert mock_default_cache.set.call_count == 1
     mock_semantic_cache.store.assert_awaited_once()
     store_args = mock_semantic_cache.store.call_args[0]
@@ -503,7 +504,7 @@ async def test_generate_estimation_cache_matrix(
 
     result = await service.generate_estimation(request=sample_estimation_request)
 
-    assert result["cache_hit"] is False
+    assert result["cached"] is False
     mock_call_llm.assert_awaited_once()
     assert mock_default_cache.get.await_count == (1 if exact_enabled else 0)
     assert mock_default_cache.set.await_count == (1 if exact_enabled else 0)
@@ -548,7 +549,7 @@ async def test_generate_session_estimation_bypasses_caches_and_appends_turn(
         output_format=OutputFormat.PHASES_TABLE,
     )
 
-    assert result["cache_hit"] is False
+    assert result["cached"] is False
     assert result["prompt_version"] == "v3"
     mock_default_cache.get.assert_not_called()
     mock_default_cache.set.assert_not_called()
@@ -735,9 +736,13 @@ async def test_generate_session_estimation_evolves_metadata_and_rolls_up_telemet
     )
     assert session.metadata.project_name == "NovaPay"
     assert session.metadata.mentioned_technologies == ["Rails", "PostgreSQL"]
-    assert turn_1["usage"]["preprocessing_input_tokens"] == 140
-    assert turn_1["usage"]["preprocessing_output_tokens"] == 35
-    assert turn_1["cost_usd"] == 0.00215
+    assert "preprocessing_input_tokens" not in turn_1["usage"]
+    assert "preprocessing_output_tokens" not in turn_1["usage"]
+    assert turn_1["cost_usd"] == 0.0020
+    assert session.last_turn_observed is not None
+    assert session.last_turn_observed.tokens_in == turn_1["usage"]["input_tokens"] + 140
+    assert session.last_turn_observed.tokens_out == turn_1["usage"]["output_tokens"] + 35
+    assert session.last_turn_observed.cost_usd == pytest.approx(0.00215)
 
     turn_2 = await estimation_service.generate_session_estimation(
         session=session,
@@ -749,7 +754,8 @@ async def test_generate_session_estimation_evolves_metadata_and_rolls_up_telemet
     )
     assert session.metadata.mentioned_technologies == ["Rails", "PostgreSQL", "Redis"]
     assert session.metadata.explicit_constraints == ["SOC 2 Type II"]
-    assert turn_2["cost_usd"] == 0.0027
+    assert turn_2["cost_usd"] == 0.0025
+    assert session.last_turn_observed.cost_usd == pytest.approx(0.0027)
 
     turn_3 = await estimation_service.generate_session_estimation(
         session=session,
@@ -766,9 +772,12 @@ async def test_generate_session_estimation_evolves_metadata_and_rolls_up_telemet
         explicit_constraints=["SOC 2 Type II"],
         rejected_options=["Rails"],
     )
-    assert turn_3["usage"]["preprocessing_input_tokens"] == 180
-    assert turn_3["usage"]["preprocessing_output_tokens"] == 45
-    assert turn_3["cost_usd"] == 0.00325
+    assert "preprocessing_input_tokens" not in turn_3["usage"]
+    assert "preprocessing_output_tokens" not in turn_3["usage"]
+    assert turn_3["cost_usd"] == 0.0030
+    assert session.last_turn_observed.tokens_in == turn_3["usage"]["input_tokens"] + 180
+    assert session.last_turn_observed.tokens_out == turn_3["usage"]["output_tokens"] + 45
+    assert session.last_turn_observed.cost_usd == pytest.approx(0.00325)
 
 
 @pytest.mark.anyio
@@ -780,7 +789,7 @@ async def test_generate_session_estimation_survives_extractor_failure(
     """
     GIVEN a valid main estimation turn whose secondary metadata extraction call fails
     WHEN generate_session_estimation executes
-    THEN the turn completes, session.history appends the turn, preprocessing tokens stay 0, and prior metadata persists.
+    THEN the turn completes, session.history appends the turn, TurnObservation adds zero extractor tokens/cost, and prior metadata persists.
 
     :param estimation_service: Injected EstimationService fixture.
     :param make_estimation_result: Estimation result factory fixture.
@@ -808,9 +817,13 @@ async def test_generate_session_estimation_survives_extractor_failure(
 
     assert session.metadata == prior_metadata
     assert len(session.history.messages) == 2
-    assert result["usage"]["preprocessing_input_tokens"] == 0
-    assert result["usage"]["preprocessing_output_tokens"] == 0
+    assert "preprocessing_input_tokens" not in result["usage"]
+    assert "preprocessing_output_tokens" not in result["usage"]
     assert result["cost_usd"] == 0.0020
+    assert session.last_turn_observed is not None
+    assert session.last_turn_observed.tokens_in == result["usage"]["input_tokens"]
+    assert session.last_turn_observed.tokens_out == result["usage"]["output_tokens"]
+    assert session.last_turn_observed.cost_usd == 0.0020
 
 
 @pytest.mark.anyio
@@ -925,15 +938,12 @@ async def test_generate_session_estimation_aggregates_compression_tokens_and_cos
     """
     GIVEN a session whose compression_policy returns token usage and USD cost
     WHEN generate_session_estimation completes
-    THEN compression tokens and cost aggregate into preprocessing_* tokens and cost_usd.
+    THEN TurnObservation aggregates compression and metadata tokens/cost while EstimationResponse retains generation values.
 
     :param estimation_service: Injected EstimationService fixture.
     :param make_estimation_result: Shared estimation result factory fixture.
     :param monkeypatch: Pytest monkeypatch fixture.
     """
-    from aie_estimator.sessions.compression.policy import CompressionOutcome
-    from aie_estimator.sessions.metadata_extractor import MetadataExtractionOutcome
-
     session = Session()
     monkeypatch.setattr("aie_estimator.services.estimations_service.sanitize_input", AsyncMock())
     monkeypatch.setattr("aie_estimator.services.estimations_service.call_llm", AsyncMock(return_value=make_estimation_result(cost_usd=0.001)))
@@ -962,9 +972,9 @@ async def test_generate_session_estimation_aggregates_compression_tokens_and_cos
         output_format=OutputFormat.PHASES_TABLE,
     )
 
-    assert response["usage"]["preprocessing_input_tokens"] == 100
-    assert response["usage"]["preprocessing_output_tokens"] == 30
-    assert response["cost_usd"] == pytest.approx(0.0015)
+    assert "preprocessing_input_tokens" not in response["usage"]
+    assert "preprocessing_output_tokens" not in response["usage"]
+    assert response["cost_usd"] == pytest.approx(0.001)
 
     obs = session.last_turn_observed
     assert obs is not None
@@ -989,16 +999,12 @@ async def test_generate_session_estimation_emits_session_turn_observed_with_atta
     """
     GIVEN a conversational session turn with a valid Markdown attachment
     WHEN generate_session_estimation completes
-    THEN session_turn_observed is logged with 1-based turn_index and sanitized attachment char count.
+    THEN session_turn_observed holds full telemetry and estimation_session_completed logs only lifecycle keys.
 
     :param estimation_service: Injected EstimationService fixture.
     :param make_estimation_result: Shared estimation result factory fixture.
     :param monkeypatch: Pytest monkeypatch fixture.
     """
-    from unittest.mock import MagicMock
-
-    from aie_estimator.sessions.metadata_extractor import MetadataExtractionOutcome
-
     session = Session()
     attachment_text = b"## Scope\nBuild a multi-tenant SaaS dashboard."
     log_spy = MagicMock()
@@ -1033,4 +1039,88 @@ async def test_generate_session_estimation_emits_session_turn_observed_with_atta
     assert kwargs["enriched_transcript_chars"] > kwargs["attachments_total_chars"]
     assert kwargs["messages_in_window"] == 2
     assert kwargs["cache_hit_kind"] == "none"
+
+    completed_calls = [call for call in log_spy.call_args_list if call.args == ("estimation_session_completed",)]
+    assert len(completed_calls) == 1
+    assert completed_calls[0].kwargs == {
+        "session_id": session.session_id,
+        "tier": "pm",
+    }
+
+
+@pytest.mark.parametrize(
+    ("primary_cost", "compression_outcome", "metadata_outcome", "expected_response_cost", "expected_obs_cost"),
+    [
+        (
+            None,
+            CompressionOutcome(input_tokens=40, output_tokens=10, cost_usd=0.0003),
+            MetadataExtractionOutcome(metadata=ProjectMetadata(), input_tokens=30, output_tokens=10, cost_usd=0.0002),
+            None,
+            None,
+        ),
+        (
+            0.0020,
+            CompressionOutcome(input_tokens=60, output_tokens=15, cost_usd=None),
+            MetadataExtractionOutcome(metadata=ProjectMetadata(), input_tokens=30, output_tokens=10, cost_usd=0.0002),
+            0.0020,
+            0.0022,
+        ),
+        (
+            0.0020,
+            CompressionOutcome(input_tokens=0, output_tokens=0, cost_usd=None),
+            MetadataExtractionOutcome(metadata=ProjectMetadata(), input_tokens=0, output_tokens=0, cost_usd=None),
+            0.0020,
+            0.0020,
+        ),
+    ],
+)
+@pytest.mark.anyio
+async def test_generate_session_estimation_preserves_none_cost_for_unpriced_calls(
+    estimation_service: EstimationService,
+    make_estimation_result: Callable[..., dict[str, Any]],
+    monkeypatch: pytest.MonkeyPatch,
+    primary_cost: float | None,
+    compression_outcome: CompressionOutcome,
+    metadata_outcome: MetadataExtractionOutcome,
+    expected_response_cost: float | None,
+    expected_obs_cost: float | None,
+) -> None:
+    """
+    GIVEN a conversational turn with priced or unpriced primary generation and auxiliary calls
+    WHEN generate_session_estimation completes
+    THEN TurnObservation.cost_usd preserves None when primary generation is unpriced and sums non-null auxiliary costs when priced.
+
+    :param estimation_service: Injected EstimationService fixture.
+    :param make_estimation_result: Shared estimation result factory fixture.
+    :param monkeypatch: Pytest monkeypatch fixture.
+    :param primary_cost: Cost returned by the primary generation call.
+    :param compression_outcome: Mocked compression telemetry outcome.
+    :param metadata_outcome: Mocked metadata extraction telemetry outcome.
+    :param expected_response_cost: Expected generation-only cost on returned response dict.
+    :param expected_obs_cost: Expected full-turn cost on TurnObservation.
+    """
+    session = Session()
+    monkeypatch.setattr("aie_estimator.services.estimations_service.sanitize_input", AsyncMock())
+    monkeypatch.setattr(
+        "aie_estimator.services.estimations_service.call_llm",
+        AsyncMock(return_value=make_estimation_result(cost_usd=primary_cost)),
+    )
+    monkeypatch.setattr(estimation_service.compression_policy, "apply", AsyncMock(return_value=compression_outcome))
+    monkeypatch.setattr("aie_estimator.services.estimations_service.update_metadata", AsyncMock(return_value=metadata_outcome))
+
+    response = await estimation_service.generate_session_estimation(
+        session=session,
+        transcript="Estimate the MyProject portal.",
+        project_type=ProjectType.WEB_SAAS,
+        detail_level=DetailLevel.MEDIUM,
+        output_format=OutputFormat.PHASES_TABLE,
+    )
+
+    assert response["cost_usd"] == (
+        pytest.approx(expected_response_cost) if expected_response_cost is not None else None
+    )
+    assert session.last_turn_observed is not None
+    assert session.last_turn_observed.cost_usd == (
+        pytest.approx(expected_obs_cost) if expected_obs_cost is not None else None
+    )
 

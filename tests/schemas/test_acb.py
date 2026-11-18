@@ -86,10 +86,10 @@ def test_critic_feedback_validator_rejects_invalid_verdicts(
         )
 
 
-def test_acb_response_from_service_result() -> None:
+def test_acb_response_model_validate() -> None:
     """
     GIVEN a normalized service result dictionary containing boss_trace
-    WHEN ACBResponse.from_service_result is called
+    WHEN ACBResponse.model_validate is called
     THEN it constructs a valid ACBResponse preserving estimation fields and trace.
     """
     estimation = ExecutiveEstimation(
@@ -118,7 +118,7 @@ def test_acb_response_from_service_result() -> None:
         "result": estimation,
         "tier": Tier.EXECUTIVE,
         "tier_rule": "header_x_user_tier",
-        "cache_hit": False,
+        "cached": False,
         "prompt_version": "v3",
         "model": DEFAULT_FAST_PROFILE,
         "provider": "litellm",
@@ -127,7 +127,7 @@ def test_acb_response_from_service_result() -> None:
         "boss_trace": trace,
     }
 
-    response = ACBResponse.from_service_result(service_result)
+    response = ACBResponse.model_validate(service_result)
 
     assert response.tier == Tier.EXECUTIVE
     assert response.boss_trace.final_decision == "accept"

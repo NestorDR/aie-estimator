@@ -153,18 +153,15 @@ async def update_metadata(
             response_model=MetadataExtractionResult,
         )
 
-        parsed_delta = response.get("result")
-        if not isinstance(parsed_delta, MetadataExtractionResult):
-            raise TypeError(f"Unexpected metadata extraction result type: {type(parsed_delta)}")
+        parsed_delta = MetadataExtractionResult.model_validate(response.get("result"))
 
         sanitized_delta = sanitize_extraction_delta(parsed_delta)
         merged = previous.merge_with(sanitized_delta)
 
-        usage = response.get("usage", {})
-        input_tokens = int(usage.get("input_tokens", 0))
-        output_tokens = int(usage.get("output_tokens", 0))
-        raw_cost = response.get("cost_usd")
-        cost_usd = float(raw_cost) if raw_cost is not None else None
+        usage = response.get("usage") or {}
+        input_tokens = usage.get("input_tokens", 0)
+        output_tokens = usage.get("output_tokens", 0)
+        cost_usd = response.get("cost_usd")
 
         log.info(
             "metadata_extraction_completed",

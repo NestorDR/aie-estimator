@@ -7,7 +7,7 @@
 The schema contract governs the core phases of the estimation lifecycle:
 1. **Request Intake ([`EstimationRequest`](../src/aie_estimator/schemas/estimations.py))**: Validates project descriptions (20–2000 characters), domain classifications (`ProjectType`, `DetailLevel`, `OutputFormat`), provider mode (`engine="litellm"` or `"native"`), optional `tier`, and engine-compatible target models via [`resolve_engine_model`](../src/aie_estimator/model_catalog.py).
 2. **Tiered Structured Response Contracts ([`BaseTierEstimation`](../src/aie_estimator/schemas/estimations.py), [`DeveloperEstimation`](../src/aie_estimator/schemas/estimations.py), [`PmEstimation`](../src/aie_estimator/schemas/estimations.py), [`ExecutiveEstimation`](../src/aie_estimator/schemas/estimations.py))**: Enforces stakeholder-specific payloads and invariants (`phases_sum_matches_total` on `PmEstimation`, `min_not_exceeds_max` on ranges, `low_confidence_requires_out_of_scope_prefix` on `BaseTierEstimation`).
-3. **Execution Instrumentation ([`TokenUsage`](../src/aie_estimator/schemas/estimations.py))**: Tracks input, output, and preprocessing tokens along with calculated execution cost (`cost_usd`).
+3. **Execution Instrumentation ([`TokenUsage`](../src/aie_estimator/schemas/estimations.py))**: Tracks generation input, output, and total tokens along with calculated execution cost (`cost_usd`).
 4. **Response Delivery ([`EstimationResponse`](../src/aie_estimator/schemas/estimations.py) & [`ACBResponse`](../src/aie_estimator/schemas/acb.py))**: Standardized envelope containing the tier-typed `result`, `tier`, `tier_rule`, active `prompt_version`, cache status, resolved `model`, `provider` attribution, token telemetry, and (for ACB) `boss_trace`.
 
 Consult [`src/aie_estimator/schemas/estimations.py`](../src/aie_estimator/schemas/estimations.py) for complete field constraints, type annotations, and validator logic. Conversational session contracts (`CreateSessionResponse`, `SessionInfoResponse`) live in [`src/aie_estimator/schemas/sessions.py`](../src/aie_estimator/schemas/sessions.py) and are documented in [`docs/conversational-sessions.md`](conversational-sessions.md).
@@ -61,9 +61,7 @@ Consult [`src/aie_estimator/schemas/estimations.py`](../src/aie_estimator/schema
   "usage": {
     "input_tokens": 820,
     "output_tokens": 240,
-    "total_tokens": 1060,
-    "preprocessing_input_tokens": 0,
-    "preprocessing_output_tokens": 0
+    "total_tokens": 1060
   }
 }
 ```

@@ -161,7 +161,7 @@ async def estimate_in_session(
         tier_override=tier,
     )
 
-    return EstimationResponse.from_service_result(result)
+    return EstimationResponse.model_validate(result)
 
 
 def _resolve_session_model(engine: ProviderMode, model: str | None) -> str:
@@ -270,4 +270,4 @@ async def estimate_in_session_acb(
         boss=boss,
     )
 
-    return ACBResponse.from_service_result(result)
+    return ACBResponse.model_validate(result)

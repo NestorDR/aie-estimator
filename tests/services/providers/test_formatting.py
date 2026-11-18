@@ -128,3 +128,24 @@ def test_format_provider_response_accepts_generic_base_model() -> None:
     assert formatted["usage"] == {"input_tokens": 100, "output_tokens": 40, "total_tokens": 140}
     assert formatted["cost_usd"] == 0.00025
 
+
+def test_format_provider_response_includes_none_cost_usd_when_unpriced() -> None:
+    """
+    GIVEN cost_usd=None and an unpriced model returning None from estimate_cost
+    WHEN format_provider_response builds the standardized provider payload
+    THEN cost_usd is still explicitly included with value None.
+    """
+    extracted = MetadataExtractionResult(project_name="Atlas")
+    formatted = format_provider_response(
+        result=extracted,
+        model="unknown-unpriced-model",
+        provider="openai",
+        finish_reason="stop",
+        input_tokens=10,
+        output_tokens=5,
+        cost_usd=None,
+    )
+
+    assert "cost_usd" in formatted
+    assert formatted["cost_usd"] is None
+

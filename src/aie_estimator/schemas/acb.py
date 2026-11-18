@@ -1,7 +1,7 @@
 # src/aie_estimator/schemas/acb.py
 
 # --- Python Standard Library ---
-from typing import Any, Final, Literal, Self
+from typing import Final, Literal, Self
 
 # --- Third Party Libraries ---
 from pydantic import BaseModel, Field, model_validator
@@ -106,14 +106,3 @@ class ACBResponse(EstimationResponse):
     """Response payload for Actor-Critic-Boss session estimations."""
 
     boss_trace: BossTrace = Field(..., description="Structured audit trail of Boss governance decisions.")
-
-    @classmethod
-    def from_service_result(cls, result: dict[str, Any]) -> Self:
-        """
-        Construct an ``ACBResponse`` from an ``EstimationService`` ACB result dictionary.
-
-        :param result: Normalized estimation result dictionary containing ``boss_trace``.
-
-        :return: Validated ``ACBResponse`` instance.
-        """
-        return cls.model_validate({**result, "cached": bool(result["cache_hit"])})

@@ -120,8 +120,6 @@ def test_create_estimation_valid_request_returns_200(
         "input_tokens": 120,
         "output_tokens": 60,
         "total_tokens": 180,
-        "preprocessing_input_tokens": 0,
-        "preprocessing_output_tokens": 0,
     }
 
     mock_service.generate_estimation.assert_awaited_once()

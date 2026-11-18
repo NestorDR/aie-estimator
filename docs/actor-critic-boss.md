@@ -20,7 +20,7 @@ curl -X POST "http://localhost:8000/api/v1/sessions/${SESSION_ID}/estimate-acb" 
   -F "output_format=phases_table"
 ```
 
-The response extends `EstimationResponse` with `boss_trace` (`iterations`, `final_decision`, `iterations_run`), aggregated `usage` across all Actor and Critic calls, and `preprocessing_*_tokens` for post-turn metadata extraction.
+The response extends `EstimationResponse` with `boss_trace` (`iterations`, `final_decision`, `iterations_run`) and generation `usage` and `cost_usd` aggregated across all Actor and Critic calls (preserving `cost_usd=None` when any Actor call is unpriced), while post-turn compression and metadata extraction tokens and costs roll into `session.last_turn_observed` ([`TurnObservation`](../src/aie_estimator/sessions/models.py)).
 
 ## Technical Considerations
 

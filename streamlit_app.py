@@ -192,12 +192,9 @@ def render_telemetry_container(metadata: dict[str, Any]) -> None:
             st.metric("Cost", cost_label)
 
         usage = metadata.get("usage", {})
-        prep_in = usage.get("preprocessing_input_tokens", 0)
-        prep_out = usage.get("preprocessing_output_tokens", 0)
-        prep_info = f" [Prep tokens: {prep_in} in / {prep_out} out]" if (prep_in or prep_out) else ""
         st.markdown(
             f"**Token usage:** {usage.get('input_tokens', 0)} in / "
-            f"{usage.get('output_tokens', 0)} out ({usage.get('total_tokens', 0)} total){prep_info}"
+            f"{usage.get('output_tokens', 0)} out ({usage.get('total_tokens', 0)} total)"
         )
 
 

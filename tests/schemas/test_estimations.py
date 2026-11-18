@@ -324,12 +324,12 @@ def test_estimation_response_serialization() -> None:
     assert data["cost_usd"] == 0.0012
     assert data["usage"]["total_tokens"] == 150
 
-    from_service = EstimationResponse.from_service_result(
+    from_service = EstimationResponse.model_validate(
         {
             "result": result,
             "tier": Tier.PM,
             "tier_rule": "default",
-            "cache_hit": True,
+            "cached": True,
             "prompt_version": "v3",
             "model": DEFAULT_GPT_LLM,
             "provider": "openai",

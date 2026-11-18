@@ -96,10 +96,9 @@ class Critic:
             )
 
         usage = response.get("usage") or {}
-        input_tokens = int(usage.get("input_tokens", 0))
-        output_tokens = int(usage.get("output_tokens", 0))
-        raw_cost = response.get("cost_usd")
-        cost_usd = float(raw_cost) if raw_cost is not None else None
+        input_tokens = usage.get("input_tokens", 0)
+        output_tokens = usage.get("output_tokens", 0)
+        cost_usd = response.get("cost_usd")
 
         log.info(
             "critic_review_completed",

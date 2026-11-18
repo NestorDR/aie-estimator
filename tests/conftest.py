@@ -209,20 +209,16 @@ def make_estimation_result() -> Callable[..., dict[str, Any]]:
             "total_duration_weeks": 8,
             "total_cost_eur": 20000,
         }
-        body = overrides.get("estimation") or overrides.get("text") or "Project Breakdown:\n- Backend: 40h\nTotal: 40h"
         return {
             "result": result_payload,
             "tier": "pm",
             "tier_rule": "default",
-            "estimation": body,
-            "text": body,
             "prompt_version": "v3",
-            "cache_hit": False,
+            "cached": False,
             "model": DEFAULT_GPT_LLM,
             "provider": "openai",
             "finish_reason": "stop",
             "usage": {"input_tokens": 100, "output_tokens": 50, "total_tokens": 150},
-            "preprocessing": "none",
             "latency_ms": 250,
             "cost_usd": None,
             **overrides,

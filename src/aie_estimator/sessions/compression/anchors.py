@@ -118,11 +118,10 @@ class AnchorDetector:
             return self._detect_heuristic(message)
 
         usage = response.get("usage") or {}
-        raw_cost = response.get("cost_usd")
         return AnchorMatch(
             is_anchor=classified.is_anchor,
             matched_rules=["llm_classifier"] if classified.is_anchor else [],
-            input_tokens=int(usage.get("input_tokens", 0)),
-            output_tokens=int(usage.get("output_tokens", 0)),
-            cost_usd=float(raw_cost) if raw_cost is not None else None,
+            input_tokens=usage.get("input_tokens", 0),
+            output_tokens=usage.get("output_tokens", 0),
+            cost_usd=response.get("cost_usd"),
         )

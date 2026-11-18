@@ -83,7 +83,12 @@ def format_provider_response(
 
     :return: Standardized response dictionary for downstream cache storage and router responses.
     """
-    response: dict[str, Any] = {
+    resolved_cost = (
+        cost_usd
+        if cost_usd is not None
+        else estimate_cost(model=model, tokens_in=input_tokens, tokens_out=output_tokens)
+    )
+    return {
         "result": result,
         "model": model,
         "provider": provider,
@@ -93,8 +98,5 @@ def format_provider_response(
             "output_tokens": output_tokens,
             "total_tokens": input_tokens + output_tokens,
         },
+        "cost_usd": resolved_cost,
     }
-    resolved_cost = cost_usd if cost_usd is not None else estimate_cost(model=model, tokens_in=input_tokens, tokens_out=output_tokens)
-    if resolved_cost is not None:
-        response["cost_usd"] = resolved_cost
-    return response

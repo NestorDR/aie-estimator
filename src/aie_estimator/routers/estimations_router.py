@@ -50,6 +50,6 @@ async def create_estimation(
         caller_tier=caller_tier.value if caller_tier else None,
     )
 
-    result = await service.generate_estimation(request, caller_tier=caller_tier)
+    response = await service.generate_estimation(request, caller_tier=caller_tier)
 
-    return EstimationResponse.from_service_result(result)
+    return EstimationResponse.model_validate(response)

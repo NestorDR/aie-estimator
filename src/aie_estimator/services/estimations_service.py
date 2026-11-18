@@ -7,6 +7,7 @@ from typing import Any, Final
 
 # --- Third Party Libraries ---
 from openai import AsyncOpenAI
+from pydantic import ValidationError
 import structlog
 
 # --- App modules ---
@@ -143,17 +144,17 @@ class EstimationService:
                 tier=tier,
             )
 
-            cached_result = await self.exact_cache.get(exact_cache_key)
-            if cached_result is not None:
-                cached_result["latency_ms"] = int((time.perf_counter() - t0) * 1000)
-                cached_result["cache_hit"] = True
-                cached_result["prompt_version"] = version
-                cached_result["tier"] = tier
-                cached_result["tier_rule"] = tier_rule
-                if isinstance(cached_result.get("result"), dict):
-                    cached_result["result"] = tier_config.schema.model_validate(cached_result["result"])
-                log.info("estimation_cache_hit", kind="exact", tier=tier.value, model=model, latency_ms=cached_result["latency_ms"])
-                return cached_result
+            cached_response = await self.exact_cache.get(exact_cache_key)
+            if cached_response is not None:
+                cached_response["latency_ms"] = int((time.perf_counter() - t0) * 1000)
+                cached_response["cached"] = True
+                cached_response["prompt_version"] = version
+                cached_response["tier"] = tier
+                cached_response["tier_rule"] = tier_rule
+                if isinstance(cached_response.get("result"), dict):
+                    cached_response["result"] = tier_config.schema.model_validate(cached_response["result"])
+                log.info("estimation_cache_hit", kind="exact", tier=tier.value, model=model, latency_ms=cached_response["latency_ms"])
+                return cached_response
 
         # Tier 2: Semantic vector cache lookup (evaluated on exact-match miss).
         if self.semantic_cache is not None:
@@ -170,7 +171,7 @@ class EstimationService:
                     "result": semantic_hit,
                     "tier": tier,
                     "tier_rule": tier_rule,
-                    "cache_hit": True,
+                    "cached": True,
                     "prompt_version": version,
                     "model": model,
                     "provider": provider,
@@ -179,8 +180,6 @@ class EstimationService:
                         "input_tokens": 0,
                         "output_tokens": 0,
                         "total_tokens": 0,
-                        "preprocessing_input_tokens": 0,
-                        "preprocessing_output_tokens": 0,
                     },
                     "latency_ms": latency_ms,
                 }
@@ -195,20 +194,20 @@ class EstimationService:
             version=version,
         )
 
-        result, structured_result = await self._dispatch_and_normalize(
+        response = await self._dispatch_and_normalize(
             system_prompt=system_prompt,
             opts=opts,
             version=version,
             tier=tier,
             tier_rule=tier_rule,
             response_model=tier_config.schema,
-            t0=t0,
             user_prompt=user_prompt,
         )
 
         # Dual-write: cache validated payload in both Tier 1 exact-match and Tier 2 semantic caches.
+        structured_result: BaseTierEstimation = response["result"]
         cache_payload = {
-            **result,
+            **response,
             "tier": tier.value,
             "result": structured_result.model_dump(mode="json"),
         }
@@ -219,7 +218,7 @@ class EstimationService:
             await self.semantic_cache.store(request, structured_result, version, tier=tier)
 
         # Return estimation response payload.
-        return result
+        return response
 
     async def generate_session_estimation(
         self,
@@ -255,7 +254,7 @@ class EstimationService:
         :param caller_tier: Optional trusted stakeholder tier from request headers.
         :param tier_override: Optional explicit stakeholder tier override.
 
-        :return: Response dictionary matching :meth:`generate_estimation` with ``cache_hit=False``.
+        :return: Response dictionary matching :meth:`generate_estimation` with ``cached=False``.
         :raises AttachmentExtractionError: If attachment count, extension, byte size, or parsing fails.
         :raises InputGuardrailViolation: If input guardrails reject ``transcript`` or attachment content.
         :raises LLMProviderError: If any LLM provider invocation fails.
@@ -282,7 +281,7 @@ class EstimationService:
             attachment_count=prepared.attachment_count,
         )
 
-        result, structured_result = await self._dispatch_session_actor_turn(
+        response = await self._dispatch_session_actor_turn(
             session=session,
             prepared=prepared,
             project_type=project_type,
@@ -290,21 +289,17 @@ class EstimationService:
             output_format=output_format,
         )
 
-        finalized = await self._finalize_session_turn(
+        await self._finalize_session_turn(
             session=session,
             prepared=prepared,
-            result=result,
-            structured_result=structured_result,
+            response=response,
         )
         log.info(
             "estimation_session_completed",
             session_id=session.session_id,
             tier=prepared.tier.value,
-            latency_ms=finalized["latency_ms"],
-            cost_usd=finalized.get("cost_usd"),
-            usage=finalized.get("usage"),
         )
-        return finalized
+        return response
 
     async def generate_session_estimation_acb(
         self,
@@ -370,7 +365,7 @@ class EstimationService:
             attachment_count=prepared.attachment_count,
         )
 
-        actor_results: list[dict[str, Any]] = []
+        actor_responses: list[dict[str, Any]] = []
         critic_outcomes: list[CriticOutcome] = []
 
         async def _actor(feedback: CriticFeedback | None) -> BaseTierEstimation:
@@ -381,7 +376,7 @@ class EstimationService:
 
             :return: Validated and scope-filtered tier estimation candidate.
             """
-            actor_result, structured = await self._dispatch_session_actor_turn(
+            actor_response = await self._dispatch_session_actor_turn(
                 session=session,
                 prepared=prepared,
                 project_type=project_type,
@@ -389,8 +384,8 @@ class EstimationService:
                 output_format=output_format,
                 critic_feedback=feedback,
             )
-            actor_results.append(actor_result)
-            return structured
+            actor_responses.append(actor_response)
+            return actor_response["result"]
 
         async def _critic(candidate: BaseTierEstimation) -> CriticFeedback:
             """
@@ -413,20 +408,19 @@ class EstimationService:
         final_structured, boss_trace = await effective_boss.run(actor=_actor, critic=_critic)
 
         aggregated_usage, aggregated_cost = self._aggregate_acb_telemetry(
-            actor_results=actor_results,
+            actor_results=actor_responses,
             critic_outcomes=critic_outcomes,
         )
-        final_result = dict(actor_results[-1])
-        final_result["result"] = final_structured
-        final_result["usage"] = aggregated_usage
-        final_result["cost_usd"] = aggregated_cost
-        final_result["boss_trace"] = boss_trace
+        final_response = dict(actor_responses[-1])
+        final_response["result"] = final_structured
+        final_response["usage"] = aggregated_usage
+        final_response["cost_usd"] = aggregated_cost
+        final_response["boss_trace"] = boss_trace
 
-        finalized = await self._finalize_session_turn(
+        await self._finalize_session_turn(
             session=session,
             prepared=prepared,
-            result=final_result,
-            structured_result=final_structured,
+            response=final_response,
         )
         log.info(
             "estimation_acb_completed",
@@ -434,11 +428,8 @@ class EstimationService:
             tier=prepared.tier.value,
             final_decision=boss_trace.final_decision,
             iterations_run=boss_trace.iterations_run,
-            latency_ms=finalized["latency_ms"],
-            cost_usd=finalized.get("cost_usd"),
-            usage=finalized.get("usage"),
         )
-        return finalized
+        return final_response
 
     async def _dispatch_session_actor_turn(
         self,
@@ -449,7 +440,7 @@ class EstimationService:
         detail_level: DetailLevel,
         output_format: OutputFormat,
         critic_feedback: CriticFeedback | None = None,
-    ) -> tuple[dict[str, Any], BaseTierEstimation]:
+    ) -> dict[str, Any]:
         """
         Render tier-adaptive conversational prompts and dispatch one Actor turn.
 
@@ -460,7 +451,7 @@ class EstimationService:
         :param output_format: Desired presentation layout.
         :param critic_feedback: Optional ``CriticFeedback`` for Actor revision passes.
 
-        :return: Tuple of normalized response dictionary and scope-filtered tier estimate.
+        :return: Normalized response dictionary containing scope-filtered tier estimate.
         :raises LLMProviderError: If provider execution fails or returns an unexpected type.
         """
         system_prompt, user_prompt = render_tier_estimation_prompt(
@@ -483,7 +474,6 @@ class EstimationService:
             tier=prepared.tier,
             tier_rule=prepared.tier_rule,
             response_model=prepared.response_model,
-            t0=prepared.t0,
             user_prompt=None,
             messages=turns,
         )
@@ -563,19 +553,16 @@ class EstimationService:
         *,
         session: Session,
         prepared: _PreparedSessionTurn,
-        result: dict[str, Any],
-        structured_result: BaseTierEstimation,
-    ) -> dict[str, Any]:
+        response: dict[str, Any],
+    ) -> None:
         """
-        Persist turn in session history, run post-turn metadata extraction, and update telemetry.
+        Persist turn in session history, run post-turn memory updates, and emit turn telemetry.
 
         :param session: Active conversational ``Session`` to update.
         :param prepared: Prepared turn context with enriched transcript and timing baseline.
-        :param result: Normalized response dictionary to enrich with metadata telemetry.
-        :param structured_result: Final validated tier estimation for this turn.
-
-        :return: Finalized response dictionary with metadata tokens, cost, and latency.
+        :param response: Read-only normalized generation response dictionary.
         """
+        structured_result: BaseTierEstimation = response["result"]
         session.turn_index += 1
         session.last_tier = prepared.tier.value
         session.last_tier_rule = prepared.tier_rule
@@ -589,15 +576,15 @@ class EstimationService:
             opts=prepared.opts,
         )
         session.metadata = metadata_outcome.metadata
-        usage = result["usage"]
-        usage["preprocessing_input_tokens"] = metadata_outcome.input_tokens + compression_outcome.input_tokens
-        usage["preprocessing_output_tokens"] = metadata_outcome.output_tokens + compression_outcome.output_tokens
-        extra_costs = [cost for cost in (metadata_outcome.cost_usd, compression_outcome.cost_usd) if cost is not None]
-        if extra_costs:
-            base_cost = float(result["cost_usd"]) if result.get("cost_usd") is not None else 0.0
-            result["cost_usd"] = round(base_cost + sum(extra_costs), 6)
-        result["latency_ms"] = int((time.perf_counter() - prepared.t0) * 1000)
+        
+        preprocessing_input_tokens = metadata_outcome.input_tokens + compression_outcome.input_tokens
+        preprocessing_output_tokens = metadata_outcome.output_tokens + compression_outcome.output_tokens
 
+        base_cost = response.get("cost_usd")
+        extra_costs = [cost for cost in (metadata_outcome.cost_usd, compression_outcome.cost_usd) if cost is not None]
+        turn_cost_usd = round(base_cost + sum(extra_costs), 6) if base_cost is not None else None
+
+        usage = response["usage"]
         observation = TurnObservation(
             turn_index=session.turn_index,
             session_id=session.session_id,
@@ -607,16 +594,15 @@ class EstimationService:
             messages_in_window=len(session.history.messages),
             anchors_count=len(session.history.anchors),
             summary_chars=len(session.history.summary) if session.history.summary else 0,
-            tokens_in=int(usage.get("input_tokens", 0)) + int(usage.get("preprocessing_input_tokens", 0)),
-            tokens_out=int(usage.get("output_tokens", 0)) + int(usage.get("preprocessing_output_tokens", 0)),
-            cost_usd=result.get("cost_usd"),
-            latency_ms=result["latency_ms"],
+            tokens_in=usage.get("input_tokens", 0) + preprocessing_input_tokens,
+            tokens_out=usage.get("output_tokens", 0) + preprocessing_output_tokens,
+            cost_usd=turn_cost_usd,
+            latency_ms=int((time.perf_counter() - prepared.t0) * 1000),
             cache_hit_kind="none",
             last_resolved_tier=prepared.tier.value,
         )
         session.last_turn_observed = observation
         log.info("session_turn_observed", **observation.model_dump())
-        return result
 
     @staticmethod
     def _aggregate_acb_telemetry(
@@ -625,28 +611,29 @@ class EstimationService:
         critic_outcomes: list[CriticOutcome],
     ) -> tuple[dict[str, int], float | None]:
         """
-        Sum token usage and non-null USD costs across all Actor and Critic calls.
+        Sum token usage and USD costs across Actor and Critic calls, preserving ``None`` if any Actor call is unpriced.
 
         :param actor_results: Response dictionaries from every Actor invocation in the loop.
         :param critic_outcomes: ``CriticOutcome`` records from every Critic invocation in the loop.
 
         :return: Tuple of aggregated ``usage`` dictionary and total ``cost_usd`` (or ``None``).
         """
-        input_tokens = sum(int(res["usage"].get("input_tokens", 0)) for res in actor_results)
-        output_tokens = sum(int(res["usage"].get("output_tokens", 0)) for res in actor_results)
+        input_tokens = sum(res["usage"].get("input_tokens", 0) for res in actor_results)
+        output_tokens = sum(res["usage"].get("output_tokens", 0) for res in actor_results)
         input_tokens += sum(outcome.input_tokens for outcome in critic_outcomes)
         output_tokens += sum(outcome.output_tokens for outcome in critic_outcomes)
 
-        costs = [float(res["cost_usd"]) for res in actor_results if res.get("cost_usd") is not None]
-        costs.extend(outcome.cost_usd for outcome in critic_outcomes if outcome.cost_usd is not None)
-        total_cost = round(sum(costs), 6) if costs else None
+        if any(res.get("cost_usd") is None for res in actor_results):
+            total_cost = None
+        else:
+            costs = [res["cost_usd"] for res in actor_results]
+            costs.extend(outcome.cost_usd for outcome in critic_outcomes if outcome.cost_usd is not None)
+            total_cost = round(sum(costs), 6) if costs else None
 
         usage = {
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
             "total_tokens": input_tokens + output_tokens,
-            "preprocessing_input_tokens": 0,
-            "preprocessing_output_tokens": 0,
         }
         return usage, total_cost
 
@@ -659,10 +646,9 @@ class EstimationService:
         tier: Tier,
         tier_rule: str,
         response_model: type[BaseTierEstimation],
-        t0: float,
         user_prompt: str | None = None,
         messages: list[dict[str, str]] | None = None,
-    ) -> tuple[dict[str, Any], BaseTierEstimation]:
+    ) -> dict[str, Any]:
         """
         Dispatch single-turn or multi-turn prompt payload to ``call_llm`` and normalize response telemetry.
 
@@ -672,15 +658,15 @@ class EstimationService:
         :param tier: Resolved stakeholder tier.
         :param tier_rule: Tier resolution rule identifier.
         :param response_model: Target Pydantic schema class for structured output.
-        :param t0: Request start timestamp from ``time.perf_counter()``.
         :param user_prompt: Single-turn user prompt string, or ``None`` when ``messages`` is passed.
         :param messages: Multi-turn sequence of non-system turn dictionaries.
 
-        :return: Tuple of normalized response dictionary and scope-filtered tier estimate.
+        :return: Normalized response dictionary containing scope-filtered tier estimate.
         :raises LLMProviderError: If provider execution fails or returns an invalid result type.
         """
         model = opts.effective_model
         provider = opts.provider
+        call_t0 = time.perf_counter()
 
         log.info(
             "estimation_generation_started",
@@ -694,7 +680,7 @@ class EstimationService:
         )
 
         try:
-            result = await call_llm(
+            response = await call_llm(
                 user_prompt=user_prompt,
                 system_prompt=system_prompt,
                 opts=opts,
@@ -716,26 +702,23 @@ class EstimationService:
             )
             raise LLMProviderError(f"LLM call failed: {e}") from e
 
-        raw_result = result.get("result")
-        if isinstance(raw_result, dict):
-            structured_result = response_model.model_validate(raw_result)
-        elif isinstance(raw_result, response_model):
+        raw_result = response.get("result")
+        if isinstance(raw_result, response_model):
             structured_result = raw_result
         else:
-            raise LLMProviderError(f"Unexpected result type from provider: {type(raw_result)}")
+            try:
+                structured_result = response_model.model_validate(raw_result)
+            except ValidationError as e:
+                raise LLMProviderError(f"Unexpected result type from provider: {type(raw_result)}") from e
 
         # Output guardrail (filter): normalises low-confidence answers.
         structured_result = enforce_scope_response(structured_result)
-        result["result"] = structured_result
-        result["tier"] = tier
-        result["tier_rule"] = tier_rule
-        result["prompt_version"] = version
-
-        result.setdefault("cost_usd", None)
-        result["usage"].setdefault("preprocessing_input_tokens", 0)
-        result["usage"].setdefault("preprocessing_output_tokens", 0)
-        result["latency_ms"] = int((time.perf_counter() - t0) * 1000)
-        result["cache_hit"] = False
+        response["result"] = structured_result
+        response["tier"] = tier
+        response["tier_rule"] = tier_rule
+        response["prompt_version"] = version
+        response["latency_ms"] = int((time.perf_counter() - call_t0) * 1000)
+        response["cached"] = False
 
         log.info(
             "estimation_generation_completed",
@@ -745,10 +728,10 @@ class EstimationService:
             tier=tier.value,
             tier_rule=tier_rule,
             schema=response_model.__name__,
-            latency_ms=result["latency_ms"],
-            cost_usd=result.get("cost_usd"),
-            usage=result.get("usage"),
+            latency_ms=response["latency_ms"],
+            cost_usd=response.get("cost_usd"),
+            usage=response.get("usage"),
             confidence_pct=structured_result.confidence_pct,
         )
 
-        return result, structured_result
+        return response

@@ -2,7 +2,7 @@
 
 # --- Python Standard Library ---
 from enum import Enum
-from typing import Any, Final, Literal, Self
+from typing import Final, Literal, Self
 
 # --- Third Party Libraries ---
 from pydantic import BaseModel, Field, model_validator
@@ -78,13 +78,11 @@ class EstimationRequest(BaseModel):
 
 
 class TokenUsage(BaseModel):
-    """Token consumption details from the LLM call(s)."""
+    """Token consumption details from the generation LLM call(s)."""
 
     input_tokens: int
     output_tokens: int
     total_tokens: int
-    preprocessing_input_tokens: int = 0
-    preprocessing_output_tokens: int = 0
 
 
 class Phase(BaseModel):
@@ -270,24 +268,3 @@ class EstimationResponse(BaseModel):
         description="Calculated execution cost in USD reported by the routing engine.",
     )
     usage: TokenUsage
-
-    @classmethod
-    def from_service_result(cls, result: dict[str, Any]) -> Self:
-        """
-        Construct an EstimationResponse from an EstimationService result dictionary.
-
-        :param result: Normalized estimation result dictionary returned by EstimationService.
-
-        :return: Validated EstimationResponse instance.
-        """
-        return cls(
-            result=result["result"],
-            tier=result["tier"],
-            tier_rule=result["tier_rule"],
-            cached=bool(result["cache_hit"]),
-            prompt_version=result["prompt_version"],
-            model=result["model"],
-            provider=result["provider"],
-            cost_usd=result.get("cost_usd"),
-            usage=result["usage"],
-        )

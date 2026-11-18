@@ -84,8 +84,6 @@ def _build_fake_estimation(
             "input_tokens": 300,
             "output_tokens": 150,
             "total_tokens": 450,
-            "preprocessing_input_tokens": 10,
-            "preprocessing_output_tokens": 5,
         },
     }
     if tier is not None:

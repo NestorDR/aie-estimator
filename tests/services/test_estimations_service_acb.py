@@ -1,8 +1,9 @@
 # tests/services/test_estimations_service_acb.py
 
 # --- Python Standard Library ---
+from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # --- Third Party Libraries ---
 import pytest
@@ -45,7 +46,7 @@ def _pm_estimate(summary: str = "PM estimate for B2B platform.", confidence_pct:
     )
 
 
-def _llm_payload(result: Any, input_tokens: int, output_tokens: int, cost_usd: float) -> dict[str, Any]:
+def _llm_payload(result: Any, input_tokens: int, output_tokens: int, cost_usd: float | None) -> dict[str, Any]:
     """Build a normalized provider response dictionary."""
     return {
         "result": result,
@@ -129,9 +130,9 @@ async def test_generate_session_estimation_acb_iterates_and_aggregates_telemetry
     assert response["usage"]["input_tokens"] == 300 + 350 + 200 + 210
     assert response["usage"]["output_tokens"] == 150 + 160 + 80 + 50
     assert response["usage"]["total_tokens"] == 1500
-    assert response["usage"]["preprocessing_input_tokens"] == 90
-    assert response["usage"]["preprocessing_output_tokens"] == 30
-    assert response["cost_usd"] == pytest.approx(0.0033)
+    assert "preprocessing_input_tokens" not in response["usage"]
+    assert "preprocessing_output_tokens" not in response["usage"]
+    assert response["cost_usd"] == pytest.approx(0.0031)
     assert len(session.history.messages) == 2
     assert "Draft v2 with QA included." in session.history.messages[1].content
     # Second Actor call must receive <critic_feedback> from round 0
@@ -147,3 +148,196 @@ async def test_generate_session_estimation_acb_iterates_and_aggregates_telemetry
     assert obs.cost_usd == pytest.approx(0.0033)
     assert obs.cache_hit_kind == "none"
     assert obs.last_resolved_tier == "pm"
+
+
+@pytest.mark.parametrize(
+    ("actor_costs", "critic_payload", "expected_response_cost", "expected_obs_cost"),
+    [
+        (
+            [0.0010, None],
+            _llm_payload(
+                CriticFeedback(
+                    verdict="needs_iteration",
+                    issues=[
+                        CriticIssue(
+                            category="missing_component",
+                            severity="major",
+                            field_path="phases",
+                            description="Missing QA.",
+                            suggested_fix="Add QA.",
+                        )
+                    ],
+                    confidence_in_review=80,
+                ),
+                input_tokens=150,
+                output_tokens=60,
+                cost_usd=0.0005,
+            ),
+            None,
+            None,
+        ),
+        (
+            [0.0010],
+            _llm_payload(
+                CriticFeedback(verdict="accept", issues=[], confidence_in_review=90),
+                input_tokens=150,
+                output_tokens=60,
+                cost_usd=None,
+            ),
+            0.0010,
+            0.0012,
+        ),
+        (
+            [0.0010],
+            RuntimeError("Critic unavailable"),
+            0.0010,
+            0.0012,
+        ),
+    ],
+)
+@pytest.mark.anyio
+async def test_generate_session_estimation_acb_cost_preservation(
+    actor_costs: list[float | None],
+    critic_payload: dict[str, Any] | Exception,
+    expected_response_cost: float | None,
+    expected_obs_cost: float | None,
+) -> None:
+    """
+    GIVEN mixed priced/unpriced Actor and Critic outcomes
+    WHEN EstimationService.generate_session_estimation_acb executes
+    THEN unpriced Actor calls preserve cost_usd=None while priced Actor turns sum non-null Critic and auxiliary costs.
+
+    :param actor_costs: Per-iteration Actor USD cost sequence.
+    :param critic_payload: Critic call return payload or exception triggering fail-open fallback.
+    :param expected_response_cost: Expected generation cost on the returned ACB dictionary.
+    :param expected_obs_cost: Expected full-turn cost on TurnObservation.
+    """
+    session = Session(session_id="test-session-acb-cost")
+    draft = _pm_estimate()
+    actor_calls = AsyncMock(
+        side_effect=[_llm_payload(draft, input_tokens=200, output_tokens=100, cost_usd=cost) for cost in actor_costs]
+    )
+    critic_effects: list[Any] = [critic_payload]
+    if len(actor_costs) > 1:
+        critic_effects.append(
+            _llm_payload(
+                CriticFeedback(verdict="accept", issues=[], confidence_in_review=90),
+                input_tokens=150,
+                output_tokens=50,
+                cost_usd=0.0004,
+            )
+        )
+    critic_calls = AsyncMock(side_effect=critic_effects)
+    metadata_mock = AsyncMock(
+        return_value=MetadataExtractionOutcome(
+            metadata=ProjectMetadata(project_name="B2B Platform"),
+            input_tokens=50,
+            output_tokens=20,
+            cost_usd=0.0002,
+        )
+    )
+
+    service = EstimationService()
+    with (
+        patch("aie_estimator.services.estimations_service.call_llm", new=actor_calls),
+        patch("aie_estimator.services.critic_service.call_llm", new=critic_calls),
+        patch("aie_estimator.services.estimations_service.update_metadata", new=metadata_mock),
+    ):
+        response = await service.generate_session_estimation_acb(
+            session=session,
+            transcript="Estimate a multi-tenant B2B platform with QA.",
+            project_type=ProjectType.WEB_SAAS,
+            detail_level=DetailLevel.MEDIUM,
+            output_format=OutputFormat.PHASES_TABLE,
+            tier_override=Tier.PM,
+            critic=Critic(model=DEFAULT_FAST_PROFILE),
+            boss=Boss(max_iterations=len(actor_costs)),
+        )
+
+    assert response["cost_usd"] == (
+        pytest.approx(expected_response_cost) if expected_response_cost is not None else None
+    )
+    assert session.last_turn_observed is not None
+    assert session.last_turn_observed.cost_usd == (
+        pytest.approx(expected_obs_cost) if expected_obs_cost is not None else None
+    )
+
+
+@pytest.mark.anyio
+async def test_generate_session_estimation_acb_logs_per_dispatch_latency_and_trimmed_completion() -> None:
+    """
+    GIVEN a two-iteration ACB turn
+    WHEN EstimationService.generate_session_estimation_acb completes
+    THEN estimation_generation_completed logs per-dispatch latency and estimation_acb_completed omits duplicate telemetry.
+    """
+    session = Session(session_id="test-session-acb-logs")
+    draft_v1 = _pm_estimate("Draft v1.", confidence_pct=72)
+    draft_v2 = _pm_estimate("Draft v2.", confidence_pct=88)
+    feedback_v1 = CriticFeedback(
+        verdict="needs_iteration",
+        issues=[
+            CriticIssue(
+                category="missing_component",
+                severity="major",
+                field_path="phases",
+                description="Missing QA.",
+                suggested_fix="Add QA.",
+            )
+        ],
+        confidence_in_review=85,
+    )
+    feedback_v2 = CriticFeedback(verdict="accept", issues=[], confidence_in_review=92)
+
+    actor_calls = AsyncMock(
+        side_effect=[
+            _llm_payload(draft_v1, input_tokens=300, output_tokens=150, cost_usd=0.0010),
+            _llm_payload(draft_v2, input_tokens=350, output_tokens=160, cost_usd=0.0012),
+        ]
+    )
+    critic_calls = AsyncMock(
+        side_effect=[
+            _llm_payload(feedback_v1, input_tokens=200, output_tokens=80, cost_usd=0.0005),
+            _llm_payload(feedback_v2, input_tokens=210, output_tokens=50, cost_usd=0.0004),
+        ]
+    )
+    metadata_mock = AsyncMock(return_value=MetadataExtractionOutcome(metadata=ProjectMetadata()))
+    log_spy = MagicMock()
+    fake_time = SimpleNamespace(perf_counter=MagicMock(side_effect=[10.0, 11.0, 11.125, 15.0, 15.25, 16.5]))
+
+    service = EstimationService()
+    with (
+        patch("aie_estimator.services.estimations_service.call_llm", new=actor_calls),
+        patch("aie_estimator.services.critic_service.call_llm", new=critic_calls),
+        patch("aie_estimator.services.estimations_service.update_metadata", new=metadata_mock),
+        patch("aie_estimator.services.estimations_service.log.info", new=log_spy),
+        patch("aie_estimator.services.estimations_service.time", new=fake_time),
+    ):
+        await service.generate_session_estimation_acb(
+            session=session,
+            transcript="Estimate a multi-tenant B2B platform with QA.",
+            project_type=ProjectType.WEB_SAAS,
+            detail_level=DetailLevel.MEDIUM,
+            output_format=OutputFormat.PHASES_TABLE,
+            tier_override=Tier.PM,
+            critic=Critic(model=DEFAULT_FAST_PROFILE),
+            boss=Boss(max_iterations=2),
+        )
+
+    generation_calls = [
+        call for call in log_spy.call_args_list if call.args == ("estimation_generation_completed",)
+    ]
+    assert [call.kwargs["latency_ms"] for call in generation_calls] == [125, 250]
+
+    assert session.last_turn_observed is not None
+    assert session.last_turn_observed.latency_ms == 6500
+
+    acb_completed_calls = [
+        call for call in log_spy.call_args_list if call.args == ("estimation_acb_completed",)
+    ]
+    assert len(acb_completed_calls) == 1
+    assert acb_completed_calls[0].kwargs == {
+        "session_id": session.session_id,
+        "tier": "pm",
+        "final_decision": "accept",
+        "iterations_run": 2,
+    }

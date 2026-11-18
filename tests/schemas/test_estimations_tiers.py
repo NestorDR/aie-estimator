@@ -168,7 +168,7 @@ def test_low_confidence_requires_prefix_across_tiers(payload: dict) -> None:
 def test_estimation_request_and_response_tier_contract() -> None:
     """
     GIVEN an EstimationRequest with explicit tier and an ExecutiveEstimation service result
-    WHEN EstimationResponse.from_service_result is called
+    WHEN EstimationResponse.model_validate is called
     THEN tier, tier_rule, and ExecutiveEstimation result are preserved.
     """
     req = EstimationRequest(
@@ -189,12 +189,12 @@ def test_estimation_request_and_response_tier_contract() -> None:
         top_three_risks=["Data migration"],
         go_no_go_recommendation="Proceed.",
     )
-    response = EstimationResponse.from_service_result(
+    response = EstimationResponse.model_validate(
         {
             "result": exec_result,
             "tier": Tier.EXECUTIVE,
             "tier_rule": "explicit_override",
-            "cache_hit": False,
+            "cached": False,
             "prompt_version": "v3",
             "model": "reasoner-fast",
             "provider": "openai",
