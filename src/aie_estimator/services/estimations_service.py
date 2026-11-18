@@ -37,7 +37,7 @@ from aie_estimator.services.exceptions import LLMProviderError
 from aie_estimator.services.providers import GenerationOptions, call_llm
 from aie_estimator.sessions.compression.policy import CompressionPolicy
 from aie_estimator.sessions.metadata_extractor import update_metadata
-from aie_estimator.sessions.models import Session
+from aie_estimator.sessions.models import Session, TurnObservation
 from aie_estimator.sessions.tier_resolver import Tier, resolve_tier
 from aie_estimator.settings import get_settings
 
@@ -50,6 +50,7 @@ class _PreparedSessionTurn:
 
     enriched_transcript: str
     attachment_count: int
+    attachments_total_chars: int
     opts: GenerationOptions
     version: str
     tier: Tier
@@ -544,6 +545,7 @@ class EstimationService:
         return _PreparedSessionTurn(
             enriched_transcript=enriched_transcript,
             attachment_count=len(extracted_pairs),
+            attachments_total_chars=sum(len(text) for _, text in extracted_pairs),
             opts=effective_opts,
             version=version,
             tier=tier,
@@ -570,7 +572,9 @@ class EstimationService:
 
         :return: Finalized response dictionary with metadata tokens, cost, and latency.
         """
+        session.turn_index += 1
         session.last_tier = prepared.tier.value
+        session.last_tier_rule = prepared.tier_rule
         session.history.append(user=prepared.enriched_transcript, assistant=structured_result.model_dump_json())
 
         compression_outcome = await self.compression_policy.apply(session.history)
@@ -581,13 +585,32 @@ class EstimationService:
             opts=prepared.opts,
         )
         session.metadata = metadata_outcome.metadata
-        result["usage"]["preprocessing_input_tokens"] = metadata_outcome.input_tokens + compression_outcome.input_tokens
-        result["usage"]["preprocessing_output_tokens"] = metadata_outcome.output_tokens + compression_outcome.output_tokens
+        usage = result["usage"]
+        usage["preprocessing_input_tokens"] = metadata_outcome.input_tokens + compression_outcome.input_tokens
+        usage["preprocessing_output_tokens"] = metadata_outcome.output_tokens + compression_outcome.output_tokens
         extra_costs = [cost for cost in (metadata_outcome.cost_usd, compression_outcome.cost_usd) if cost is not None]
         if extra_costs:
             base_cost = float(result["cost_usd"]) if result.get("cost_usd") is not None else 0.0
             result["cost_usd"] = round(base_cost + sum(extra_costs), 6)
         result["latency_ms"] = int((time.perf_counter() - prepared.t0) * 1000)
+
+        observation = TurnObservation(
+            turn_index=session.turn_index,
+            session_id=session.session_id,
+            enriched_transcript_chars=len(prepared.enriched_transcript),
+            attachments_total_chars=prepared.attachments_total_chars,
+            messages_in_window=len(session.history.messages),
+            anchors_count=len(session.history.anchors),
+            summary_chars=len(session.history.summary) if session.history.summary else 0,
+            tokens_in=int(usage.get("input_tokens", 0)) + int(usage.get("preprocessing_input_tokens", 0)),
+            tokens_out=int(usage.get("output_tokens", 0)) + int(usage.get("preprocessing_output_tokens", 0)),
+            cost_usd=result.get("cost_usd"),
+            latency_ms=result["latency_ms"],
+            cache_hit_kind="none",
+            last_resolved_tier=prepared.tier.value,
+        )
+        session.last_turn_observed = observation
+        log.info("session_turn_observed", **observation.model_dump())
         return result
 
     @staticmethod

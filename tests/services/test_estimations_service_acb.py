@@ -137,3 +137,13 @@ async def test_generate_session_estimation_acb_iterates_and_aggregates_telemetry
     # Second Actor call must receive <critic_feedback> from round 0
     second_actor_messages = actor_calls.await_args_list[1].kwargs["messages"]
     assert "<critic_feedback>" in second_actor_messages[-1]["content"]
+
+    obs = session.last_turn_observed
+    assert obs is not None
+    assert session.turn_index == 1
+    assert obs.turn_index == 1
+    assert obs.tokens_in == 300 + 350 + 200 + 210 + 90
+    assert obs.tokens_out == 150 + 160 + 80 + 50 + 30
+    assert obs.cost_usd == pytest.approx(0.0033)
+    assert obs.cache_hit_kind == "none"
+    assert obs.last_resolved_tier == "pm"

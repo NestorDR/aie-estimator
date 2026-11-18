@@ -19,6 +19,8 @@ _AGREED_SCOPE_MAX_LENGTH: Final[int] = 2000
 _MAX_TEAM_SIZE: Final[int] = 50
 
 Role = Literal["user", "assistant"]
+CacheHitKind = Literal["none", "exact", "semantic"]
+TierLiteral = Literal["developer", "pm", "executive"]
 
 
 def _merge_unique(existing: list[str], updates: list[str]) -> list[str]:
@@ -171,12 +173,33 @@ class MetadataExtractionResult(BaseModel):
     retracted_options: list[str] = Field(default_factory=list)
 
 
+class TurnObservation(BaseModel):
+    """Unified per-turn telemetry snapshot emitted at the end of each conversational turn."""
+
+    turn_index: int = Field(ge=1)
+    session_id: str
+    enriched_transcript_chars: int = Field(ge=0)
+    attachments_total_chars: int = Field(ge=0)
+    messages_in_window: int = Field(ge=0)
+    anchors_count: int = Field(ge=0)
+    summary_chars: int = Field(ge=0)
+    tokens_in: int = Field(ge=0)
+    tokens_out: int = Field(ge=0)
+    cost_usd: float | None = None
+    latency_ms: int = Field(ge=0)
+    cache_hit_kind: CacheHitKind = "none"
+    last_resolved_tier: TierLiteral
+
+
 class Session(BaseModel):
     """In-memory conversational estimation session container."""
 
     session_id: str = Field(default_factory=lambda: str(uuid4()))
+    turn_index: int = 0
     history: ConversationHistory = Field(default_factory=ConversationHistory)
     metadata: ProjectMetadata = Field(default_factory=ProjectMetadata)
-    last_tier: Literal["developer", "pm", "executive"] | None = None
+    last_tier: TierLiteral | None = None
+    last_tier_rule: str | None = None
+    last_turn_observed: TurnObservation | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     last_accessed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

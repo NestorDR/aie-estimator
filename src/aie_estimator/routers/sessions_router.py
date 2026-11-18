@@ -73,14 +73,21 @@ async def get_session(
     :return: Inspection payload with window metrics, metadata, and UTC lifecycle timestamps.
     """
     session = store.get_or_404(session_id)
+    summary = session.history.summary
     return SessionInfoResponse(
         session_id=session.session_id,
+        turn_index=session.turn_index,
         message_count=len(session.history.messages),
         max_turns=session.history.max_turns,
-        has_summary=bool(session.history.summary),
+        has_summary=bool(summary),
+        summary_chars=len(summary) if summary else 0,
+        summary=summary,
         anchors_count=len(session.history.anchors),
+        anchors=[message.content for message in session.history.anchors],
         metadata=session.metadata,
         last_tier=Tier(session.last_tier) if session.last_tier else None,
+        last_tier_rule=session.last_tier_rule,
+        last_turn_observed=session.last_turn_observed,
         created_at=session.created_at,
         last_accessed_at=session.last_accessed_at,
     )

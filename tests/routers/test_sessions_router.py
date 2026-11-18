@@ -63,7 +63,10 @@ def test_get_session_returns_200_with_state_and_timestamps(client: TestClient) -
 
     store = get_session_store()
     session = store.get_or_404(session_id)
+    session.turn_index = 1
+    session.last_tier_rule = "default_pm"
     session.history.append(user="Estimate MyProject", assistant="Estimated 6 weeks.")
+    session.history.summary = "Prior scope locked."
     session.metadata = ProjectMetadata(
         project_name="MyProject",
         assumed_team_size=3,
@@ -78,10 +81,16 @@ def test_get_session_returns_200_with_state_and_timestamps(client: TestClient) -
 
     payload = response.json()
     assert payload["session_id"] == session_id
+    assert payload["turn_index"] == 1
     assert payload["message_count"] == 2
     assert payload["max_turns"] == 6
-    assert payload["has_summary"] is False
+    assert payload["has_summary"] is True
+    assert payload["summary_chars"] == len("Prior scope locked.")
+    assert payload["summary"] == "Prior scope locked."
     assert payload["anchors_count"] == 0
+    assert payload["anchors"] == []
+    assert payload["last_tier_rule"] == "default_pm"
+    assert payload["last_turn_observed"] is None
     assert payload["metadata"]["project_name"] == "MyProject"
     assert payload["metadata"]["rejected_options"] == ["Microservices"]
 

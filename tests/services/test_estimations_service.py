@@ -966,3 +966,69 @@ async def test_generate_session_estimation_aggregates_compression_tokens_and_cos
     assert response["usage"]["preprocessing_output_tokens"] == 30
     assert response["cost_usd"] == pytest.approx(0.0015)
 
+    obs = session.last_turn_observed
+    assert obs is not None
+    assert session.turn_index == 1
+    assert session.last_tier_rule is not None
+    assert obs.turn_index == 1
+    assert obs.session_id == session.session_id
+    assert obs.tokens_in == response["usage"]["input_tokens"] + 100
+    assert obs.tokens_out == response["usage"]["output_tokens"] + 30
+    assert obs.attachments_total_chars == 0
+    assert obs.cache_hit_kind == "none"
+    assert obs.cost_usd == pytest.approx(0.0015)
+
+
+@pytest.mark.anyio
+async def test_generate_session_estimation_emits_session_turn_observed_with_attachments(
+    estimation_service: EstimationService,
+    make_estimation_result: Callable[..., dict[str, Any]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    GIVEN a conversational session turn with a valid Markdown attachment
+    WHEN generate_session_estimation completes
+    THEN session_turn_observed is logged with 1-based turn_index and sanitized attachment char count.
+
+    :param estimation_service: Injected EstimationService fixture.
+    :param make_estimation_result: Shared estimation result factory fixture.
+    :param monkeypatch: Pytest monkeypatch fixture.
+    """
+    from unittest.mock import MagicMock
+
+    from aie_estimator.sessions.metadata_extractor import MetadataExtractionOutcome
+
+    session = Session()
+    attachment_text = b"## Scope\nBuild a multi-tenant SaaS dashboard."
+    log_spy = MagicMock()
+
+    monkeypatch.setattr("aie_estimator.services.estimations_service.sanitize_input", AsyncMock())
+    monkeypatch.setattr(
+        "aie_estimator.services.estimations_service.sanitize_attachment_input",
+        AsyncMock(side_effect=lambda text, **_kwargs: text),
+    )
+    monkeypatch.setattr("aie_estimator.services.estimations_service.call_llm", AsyncMock(return_value=make_estimation_result()))
+    monkeypatch.setattr(
+        "aie_estimator.services.estimations_service.update_metadata",
+        AsyncMock(return_value=MetadataExtractionOutcome(metadata=session.metadata)),
+    )
+    monkeypatch.setattr("aie_estimator.services.estimations_service.log.info", log_spy)
+
+    await estimation_service.generate_session_estimation(
+        session=session,
+        transcript="Estimate the attached SaaS dashboard specification.",
+        project_type=ProjectType.WEB_SAAS,
+        detail_level=DetailLevel.MEDIUM,
+        output_format=OutputFormat.PHASES_TABLE,
+        attachments=[("spec.md", attachment_text)],
+    )
+
+    observed_calls = [call for call in log_spy.call_args_list if call.args == ("session_turn_observed",)]
+    assert len(observed_calls) == 1
+    kwargs = observed_calls[0].kwargs
+    assert kwargs["turn_index"] == 1
+    assert kwargs["attachments_total_chars"] == len(attachment_text.decode("utf-8"))
+    assert kwargs["enriched_transcript_chars"] > kwargs["attachments_total_chars"]
+    assert kwargs["messages_in_window"] == 2
+    assert kwargs["cache_hit_kind"] == "none"
+
