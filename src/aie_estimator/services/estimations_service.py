@@ -254,8 +254,7 @@ class EstimationService:
         :param tier_override: Optional explicit stakeholder tier override.
 
         :return: Response dictionary matching :meth:`generate_estimation` with ``cache_hit=False``.
-        :raises AttachmentExtractionError: If attachment count, byte size, or parsing fails.
-        :raises UnsupportedAttachmentError: If an attachment extension is unsupported.
+        :raises AttachmentExtractionError: If attachment count, extension, byte size, or parsing fails.
         :raises InputGuardrailViolation: If input guardrails reject ``transcript`` or attachment content.
         :raises LLMProviderError: If any LLM provider invocation fails.
         :raises ValueError: If ``transcript`` is blank.
@@ -341,8 +340,7 @@ class EstimationService:
         :param boss: Optional injected ``Boss`` orchestrator (defaults from settings).
 
         :return: Normalized response dictionary including ``boss_trace`` and aggregated telemetry.
-        :raises AttachmentExtractionError: If attachment count, byte size, or parsing fails.
-        :raises UnsupportedAttachmentError: If an attachment extension is unsupported.
+        :raises AttachmentExtractionError: If attachment count, extension, byte size, or parsing fails.
         :raises InputGuardrailViolation: If input guardrails reject ``transcript`` or attachment content.
         :raises LLMProviderError: If any Actor LLM provider invocation fails.
         :raises ValueError: If ``transcript`` is blank.
@@ -510,8 +508,7 @@ class EstimationService:
 
         :return: Prepared turn context ready for prompt rendering and LLM dispatch.
         :raises ValueError: If ``transcript`` is blank.
-        :raises AttachmentExtractionError: If attachment count, byte size, or parsing fails.
-        :raises UnsupportedAttachmentError: If an attachment extension is unsupported.
+        :raises AttachmentExtractionError: If attachment count, extension, byte size, or parsing fails.
         :raises InputGuardrailViolation: If input guardrails reject ``transcript`` or attachment content.
         """
         if not transcript or not transcript.strip():

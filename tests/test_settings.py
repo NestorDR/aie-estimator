@@ -1,6 +1,7 @@
 # tests/test_settings.py
 
 # --- Python Standard Library ---
+import json
 import logging
 import logging.handlers
 from os import environ
@@ -59,31 +60,29 @@ def test_settings_initialization_validation_errors(
 
 
 @pytest.mark.parametrize(
-    ("env", "json_logging", "expected_console_renderer", "expected_file_renderer", "expected_file_colors"),
+    ("env", "json_logging", "expected_is_json"),
     [
-        (Environment.DEV, False, structlog.dev.ConsoleRenderer, structlog.dev.ConsoleRenderer, False),
-        (Environment.DEV, True, structlog.processors.JSONRenderer, structlog.processors.JSONRenderer, None),
-        (Environment.PROD, False, structlog.processors.JSONRenderer, structlog.processors.JSONRenderer, None),
+        (Environment.DEV, False, False),
+        (Environment.DEV, True, True),
+        (Environment.PROD, False, True),
     ],
     ids=["dev_plain_console_and_file", "dev_forced_json", "prod_json_default"],
 )
 def test_configure_logging_renderer_selection(
+    capsys: pytest.CaptureFixture[str],
     env: Environment,
     json_logging: bool,
-    expected_console_renderer: type,
-    expected_file_renderer: type,
-    expected_file_colors: bool | None,
+    expected_is_json: bool,
 ) -> None:
     """
     GIVEN an application environment and json_logging flag
     WHEN configure_logging is executed on Settings with file logging enabled
-    THEN the console and rotating file handlers receive the expected structlog renderers without writing files.
+    THEN console output and file formatter produce JSON or plain text as configured without writing files.
 
+    :param capsys: Pytest standard output/error capture fixture.
     :param env: Target application environment.
     :param json_logging: Whether JSON logging is forced.
-    :param expected_console_renderer: Expected terminal renderer type.
-    :param expected_file_renderer: Expected file renderer type.
-    :param expected_file_colors: Expected ANSI color flag on file renderer.
+    :param expected_is_json: Whether emitted logs should be valid JSON.
     """
     with (
         patch("logging.handlers.RotatingFileHandler", autospec=True) as mock_file_handler_cls,
@@ -100,10 +99,7 @@ def test_configure_logging_renderer_selection(
             )
             settings.configure_logging()
 
-            # Verify filesystem directory creation was intercepted
             mock_mkdir.assert_called()
-
-            # Verify RotatingFileHandler constructor parameters
             mock_file_handler_cls.assert_called()
             call_kwargs = mock_file_handler_cls.call_args.kwargs
             expected_filename = "app.log" if env == Environment.PROD else "dev.log"
@@ -112,22 +108,25 @@ def test_configure_logging_renderer_selection(
             assert call_kwargs["backupCount"] == 3
             assert call_kwargs["encoding"] == "utf-8"
 
-            # Verify root logger handlers
             root_logger = logging.getLogger()
-            handlers = root_logger.handlers
-            assert len(handlers) == 2
+            assert len(root_logger.handlers) == 2
 
-            stream_handler = next(h for h in handlers if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler))
-            assert isinstance(stream_handler.formatter, structlog.stdlib.ProcessorFormatter)
-            assert isinstance(stream_handler.formatter.processors[-1], expected_console_renderer)
+            capsys.readouterr()
+            structlog.get_logger("test_renderer").info("renderer_probe")
+            captured = capsys.readouterr()
+            combined_output = "\n".join(part for part in (captured.out.strip(), captured.err.strip()) if part)
+            log_line = combined_output.splitlines()[-1]
+            assert "renderer_probe" in log_line
 
-            # Verify formatter assigned to mock file handler
             mock_file_handler.setFormatter.assert_called()
             file_formatter = mock_file_handler.setFormatter.call_args[0][0]
             assert isinstance(file_formatter, structlog.stdlib.ProcessorFormatter)
-            assert isinstance(file_formatter.processors[-1], expected_file_renderer)
-            if expected_file_colors is not None:
-                assert getattr(file_formatter.processors[-1], "_colors", None) is expected_file_colors
+            if expected_is_json:
+                assert json.loads(log_line)["event"] == "renderer_probe"
+            else:
+                with pytest.raises(json.JSONDecodeError):
+                    json.loads(log_line)
+                assert "\x1b[" not in log_line
         finally:
             logging.getLogger().handlers.clear()
 

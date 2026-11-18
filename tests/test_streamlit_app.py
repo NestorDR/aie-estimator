@@ -278,13 +278,6 @@ async def test_send_session_turn_dispatches_multipart_payload(
             ":material/security:",
         ),
         (
-            415,
-            {"detail": {"reason": "unsupported_attachment", "filename": "virus.exe", "message": "Unsupported ext"}},
-            "Unsupported Media Type",
-            ["Unsupported attachment 'virus.exe'", "Unsupported ext"],
-            ":material/error:",
-        ),
-        (
             422,
             {"detail": {"reason": "attachment_extraction_failed", "filename": "bad.pdf", "message": "Corrupt PDF"}},
             "Unprocessable Entity",
@@ -306,7 +299,7 @@ async def test_send_session_turn_dispatches_multipart_payload(
             ":material/error:",
         ),
     ],
-    ids=["guardrail_400", "unsupported_415", "attachment_422", "validation_422", "server_500"],
+    ids=["guardrail_400", "attachment_422", "validation_422", "server_500"],
 )
 def test_format_http_error_maps_status_codes(
     status_code: int,
@@ -572,9 +565,9 @@ def test_apptest_404_session_recovery_recreates_and_retries() -> None:
             "Request blocked by input guardrail (prompt_injection)",
         ),
         (
-            415,
-            {"detail": {"reason": "unsupported_attachment", "filename": "bad.zip", "message": "Unsupported ext"}},
-            "Unsupported attachment 'bad.zip'",
+            422,
+            {"detail": {"reason": "attachment_extraction_failed", "filename": "bad.zip", "message": "Unsupported ext"}},
+            "Attachment error (bad.zip)",
         ),
         (
             500,
@@ -582,7 +575,7 @@ def test_apptest_404_session_recovery_recreates_and_retries() -> None:
             "Service returned 500",
         ),
     ],
-    ids=["guardrail_400", "unsupported_415", "server_500"],
+    ids=["guardrail_400", "attachment_422", "server_500"],
 )
 def test_apptest_submission_http_status_errors(
     status_code: int,
@@ -591,7 +584,7 @@ def test_apptest_submission_http_status_errors(
 ) -> None:
     """
     GIVEN an active session in the Streamlit app
-    WHEN the backend responds with HTTP 400, 415, or 500
+    WHEN the backend responds with HTTP 400, 422, or 500
     THEN the formatted error alert is displayed in the UI.
 
     :param status_code: HTTP status code returned by backend.

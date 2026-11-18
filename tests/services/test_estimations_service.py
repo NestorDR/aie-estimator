@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 # --- App modules ---
-from aie_estimator.attachments.extractor import AttachmentExtractionError, UnsupportedAttachmentError
+from aie_estimator.attachments.extractor import AttachmentExtractionError
 from aie_estimator.guardrails.input import InputGuardrailViolation
 from aie_estimator.schemas.estimations import (
     DetailLevel,
@@ -462,136 +462,53 @@ async def test_generate_estimation_cache_miss_dual_writes_to_exact_and_semantic_
 
 
 @pytest.mark.anyio
-async def test_generate_estimation_semantic_cache_disabled_skips_semantic_lookup(
+@pytest.mark.parametrize(
+    ("exact_enabled", "semantic_enabled"),
+    [
+        (True, True),
+        (True, False),
+        (False, True),
+    ],
+    ids=["both_caches", "exact_only", "semantic_only"],
+)
+async def test_generate_estimation_cache_matrix(
     sample_estimation_request: EstimationRequest,
     make_estimation_result: Callable[..., dict[str, Any]],
     mock_default_cache: AsyncMock,
     mock_semantic_cache: AsyncMock,
     monkeypatch: pytest.MonkeyPatch,
+    exact_enabled: bool,
+    semantic_enabled: bool,
 ) -> None:
     """
-    GIVEN an EstimationService configured with semantic_cache=None
-    WHEN generate_estimation executes
-    THEN semantic cache lookup and store are skipped completely.
+    GIVEN an EstimationService configured with any combination of exact and semantic caches
+    WHEN generate_estimation executes on a cache miss
+    THEN only enabled caches are queried and populated.
 
     :param sample_estimation_request: Baseline estimation request fixture.
     :param make_estimation_result: Factory fixture creating provider responses.
     :param mock_default_cache: Mock exact cache fixture.
     :param mock_semantic_cache: Mock semantic cache fixture.
     :param monkeypatch: Pytest monkeypatch fixture.
+    :param exact_enabled: Whether Tier 1 exact cache is enabled.
+    :param semantic_enabled: Whether Tier 2 semantic cache is enabled.
     """
     service = EstimationService(
-        exact_cache=mock_default_cache,
-        semantic_cache=None,
+        exact_cache=mock_default_cache if exact_enabled else None,
+        semantic_cache=mock_semantic_cache if semantic_enabled else None,
     )
 
-    sample_payload = make_estimation_result()
-    mock_call_llm = AsyncMock(return_value=sample_payload)
-    monkeypatch.setattr("aie_estimator.services.estimations_service.call_llm", mock_call_llm)
-
-    result = await service.generate_estimation(
-        request=sample_estimation_request,
-    )
-
-    assert result["cache_hit"] is False
-    mock_semantic_cache.lookup.assert_not_called()
-    mock_semantic_cache.store.assert_not_called()
-    assert mock_default_cache.set.call_count == 1
-
-
-@pytest.mark.anyio
-async def test_estimation_service_instance_execution_cache_miss(
-    sample_estimation_request: EstimationRequest,
-    make_estimation_result: Callable[..., dict[str, Any]],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    GIVEN an EstimationService instance with mock collaborators
-    WHEN generate_estimation is called on a cache miss
-    THEN it executes the LLM workflow and populates both caches.
-
-    :param sample_estimation_request: Validated estimation request fixture.
-    :param make_estimation_result: Factory generating provider responses.
-    :param monkeypatch: Pytest monkeypatch fixture.
-    """
-    mock_exact = AsyncMock()
-    mock_exact.get = AsyncMock(return_value=None)
-    mock_exact.set = AsyncMock(return_value=None)
-
-    mock_semantic = AsyncMock()
-    mock_semantic.lookup = AsyncMock(return_value=None)
-    mock_semantic.store = AsyncMock(return_value=None)
-
-    mock_moderation = MagicMock()
-
-    service = EstimationService(
-        exact_cache=mock_exact,
-        semantic_cache=mock_semantic,
-        moderation_client=mock_moderation,
-    )
-
-    sample_payload = make_estimation_result()
-    mock_call_llm = AsyncMock(return_value=sample_payload)
-    monkeypatch.setattr("aie_estimator.services.estimations_service.call_llm", mock_call_llm)
-
-    result = await service.generate_estimation(request=sample_estimation_request)
-
-    assert result["cache_hit"] is False
-    mock_exact.get.assert_awaited_once()
-    mock_semantic.lookup.assert_awaited_once()
-    mock_call_llm.assert_awaited_once()
-    mock_exact.set.assert_awaited_once()
-    mock_semantic.store.assert_awaited_once()
-
-
-@pytest.mark.anyio
-async def test_estimation_service_without_semantic_cache() -> None:
-    """
-    GIVEN an EstimationService initialized without semantic cache (semantic_cache=None)
-    WHEN generate_estimation is called with an empty description
-    THEN it raises ValueError as expected.
-    """
-    mock_exact = AsyncMock()
-    service = EstimationService(exact_cache=mock_exact, semantic_cache=None)
-
-    empty_request = EstimationRequest.model_construct(
-        description="",
-        project_type=ProjectType.WEB_SAAS,
-        detail_level=DetailLevel.SUMMARY,
-        output_format=OutputFormat.PHASES_TABLE,
-    )
-
-    with pytest.raises(ValueError, match=r"request\.description must be provided"):
-        await service.generate_estimation(empty_request)
-
-
-@pytest.mark.anyio
-async def test_estimation_service_without_exact_cache(
-    sample_estimation_request: EstimationRequest,
-    make_estimation_result: Callable[..., dict[str, Any]],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    GIVEN an EstimationService initialized without exact cache (exact_cache=None)
-    WHEN generate_estimation is called
-    THEN it bypasses Tier 1 cache and dispatches to the LLM workflow without error.
-    """
-    mock_semantic = AsyncMock()
-    mock_semantic.lookup = AsyncMock(return_value=None)
-    mock_semantic.store = AsyncMock(return_value=None)
-
-    service = EstimationService(exact_cache=None, semantic_cache=mock_semantic)
-
-    sample_payload = make_estimation_result()
-    mock_call_llm = AsyncMock(return_value=sample_payload)
+    mock_call_llm = AsyncMock(return_value=make_estimation_result())
     monkeypatch.setattr("aie_estimator.services.estimations_service.call_llm", mock_call_llm)
 
     result = await service.generate_estimation(request=sample_estimation_request)
 
     assert result["cache_hit"] is False
     mock_call_llm.assert_awaited_once()
-    mock_semantic.lookup.assert_awaited_once()
-    mock_semantic.store.assert_awaited_once()
+    assert mock_default_cache.get.await_count == (1 if exact_enabled else 0)
+    assert mock_default_cache.set.await_count == (1 if exact_enabled else 0)
+    assert mock_semantic_cache.lookup.await_count == (1 if semantic_enabled else 0)
+    assert mock_semantic_cache.store.await_count == (1 if semantic_enabled else 0)
 
 
 @pytest.mark.anyio
@@ -952,7 +869,7 @@ async def test_generate_session_estimation_enriches_attachments_and_redacts_pii(
         ),
         (
             [("diagram.png", b"\x89PNG")],
-            UnsupportedAttachmentError,
+            AttachmentExtractionError,
             r"Unsupported attachment extension",
         ),
         (

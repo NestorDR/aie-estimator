@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 import structlog
 
 # --- App modules ---
-from aie_estimator.attachments.extractor import AttachmentExtractionError, UnsupportedAttachmentError
+from aie_estimator.attachments.extractor import AttachmentExtractionError
 from aie_estimator.guardrails.input import InputGuardrailViolation
 from aie_estimator.logging import configure_logging
 from aie_estimator.model_catalog import get_supported_models
@@ -210,31 +210,6 @@ class Server:
             return JSONResponse(
                 status_code=status.HTTP_404_NOT_FOUND,
                 content={"detail": "Session not found"},
-            )
-
-        @app.exception_handler(UnsupportedAttachmentError)
-        async def unsupported_attachment_exception_handler(
-            request: Request,
-            e: UnsupportedAttachmentError,
-        ) -> JSONResponse:
-            """
-            Handle unsupported attachment file extensions with HTTP 415 responses.
-
-            :param request: Incoming HTTP request containing an unsupported attachment.
-            :param e: UnsupportedAttachmentError instance.
-
-            :return: JSONResponse with HTTP 415 status code and structured detail.
-            """
-            self.log.info("attachment_unsupported_rejected", filename=e.filename, message=e.message)
-            return JSONResponse(
-                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                content={
-                    "detail": {
-                        "reason": "unsupported_attachment",
-                        "filename": e.filename,
-                        "message": e.message,
-                    }
-                },
             )
 
         @app.exception_handler(AttachmentExtractionError)

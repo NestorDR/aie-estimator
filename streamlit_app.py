@@ -145,12 +145,6 @@ def format_http_error(response: httpx.Response) -> tuple[str, str]:
             ":material/security:",
         )
 
-    if status_code == 415 and isinstance(detail, dict) and "filename" in detail and "message" in detail:
-        return (
-            f"Unsupported attachment '{detail['filename']}': {detail['message']}",
-            ":material/error:",
-        )
-
     if status_code == 422:
         if isinstance(detail, dict) and "filename" in detail and "message" in detail:
             return (
@@ -178,18 +172,6 @@ def option_to_text(option: str, splitter: str = "_") -> str:
     :return: Human-readable capitalized string.
     """
     return " ".join(word.capitalize() for word in option.split(splitter))
-
-
-def text_to_option(text: str, joiner: str = "_") -> str:
-    """
-    Convert a display string back to an option string with underscores or hyphens.
-
-    :param text: The display string to convert.
-    :param joiner: The character used to join the words (default is underscore).
-
-    :return: Normalized lowercase option identifier.
-    """
-    return text.lower().replace(" ", joiner)
 
 
 def render_telemetry_container(metadata: dict[str, Any]) -> None:
@@ -616,17 +598,20 @@ if runtime.exists():
             st.subheader(":material/sliders: Estimation dimensions")
             project_type = st.selectbox(
                 "Project type",
-                options=[option_to_text(t.value) for t in ProjectType],
+                options=[t.value for t in ProjectType],
+                format_func=option_to_text,
                 index=0,
             )
             detail_level = st.selectbox(
                 "Detail level",
-                options=[option_to_text(d.value) for d in DetailLevel],
+                options=[d.value for d in DetailLevel],
+                format_func=option_to_text,
                 index=1,
             )
             output_format = st.selectbox(
                 "Output format",
-                options=[option_to_text(f.value) for f in OutputFormat],
+                options=[f.value for f in OutputFormat],
+                format_func=option_to_text,
                 index=0,
             )
 
@@ -704,9 +689,9 @@ if runtime.exists():
             with st.spinner("Calling the estimator service…"):
                 estimation_result = _dispatch_turn_with_recovery(
                     transcript=cleaned_transcript,
-                    project_type=text_to_option(project_type),
-                    detail_level=text_to_option(detail_level),
-                    output_format=text_to_option(output_format),
+                    project_type=project_type,
+                    detail_level=detail_level,
+                    output_format=output_format,
                     model=selected_model,
                     engine=selected_engine,
                     tier=None if selected_tier == _AUTO_TIER else selected_tier,

@@ -25,10 +25,10 @@ makes a secondary LLM call, so both are cheap, fast, and reproducible:
 Tier-aware dispatch
 -------------------
 The estimator returns a different payload per stakeholder tier (``DeveloperEstimation``,
-``PmEstimation``, ``ExecutiveEstimation``). ``_tier_metrics_view`` projects each payload into a
-uniform scalar view: the midpoint of ``total_hours_range``, ``total_cost_eur``, or the midpoint of
-``headline_cost_range``, respectively. All checks compare that anchor against ranges instead of
-exact strings, so they tolerate legitimate variation between runs and providers.
+``PmEstimation``, ``ExecutiveEstimation``). ``_scalar_anchor`` projects each payload into a
+uniform scalar anchor: the midpoint of ``total_hours_range``, ``total_cost_eur``, or the midpoint
+of ``headline_cost_range``, respectively. All checks compare against ranges instead of exact strings,
+so they tolerate legitimate variation between runs and providers.
 
 Scoring contract
 ----------------
@@ -77,32 +77,19 @@ class MetricResult:
     details: str
 
 
-@dataclass(frozen=True)
-class _TierMetricsView:
-    """Normalized scalar projections extracted from any tier estimation result."""
-
-    scalar_anchor: float
-    cost_eur: float | None
-    duration_weeks: float | None
-    is_zero_envelope: bool
-
-
-def _tier_metrics_view(result: TierEstimationResult) -> _TierMetricsView:
+def _scalar_anchor(result: TierEstimationResult) -> float:
     """
-    Project tier-specific estimation fields into a uniform view for Family 1 and Family 2 checks.
+    Extract the primary scalar anchor from any tier estimation result for variance checks.
 
     :param result: Tier-specific estimation payload.
 
-    :return: Normalized ``_TierMetricsView`` instance.
+    :return: Midpoint hours for developer, total EUR cost for PM, or midpoint EUR cost for executive.
     """
     if isinstance(result, DeveloperEstimation):
-        mid_hours = (result.total_hours_range.min_hours + result.total_hours_range.max_hours) / 2.0
-        return _TierMetricsView(mid_hours, None, None, result.total_hours_range.max_hours == 0)
+        return (result.total_hours_range.min_hours + result.total_hours_range.max_hours) / 2.0
     if isinstance(result, PmEstimation):
-        return _TierMetricsView(float(result.total_cost_eur), float(result.total_cost_eur), float(result.total_duration_weeks), result.total_cost_eur == 0)
-    cost_mid = (result.headline_cost_range.min_eur + result.headline_cost_range.max_eur) / 2.0
-    weeks_mid = (result.headline_duration_range.min_weeks + result.headline_duration_range.max_weeks) / 2.0
-    return _TierMetricsView(cost_mid, cost_mid, weeks_mid, result.headline_cost_range.max_eur == 0)
+        return float(result.total_cost_eur)
+    return (result.headline_cost_range.min_eur + result.headline_cost_range.max_eur) / 2.0
 
 
 def evaluate_schema_and_tier(case: GoldenCase, response: EstimationResponse) -> MetricResult:
@@ -145,26 +132,41 @@ def evaluate_numeric_bounds(case: GoldenCase, response: EstimationResponse) -> M
     """
     problems: list[str] = []
     result = response.result
-    view = _tier_metrics_view(result)
 
     if case.expected_out_of_scope:
-        if not view.is_zero_envelope:
+        if isinstance(result, DeveloperEstimation):
+            is_zero = result.total_hours_range.max_hours == 0
+        elif isinstance(result, PmEstimation):
+            is_zero = result.total_cost_eur == 0
+        else:
+            is_zero = result.headline_cost_range.max_eur == 0
+        if not is_zero:
             problems.append("out-of-scope response has non-zero cost or effort")
     else:
         if case.min_confidence_pct is not None and result.confidence_pct < case.min_confidence_pct:
             problems.append(f"confidence_pct {result.confidence_pct} < min {case.min_confidence_pct}")
-        if case.expected_hours_range is not None and isinstance(result, DeveloperEstimation):
-            lo, hi = case.expected_hours_range
-            if not (lo <= view.scalar_anchor <= hi):
-                problems.append(f"hours midpoint {view.scalar_anchor:.1f} outside [{lo}, {hi}]")
-        if case.expected_cost_range_eur is not None and view.cost_eur is not None:
-            lo, hi = case.expected_cost_range_eur
-            if not (lo <= view.cost_eur <= hi):
-                problems.append(f"cost {view.cost_eur:.0f} EUR outside [{lo}, {hi}]")
-        if case.expected_duration_weeks_range is not None and view.duration_weeks is not None:
-            lo, hi = case.expected_duration_weeks_range
-            if not (lo <= view.duration_weeks <= hi):
-                problems.append(f"duration {view.duration_weeks:.1f} weeks outside [{lo}, {hi}]")
+        if isinstance(result, DeveloperEstimation):
+            if case.expected_hours_range is not None:
+                lo, hi = case.expected_hours_range
+                hours_mid = _scalar_anchor(result)
+                if not (lo <= hours_mid <= hi):
+                    problems.append(f"hours midpoint {hours_mid:.1f} outside [{lo}, {hi}]")
+        else:
+            if isinstance(result, PmEstimation):
+                cost_eur = float(result.total_cost_eur)
+                duration_weeks = float(result.total_duration_weeks)
+            else:
+                cost_eur = _scalar_anchor(result)
+                duration_weeks = (result.headline_duration_range.min_weeks + result.headline_duration_range.max_weeks) / 2.0
+
+            if case.expected_cost_range_eur is not None:
+                lo, hi = case.expected_cost_range_eur
+                if not (lo <= cost_eur <= hi):
+                    problems.append(f"cost {cost_eur:.0f} EUR outside [{lo}, {hi}]")
+            if case.expected_duration_weeks_range is not None:
+                lo, hi = case.expected_duration_weeks_range
+                if not (lo <= duration_weeks <= hi):
+                    problems.append(f"duration {duration_weeks:.1f} weeks outside [{lo}, {hi}]")
 
     return MetricResult("numeric_bounds", 1.0 if not problems else 0.0, not problems, "; ".join(problems) or "numeric bounds ok")
 
@@ -236,7 +238,7 @@ def evaluate_consistency_cv(
     if len(tiers) > 1:
         return MetricResult("consistency_cv", 0.0, False, f"tier drift across runs: {tiers}")
 
-    anchors = [_tier_metrics_view(response.result).scalar_anchor for response in responses]
+    anchors = [_scalar_anchor(response.result) for response in responses]
     mean = statistics.fmean(anchors)
     cv = 0.0 if mean == 0.0 else statistics.stdev(anchors) / mean
     return MetricResult(

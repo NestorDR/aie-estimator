@@ -11,7 +11,6 @@ import pytest
 # --- App modules ---
 from aie_estimator.attachments.extractor import (
     AttachmentExtractionError,
-    UnsupportedAttachmentError,
     enrich_transcript,
     extract_text,
     validate_attachment_count,
@@ -132,9 +131,9 @@ def test_extract_text_truncates_to_max_chars(max_chars: int, expect_marker: bool
 @pytest.mark.parametrize(
     ("filename", "payload", "max_bytes", "expected_exc", "match_pattern"),
     [
-        ("legacy.doc", b"dummy", 10_000, UnsupportedAttachmentError, r"Unsupported attachment extension"),
-        ("malware.exe", b"MZ", 10_000, UnsupportedAttachmentError, r"Unsupported attachment extension"),
-        ("noext", b"hello", 10_000, UnsupportedAttachmentError, r"Unsupported attachment extension"),
+        ("legacy.doc", b"dummy", 10_000, AttachmentExtractionError, r"Unsupported attachment extension"),
+        ("malware.exe", b"MZ", 10_000, AttachmentExtractionError, r"Unsupported attachment extension"),
+        ("noext", b"hello", 10_000, AttachmentExtractionError, r"Unsupported attachment extension"),
         ("huge.txt", b"0123456789abcdef", 8, AttachmentExtractionError, r"exceeds maximum allowed size"),
         ("corrupt.pdf", b"not-a-pdf", 10_000, AttachmentExtractionError, r"Failed to extract text"),
         ("corrupt.docx", b"not-a-docx", 10_000, AttachmentExtractionError, r"Failed to extract text"),

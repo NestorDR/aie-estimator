@@ -212,7 +212,7 @@ def test_estimate_in_session_multipart_with_attachment_returns_200(
             None,
             {},
             [("attachments", ("archive.zip", b"PK\x03\x04", "application/zip"))],
-            415,
+            422,
             "Unsupported attachment extension",
         ),
         (
@@ -246,7 +246,7 @@ def test_estimate_in_session_multipart_with_attachment_returns_200(
         "422_unsupported_catalog_model",
         "422_exceed_max_attachment_count",
         "422_corrupt_pdf_attachment",
-        "415_unsupported_attachment_extension",
+        "422_unsupported_attachment_extension",
         "400_transcript_prompt_injection",
         "400_attachment_prompt_injection",
     ],
@@ -262,7 +262,7 @@ def test_estimate_in_session_error_status_mapping(
     """
     GIVEN an active session (or an unknown session ID) and an invalid or disallowed multipart request
     WHEN POST /api/v1/sessions/{session_id}/estimate is called
-    THEN the centralized exception handlers map the failure to the expected HTTP status code (400, 404, 415, or 422).
+    THEN the centralized exception handlers map the failure to the expected HTTP status code (400, 404, or 422).
 
     :param client: Shared TestClient fixture.
     :param session_override: Optional explicit session_id override to test 404 handling.

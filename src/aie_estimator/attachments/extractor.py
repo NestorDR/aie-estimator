@@ -40,10 +40,6 @@ class AttachmentExtractionError(Exception):
         self.message: Final[str] = message
 
 
-class UnsupportedAttachmentError(AttachmentExtractionError):
-    """Raised when an uploaded attachment has an unsupported file extension."""
-
-
 def _sanitize_filename(filename: str) -> str:
     """
     Strip directory traversal segments and unsafe XML attribute characters from a filename.
@@ -208,8 +204,7 @@ def extract_text(
     :param supported_extensions: Optional extension allowlist; defaults to ``Settings.supported_attachment_extensions``.
 
     :return: Stripped extracted text bounded to ``max_chars`` (empty string if document has no text).
-    :raises UnsupportedAttachmentError: If the file extension is not in the allowlist.
-    :raises AttachmentExtractionError: If the payload exceeds ``max_bytes`` or cannot be parsed.
+    :raises AttachmentExtractionError: If the file extension is unsupported, payload exceeds ``max_bytes``, or parsing fails.
     """
     settings = get_settings()
     allowed_exts = _normalize_extensions(
@@ -221,7 +216,7 @@ def extract_text(
 
     ext = _extension(filename)
     if ext not in allowed_exts:
-        raise UnsupportedAttachmentError(
+        raise AttachmentExtractionError(
             safe_name,
             f"Unsupported attachment extension {ext!r}; supported: {sorted(allowed_exts)}",
         )
@@ -300,8 +295,7 @@ def enrich_transcript(
             log.info("attachment_turn_budget_exhausted", omitted_filename=safe_name)
             continue
 
-        bounded, was_truncated = _truncate_to_budget(_escape_xml_boundaries(stripped), remaining_budget)
-        # Re-escape after truncation in case truncation fell inside a previously escaped or partial tag
+        bounded, was_truncated = _truncate_to_budget(stripped, remaining_budget)
         bounded = _escape_xml_boundaries(bounded)
         if was_truncated:
             log.info(
