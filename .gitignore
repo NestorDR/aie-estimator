@@ -4,7 +4,7 @@
 *.swp
 *.swo
 
-# project
+# Project
 notes/
 zero/
 settings.*.yml
@@ -12,8 +12,10 @@ settings.*.yml
 *.tar
 *.zip
 *.7z
-# project volumes
+# Docker volumes
 docker/volumes/
+# Generated stress test PDF fixtures
+evals/stress/fixtures/*.pdf
 
 # Environment
 .venv

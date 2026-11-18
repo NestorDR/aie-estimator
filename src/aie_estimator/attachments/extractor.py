@@ -88,8 +88,8 @@ def _truncate_to_budget(text: str, max_chars: int) -> tuple[str, bool]:
     """
     if len(text) <= max_chars:
         return text, False
-    room = max_chars - len(_TRUNCATION_MARKER)
-    return (f"{text[:room].rstrip()}{_TRUNCATION_MARKER}" if room > 0 else text[:max_chars]), True
+    content_limit = max_chars - len(_TRUNCATION_MARKER)
+    return (f"{text[:content_limit].rstrip()}{_TRUNCATION_MARKER}" if content_limit > 0 else text[:max_chars]), True
 
 
 def _escape_xml_boundaries(text: str) -> str:
@@ -116,8 +116,8 @@ def _extract_pdf(content: bytes) -> str:
     for page in reader.pages:
         try:
             text = page.extract_text() or ""
-        except Exception as exc:
-            log.warning("pdf_page_extract_failed", error=str(exc)[:200])
+        except Exception as e:
+            log.warning("pdf_page_extract_failed", error=str(e)[:200])
             text = ""
         if text.strip():
             parts.append(text)
@@ -158,11 +158,11 @@ def _extract_plain_text(filename: str, content: bytes) -> str:
         raise AttachmentExtractionError(filename, f"Binary null bytes detected in text attachment {filename!r}.")
     try:
         return content.decode("utf-8", errors="strict")
-    except UnicodeDecodeError as exc:
+    except UnicodeDecodeError as e:
         raise AttachmentExtractionError(
             filename,
-            f"Failed to decode {filename!r} as UTF-8: {exc}",
-        ) from exc
+            f"Failed to decode {filename!r} as UTF-8: {e}",
+        ) from e
 
 
 def validate_attachment_count(
@@ -193,7 +193,7 @@ def extract_text(
     max_chars: int | None = None,
     max_bytes: int | None = None,
     supported_extensions: list[str] | None = None,
-) -> str:
+) -> tuple[str, int]:
     """
     Extract and budget-bound plain text from an uploaded attachment.
 
@@ -203,7 +203,9 @@ def extract_text(
     :param max_bytes: Optional raw byte limit checked before parsing; defaults to ``Settings.max_attachment_bytes``.
     :param supported_extensions: Optional extension allowlist; defaults to ``Settings.supported_attachment_extensions``.
 
-    :return: Stripped extracted text bounded to ``max_chars`` (empty string if document has no text).
+    :return: Tuple of ``(bounded_text, truncated_chars)`` where ``bounded_text`` is stripped extracted text
+        bounded to ``max_chars`` (empty string if document has no text) and ``truncated_chars`` is the number
+        of characters dropped by ``max_chars`` truncation.
     :raises AttachmentExtractionError: If the file extension is unsupported, payload exceeds ``max_bytes``, or parsing fails.
     """
     settings = get_settings()
@@ -236,27 +238,28 @@ def extract_text(
             text = _extract_plain_text(safe_name, content)
     except AttachmentExtractionError:
         raise
-    except Exception as exc:
+    except Exception as e:
         raise AttachmentExtractionError(
             safe_name,
-            f"Failed to extract text from {safe_name}: {exc}",
-        ) from exc
+            f"Failed to extract text from {safe_name}: {e}",
+        ) from e
 
     text = text.strip()
     if not text:
-        log.info("attachment_extracted_empty", filename=safe_name)
-        return ""
+        log.info("attachment_text_empty", filename=safe_name)
+        return "", 0
 
     bounded_text, was_truncated = _truncate_to_budget(text, resolved_max_chars)
+    truncated_chars = len(text) - len(bounded_text)
     if was_truncated:
         log.info(
-            "attachment_truncated",
+            "attachment_text_truncated",
             filename=safe_name,
             original_chars=len(text),
             kept_chars=len(bounded_text),
         )
 
-    return bounded_text
+    return bounded_text, truncated_chars
 
 
 def enrich_transcript(
@@ -265,7 +268,7 @@ def enrich_transcript(
     attachments: list[tuple[str, str]],
     max_attachments: int | None = None,
     max_total_chars: int | None = None,
-) -> str:
+) -> tuple[str, int, int]:
     """
     Wrap non-empty extracted attachments in sanitized XML delimiters and append them to the transcript.
 
@@ -277,14 +280,19 @@ def enrich_transcript(
     :param max_attachments: Optional per-turn attachment count override; defaults to ``Settings.max_attachments_per_turn``.
     :param max_total_chars: Optional cumulative attachment character budget; defaults to ``Settings.max_total_attachment_chars``.
 
-    :return: Transcript unchanged if no non-empty attachments exist, otherwise transcript followed by ``<attachments>`` XML block.
+    :return: Tuple of ``(formatted_transcript, total_kept_chars, total_truncated_chars)`` where
+        ``total_kept_chars`` is the sum of post-truncation, post-sanitization character lengths included in
+        ``<attachments>`` (``0`` if none) and ``total_truncated_chars`` is the count dropped by the turn budget.
     :raises AttachmentExtractionError: If the attachment count exceeds ``max_attachments``.
     """
     settings = get_settings()
     validate_attachment_count(len(attachments), max_attachments=max_attachments)
     remaining_budget = max_total_chars if max_total_chars is not None else settings.max_total_attachment_chars
 
+    # Iterate over attachments, truncating and escaping as needed, and accumulate XML blocks.
     blocks: list[str] = []
+    total_kept_chars = 0
+    total_truncated_chars = 0
     for raw_filename, raw_text in attachments:
         stripped = (raw_text or "").strip()
         if not stripped:
@@ -292,23 +300,28 @@ def enrich_transcript(
 
         safe_name = _sanitize_filename(raw_filename)
         if remaining_budget <= 0:
-            log.info("attachment_turn_budget_exhausted", omitted_filename=safe_name)
+            total_truncated_chars += len(stripped)
+            log.info("attachment_turn_omitted", omitted_filename=safe_name, remaining_budget=remaining_budget)
             continue
 
         bounded, was_truncated = _truncate_to_budget(stripped, remaining_budget)
         bounded = _escape_xml_boundaries(bounded)
+        kept_len = len(bounded)
         if was_truncated:
+            total_truncated_chars += max(0, len(stripped) - kept_len)
             log.info(
                 "attachment_turn_truncated",
                 filename=safe_name,
                 remaining_budget=remaining_budget,
-                kept_chars=len(bounded),
+                kept_chars=kept_len,
             )
 
-        remaining_budget -= len(bounded)
+        remaining_budget -= kept_len
+        total_kept_chars += kept_len
         blocks.append(f'<attachment filename="{safe_name}">\n{bounded}\n</attachment>')
 
     if not blocks:
-        return transcript
+        return transcript, 0, total_truncated_chars
 
-    return f"{transcript.strip()}\n\n<attachments>\n" + "\n".join(blocks) + "\n</attachments>"
+    formatted = f"{transcript.strip()}\n\n<attachments>\n" + "\n".join(blocks) + "\n</attachments>"
+    return formatted, total_kept_chars, total_truncated_chars

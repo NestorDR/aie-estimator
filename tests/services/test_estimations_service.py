@@ -975,6 +975,7 @@ async def test_generate_session_estimation_aggregates_compression_tokens_and_cos
     assert obs.tokens_in == response["usage"]["input_tokens"] + 100
     assert obs.tokens_out == response["usage"]["output_tokens"] + 30
     assert obs.attachments_total_chars == 0
+    assert obs.attachments_truncated_chars == 0
     assert obs.cache_hit_kind == "none"
     assert obs.cost_usd == pytest.approx(0.0015)
 
@@ -1028,6 +1029,7 @@ async def test_generate_session_estimation_emits_session_turn_observed_with_atta
     kwargs = observed_calls[0].kwargs
     assert kwargs["turn_index"] == 1
     assert kwargs["attachments_total_chars"] == len(attachment_text.decode("utf-8"))
+    assert kwargs["attachments_truncated_chars"] == 0
     assert kwargs["enriched_transcript_chars"] > kwargs["attachments_total_chars"]
     assert kwargs["messages_in_window"] == 2
     assert kwargs["cache_hit_kind"] == "none"

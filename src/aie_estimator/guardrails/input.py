@@ -189,11 +189,11 @@ async def _check_moderation(description: str, openai_client: AsyncOpenAI) -> Non
             model=_MODERATION_MODEL,
             input=description,
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
         log.warning(
             "moderation_call_failed",
-            error_type=type(exc).__name__,
-            error=str(exc),
+            error_type=type(e).__name__,
+            error=str(e),
         )
         return
 

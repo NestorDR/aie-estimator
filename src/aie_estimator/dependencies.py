@@ -62,8 +62,8 @@ def get_semantic_cache(settings: Settings = Depends(get_settings)) -> Estimation
         return None
     try:
         return _get_semantic_cache()
-    except Exception as exc:  # noqa: BLE001
-        log.warning("semantic_cache_initialization_failed", error=str(exc))
+    except Exception as e:  # noqa: BLE001
+        log.warning("semantic_cache_initialization_failed", error=str(e))
         return None
 
 
@@ -156,9 +156,9 @@ def get_caller_tier(
     normalized = x_user_tier.strip().lower()
     try:
         return Tier(normalized)
-    except ValueError as exc:
+    except ValueError as e:
         log.warning("tier_header_invalid", raw_tier=x_user_tier[:64])
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unknown tier '{x_user_tier}'. Expected one of: developer, pm, executive.",
-        ) from exc
+        ) from e

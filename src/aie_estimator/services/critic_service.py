@@ -84,12 +84,12 @@ class Critic:
                 response_model=CriticFeedback,
             )
             feedback = CriticFeedback.model_validate(response.get("result"))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
             log.warning(
                 "critic_review_failed",
                 fallback="accept",
-                error_type=type(exc).__name__,
-                error=str(exc)[:200],
+                error_type=type(e).__name__,
+                error=str(e)[:200],
             )
             return CriticOutcome(
                 feedback=CriticFeedback(verdict="accept", issues=[], confidence_in_review=0),

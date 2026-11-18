@@ -12,9 +12,9 @@ The attachment subsystem ([`extractor.py`](../src/aie_estimator/attachments/extr
 from aie_estimator.attachments.extractor import enrich_transcript, extract_text
 from aie_estimator.guardrails.input import check_attachment_input, get_moderation_client
 
-raw_text = extract_text(filename="architecture.pdf", content=file_bytes)
+raw_text, _ = extract_text(filename="architecture.pdf", content=file_bytes)
 safe_text = await check_attachment_input(raw_text, openai_client=get_moderation_client())
-prompt_input = enrich_transcript(
+prompt_input, kept_chars, truncated_chars = enrich_transcript(
     transcript="Estimate the backend API migration.",
     attachments=[("architecture.pdf", safe_text)],
 )

@@ -180,6 +180,7 @@ class TurnObservation(BaseModel):
     session_id: str
     enriched_transcript_chars: int = Field(ge=0)
     attachments_total_chars: int = Field(ge=0)
+    attachments_truncated_chars: int = Field(ge=0)
     messages_in_window: int = Field(ge=0)
     anchors_count: int = Field(ge=0)
     summary_chars: int = Field(ge=0)

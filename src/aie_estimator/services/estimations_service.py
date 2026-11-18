@@ -51,6 +51,7 @@ class _PreparedSessionTurn:
     enriched_transcript: str
     attachment_count: int
     attachments_total_chars: int
+    attachments_truncated_chars: int
     opts: GenerationOptions
     version: str
     tier: Tier
@@ -520,8 +521,10 @@ class EstimationService:
         await sanitize_input(transcript, openai_client=self.moderation_client)
 
         extracted_pairs: list[tuple[str, str]] = []
+        extract_truncated_chars = 0
         for filename, content in raw_attachments:
-            extracted_text = extract_text(filename=filename, content=content)
+            extracted_text, file_truncated_chars = extract_text(filename=filename, content=content)
+            extract_truncated_chars += file_truncated_chars
             sanitized_text = await sanitize_attachment_input(
                 extracted_text,
                 openai_client=self.moderation_client,
@@ -529,7 +532,7 @@ class EstimationService:
             if sanitized_text:
                 extracted_pairs.append((filename, sanitized_text))
 
-        enriched_transcript = enrich_transcript(
+        enriched_transcript, attachments_total_chars, turn_truncated_chars = enrich_transcript(
             transcript=transcript,
             attachments=extracted_pairs,
         )
@@ -545,7 +548,8 @@ class EstimationService:
         return _PreparedSessionTurn(
             enriched_transcript=enriched_transcript,
             attachment_count=len(extracted_pairs),
-            attachments_total_chars=sum(len(text) for _, text in extracted_pairs),
+            attachments_total_chars=attachments_total_chars,
+            attachments_truncated_chars=extract_truncated_chars + turn_truncated_chars,
             opts=effective_opts,
             version=version,
             tier=tier,
@@ -599,6 +603,7 @@ class EstimationService:
             session_id=session.session_id,
             enriched_transcript_chars=len(prepared.enriched_transcript),
             attachments_total_chars=prepared.attachments_total_chars,
+            attachments_truncated_chars=prepared.attachments_truncated_chars,
             messages_in_window=len(session.history.messages),
             anchors_count=len(session.history.anchors),
             summary_chars=len(session.history.summary) if session.history.summary else 0,

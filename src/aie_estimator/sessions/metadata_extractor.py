@@ -184,10 +184,10 @@ async def update_metadata(
             output_tokens=output_tokens,
             cost_usd=cost_usd,
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
         log.warning(
             "metadata_extraction_failed",
-            error_type=type(exc).__name__,
-            error=str(exc)[:200],
+            error_type=type(e).__name__,
+            error=str(e)[:200],
         )
         return MetadataExtractionOutcome(metadata=previous)

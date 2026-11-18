@@ -83,9 +83,9 @@ class Settings(BaseSettings):
 
     # Attachment ingestion settings
     max_attachments_per_turn: int = Field(default=5, gt=0)
-    max_attachment_bytes: int = Field(default=5_242_880, gt=0)
-    max_attachment_chars: int = Field(default=12_000, gt=0)
-    max_total_attachment_chars: int = Field(default=30_000, gt=0)
+    max_attachment_bytes: int = Field(default=5_242_880, gt=0)  # 5 MB
+    max_attachment_chars: int = Field(default=60_000, gt=0)
+    max_total_attachment_chars: int = Field(default=60_000, gt=0)
     supported_attachment_extensions: list[str] = Field(
         default_factory=lambda: [".pdf", ".docx", ".txt", ".md"],
     )

@@ -108,12 +108,12 @@ class AnchorDetector:
                 response_model=_AnchorClassification,
             )
             classified = _AnchorClassification.model_validate(response.get("result"))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
             log.warning(
                 "history_anchor_detection_failed",
                 fallback="heuristic",
-                error_type=type(exc).__name__,
-                error=str(exc)[:200],
+                error_type=type(e).__name__,
+                error=str(e)[:200],
             )
             return self._detect_heuristic(message)
 
