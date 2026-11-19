@@ -57,6 +57,8 @@ aie-estimator/
 ├── docker/                             # Containerization and Compose configurations
 ├── docs/                               # Architecture and feature guides
 ├── evals/                              # Golden Dataset and Family 1-3 LLM evaluation harness
+│   └── stress/                         # Synthetic 20-turn stress test scenarios and async runner
+│       └── REPORT.md                   # Stress test results and metrics
 ├── src/
 │   └── aie_estimator/
 │       ├── __init__.py
@@ -182,3 +184,7 @@ Architecture and feature guides in [`docs/`](docs/):
 - [Streamlit UI](docs/streamlit-conversational-ui.md): Session-only conversational chat UI, tier adaptation, ACB review toggle, multi-file upload, 404 recovery, and telemetry inspection.
 - [Testing Guidelines](docs/testing.md): Suite layout, shared fixtures, coverage gate, and Windows async execution policy.
 - [User Tier Adaptation](docs/user-tier-adaptation.md): Stakeholder tier resolution, `TIER_CONFIG` registry, modular `v3` templates, and tier-specific schemas.
+
+## CAG Stress Baseline and Conclusions
+
+Where does Context-Augmented Generation (CAG) start breaking? Live stress tests show that per-turn cost stays low with fast, low-cost models, but response times degrade as conversation history grows, large documents get truncated, and early project facts become fragile when metadata extraction misses them. Explore the exact breaking points and tables in the [CAG Baseline Stress Test Report](evals/stress/REPORT.md).
