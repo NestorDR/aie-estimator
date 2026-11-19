@@ -168,6 +168,7 @@ Architecture and feature guides in [`docs/`](docs/):
 - [Actor-Critic-Boss Role Composition](docs/actor-critic-boss.md): Bounded Actor generation, structured Critic auditing, and deterministic Boss governance.
 - [API Schemas & Data Contracts](docs/api-schemas.md): Request/response schemas, validators, and HTTP 400 guardrail contracts.
 - [Attachment Ingestion](docs/attachment-ingestion.md): Local `.pdf`/`.docx`/`.txt`/`.md` text extraction, budgets, and XML prompt-injection delimiting.
+- [CAG Stress Testing](docs/cag-stress-testing.md): Synthetic 20-turn scenarios, deterministic budget/drift metrics, and async stress runner.
 - [Conversational Sessions](docs/conversational-sessions.md): In-memory session lifecycle, bounded sliding-window history, and `ProjectMetadata` merging.
 - [Dependency Injection & App Factory](docs/dependency-injection-and-app-factory.md): Application factory, composition root, and test dependency overrides.
 - [Estimations Service & Providers](docs/estimations-service.md): Orchestration, LiteLLM/native dispatch, Instructor extraction, and multi-layer retries.
@@ -179,8 +180,5 @@ Architecture and feature guides in [`docs/`](docs/):
 - [Reasoning Profiles](docs/reasoning-profiles.md): Reasoning effort normalization, two-level failover, and credential pruning.
 - [Semantic Response Caching](docs/semantic-response-caching.md): Tier 1 exact SHA-256 cache, Tier 2 RediSearch vector cache, and shadow mode.
 - [Streamlit UI](docs/streamlit-conversational-ui.md): Session-only conversational chat UI, tier adaptation, ACB review toggle, multi-file upload, 404 recovery, and telemetry inspection.
-- [Stress Evaluation Metrics](docs/stress-eval-metrics.md): Deterministic latency, cost, and memory-drift evaluators over `TurnObservation` and `SessionInfoResponse`.
-- [Stress Runner & Report](docs/stress-runner.md): Async CAG stress runner (`--http`/`ASGITransport`), CSV export, and Markdown table generation.
-- [Stress Scenarios](docs/stress-scenarios.md): Synthetic 20-turn profiles (`growing`, `pivot`, `contradiction`) and single-turn attachment size tests (`0`–`100` KB).
 - [Testing Guidelines](docs/testing.md): Suite layout, shared fixtures, coverage gate, and Windows async execution policy.
 - [User Tier Adaptation](docs/user-tier-adaptation.md): Stakeholder tier resolution, `TIER_CONFIG` registry, modular `v3` templates, and tier-specific schemas.
