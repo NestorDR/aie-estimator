@@ -7,7 +7,7 @@
 
 ## Summary Table
 
-| Scenario / Sweep | KB | Rows | P50 ms | P95 ms | Total Cost ($) | Cache Hit % | Mean Drift Recall |
+| Scenario / Test | KB | Turns | P50 ms | P95 ms | Total Cost ($) | Cache Hit % | Mean Drift Recall |
 | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | attachment_0kb | 0 | 1 | 6261 | 6261 | 0.0003 | 0.0% | n/a |
 | attachment_100kb | 100 | 1 | 8646 | 8646 | 0.0006 | 0.0% | 0.0% |
@@ -20,7 +20,7 @@
 
 ## Curve 1: Latency vs Tokens In
 
-| Bucket (tokens_in) | Rows | Mean tokens_in | P50 ms | P95 ms |
+| Bucket (tokens_in) | Turns | Mean tokens_in | P50 ms | P95 ms |
 | :--- | ---: | ---: | ---: | ---: |
 | 1000-2999 | 5 | 2638 | 8797 | 10300 |
 | 3000-9999 | 32 | 6925 | 12749 | 16426 |

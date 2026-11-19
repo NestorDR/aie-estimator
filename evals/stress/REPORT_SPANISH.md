@@ -7,7 +7,7 @@
 
 ## Tabla Resumen
 
-| Escenario / Barrido | KB | Filas | P50 ms | P95 ms | Coste Total ($) | Cache Hit % | Recuperación Media (Recall) |
+| Escenario / Prueba | KB | Turnos | P50 ms | P95 ms | Coste Total ($) | Cache Hit % | Recuperación Media (Recall) |
 | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | attachment_0kb | 0 | 1 | 6261 | 6261 | 0.0003 | 0.0% | n/a |
 | attachment_100kb | 100 | 1 | 8646 | 8646 | 0.0006 | 0.0% | 0.0% |
@@ -20,7 +20,7 @@
 
 ## Curva 1: Latencia vs Tokens de Entrada
 
-| Rango (`tokens_in`) | Filas | Media `tokens_in` | P50 ms | P95 ms |
+| Rango (`tokens_in`) | Turnos | Media `tokens_in` | P50 ms | P95 ms |
 | :--- | ---: | ---: | ---: | ---: |
 | 1000-2999 | 5 | 2638 | 8797 | 10300 |
 | 3000-9999 | 32 | 6925 | 12749 | 16426 |

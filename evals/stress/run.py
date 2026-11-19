@@ -497,7 +497,7 @@ def build_report_tables(csv_path: Path) -> str:
         rows = [r for r in csv.DictReader(fh) if not r.get("error")]
 
     lines: list[str] = ["## Summary Table", ""]
-    lines.append("| Scenario / Sweep | KB | Rows | P50 ms | P95 ms | Total Cost ($) | Cache Hit % | Mean Drift Recall |")
+    lines.append("| Scenario / Test | KB | Turns | P50 ms | P95 ms | Total Cost ($) | Cache Hit % | Mean Drift Recall |")
     lines.append("| :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
 
     by_group: dict[tuple[str, str], list[dict[str, str]]] = {}
@@ -516,7 +516,7 @@ def build_report_tables(csv_path: Path) -> str:
         )
 
     lines.extend(["", "## Curve 1: Latency vs Tokens In", ""])
-    lines.append("| Bucket (tokens_in) | Rows | Mean tokens_in | P50 ms | P95 ms |")
+    lines.append("| Bucket (tokens_in) | Turns | Mean tokens_in | P50 ms | P95 ms |")
     lines.append("| :--- | ---: | ---: | ---: | ---: |")
     buckets: dict[str, list[dict[str, str]]] = {"<1000": [], "1000-2999": [], "3000-9999": [], ">=10000": []}
     for row in rows:
