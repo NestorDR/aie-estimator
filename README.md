@@ -179,5 +179,8 @@ Architecture and feature guides in [`docs/`](docs/):
 - [Reasoning Profiles](docs/reasoning-profiles.md): Reasoning effort normalization, two-level failover, and credential pruning.
 - [Semantic Response Caching](docs/semantic-response-caching.md): Tier 1 exact SHA-256 cache, Tier 2 RediSearch vector cache, and shadow mode.
 - [Streamlit UI](docs/streamlit-conversational-ui.md): Session-only conversational chat UI, tier adaptation, ACB review toggle, multi-file upload, 404 recovery, and telemetry inspection.
+- [Stress Evaluation Metrics](docs/stress-eval-metrics.md): Deterministic latency, cost, and memory-drift evaluators over `TurnObservation` and `SessionInfoResponse`.
+- [Stress Runner & Report](docs/stress-runner.md): Async CAG stress runner (`--http`/`ASGITransport`), CSV export, and Markdown table generation.
+- [Stress Scenarios](docs/stress-scenarios.md): Synthetic 20-turn profiles (`growing`, `pivot`, `contradiction`) and single-turn attachment size tests (`0`–`100` KB).
 - [Testing Guidelines](docs/testing.md): Suite layout, shared fixtures, coverage gate, and Windows async execution policy.
 - [User Tier Adaptation](docs/user-tier-adaptation.md): Stakeholder tier resolution, `TIER_CONFIG` registry, modular `v3` templates, and tier-specific schemas.
