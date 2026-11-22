@@ -75,7 +75,7 @@ class CumulativeSummarizer:
             response = await call_llm(
                 user_prompt=user_prompt,
                 system_prompt=system_prompt,
-                opts=GenerationOptions(model=self.model, temperature=0.0, max_tokens=_SUMMARY_MAX_TOKENS),
+                opts=GenerationOptions(model=self.model, max_tokens=_SUMMARY_MAX_TOKENS, reasoning_effort="low"),
                 response_model=_SummaryEnvelope,
             )
             envelope = _SummaryEnvelope.model_validate(response.get("result"))

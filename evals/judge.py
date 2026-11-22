@@ -27,7 +27,7 @@ Execution flow
    variable fails loudly instead of producing a silently degraded prompt. The prompt includes the
    resolved tier, request parameters, the original description, and the serialized estimation result.
 2. ``evaluate_with_judge`` calls the provider dispatcher with ``JudgeVerdict`` as the structured
-   response model. It uses ``temperature=0.0`` and a bounded token budget to keep verdicts as
+   response model. It uses ``reasoning_effort="low"`` and a bounded token budget to keep verdicts as
    reproducible as possible. ``judge_model`` can override the model or profile.
 3. The verdict is converted into the same immutable ``MetricResult`` used by Family 1 and Family 2,
    with the ratings and reasoning in ``details``.
@@ -143,7 +143,7 @@ async def evaluate_with_judge(
     opts = GenerationOptions(
         model=judge_model,
         max_tokens=_JUDGE_MAX_TOKENS,
-        temperature=0.0,
+        reasoning_effort="low",
     )
 
     try:

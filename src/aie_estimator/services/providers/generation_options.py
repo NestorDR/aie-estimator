@@ -10,8 +10,7 @@ from aie_estimator.model_catalog import ProviderMode, get_model_provider, resolv
 
 ReasoningEffort = Literal["low", "medium", "high"]
 
-DEFAULT_MAX_TOKENS: Final[int] = 4000
-DEFAULT_TEMPERATURE: Final[float] = 0.3
+DEFAULT_MAX_TOKENS: Final[int] = 6000
 DEFAULT_MAX_RETRIES: Final[int] = 3
 
 
@@ -23,7 +22,6 @@ class GenerationOptions:
     max_tokens: int = DEFAULT_MAX_TOKENS
     reasoning_effort: ReasoningEffort | None = None
     engine: ProviderMode = "litellm"
-    temperature: float = DEFAULT_TEMPERATURE
     max_retries: int = DEFAULT_MAX_RETRIES
 
     @property

@@ -106,7 +106,6 @@ async def call_litellm_router(
     opts: GenerationOptions,
     *,
     messages: list[dict[str, str]] | None = None,
-    temperature: float | None = None,
     response_model: type[BaseModel] = PmEstimation,
 ) -> dict[str, Any]:
     """
@@ -116,7 +115,6 @@ async def call_litellm_router(
     :param system_prompt: Optional system instructions and reference context.
     :param opts: Generation options controlling model, max_tokens, and reasoning_effort.
     :param messages: Optional multi-turn list of non-system ``user``/``assistant`` message dictionaries.
-    :param temperature: Optional sampling temperature override.
     :param response_model: Target Pydantic model class for structured output extraction.
 
     :return: Standardized response dictionary containing result, model, provider, finish_reason, usage, and cost_usd.
@@ -139,9 +137,6 @@ async def call_litellm_router(
         "messages": formatted_messages,
         "max_tokens": opts.max_tokens,
     }
-    resolved_temp = temperature if temperature is not None else opts.temperature
-    if resolved_temp is not None:
-        kwargs["temperature"] = resolved_temp
 
     if opts.reasoning_effort is not None:
         kwargs["reasoning_effort"] = opts.reasoning_effort

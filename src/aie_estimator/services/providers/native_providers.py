@@ -71,7 +71,7 @@ async def call_openai(
 
     :param user_prompt: Pre-rendered user prompt string for single-turn calls, or ``None`` when ``messages`` is passed.
     :param system_prompt: Optional system instructions and reference context.
-    :param opts: Generation options specifying model, max_tokens, temperature, reasoning_effort, and max_retries.
+    :param opts: Generation options specifying model, max_tokens, reasoning_effort, and max_retries.
     :param messages: Optional multi-turn list of non-system ``user``/``assistant`` message dictionaries.
     :param response_model: Target Pydantic model class for structured output extraction.
 
@@ -96,8 +96,6 @@ async def call_openai(
 
     if is_reasoning_model:
         request_params["reasoning_effort"] = opts.reasoning_effort or "medium"
-    elif opts.temperature is not None:
-        request_params["temperature"] = opts.temperature
 
     structured_result = None
     response = None
@@ -112,15 +110,10 @@ async def call_openai(
             break
         except Exception as e:
             err = unwrap_exception(e)
-            if isinstance(err, BadRequestError):
-                if "temperature" in str(err) and "temperature" in request_params:
-                    request_params.pop("temperature", None)
-                    log.warning("provider_temperature_stripped", provider="openai", model=model, error=repr(err))
-                    continue
-                if "max_tokens" in str(err) and "max_tokens" in request_params:
-                    request_params["max_completion_tokens"] = request_params.pop("max_tokens")
-                    log.warning("provider_tokens_remapped", provider="openai", model=model, error=repr(err))
-                    continue
+            if isinstance(err, BadRequestError) and "max_tokens" in str(err) and "max_tokens" in request_params:
+                request_params["max_completion_tokens"] = request_params.pop("max_tokens")
+                log.warning("provider_tokens_remapped", provider="openai", model=model, error=repr(err))
+                continue
 
             log.exception(
                 "provider_call_failed",

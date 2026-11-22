@@ -18,6 +18,8 @@ log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
 
 AnchorStrategy = Literal["heuristic", "llm"]
 
+_ANCHOR_MAX_TOKENS: Final[int] = 500
+
 _HEURISTIC_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
     ("nda", re.compile(r"\b(nda|non[- ]?disclosure|under embargo|legal hold)\b", re.IGNORECASE)),
     ("signed_contract", re.compile(r"\b(signed|countersigned)\s+(the\s+)?(contract|sow|msa|agreement)\b", re.IGNORECASE)),
@@ -104,7 +106,7 @@ class AnchorDetector:
             response = await call_llm(
                 user_prompt=f"Classify this user turn:\n\n{message.content}",
                 system_prompt=_LLM_ANCHOR_SYSTEM_PROMPT,
-                opts=GenerationOptions(model=self.model, temperature=0.0, max_tokens=150),
+                opts=GenerationOptions(model=self.model, max_tokens=_ANCHOR_MAX_TOKENS, reasoning_effort="low"),
                 response_model=_AnchorClassification,
             )
             classified = _AnchorClassification.model_validate(response.get("result"))

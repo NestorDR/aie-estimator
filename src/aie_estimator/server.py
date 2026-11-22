@@ -102,7 +102,9 @@ class Server:
         """
         db_pool = None
         try:
+            # Initialize OpenTelemetry TracerProvider
             setup_telemetry(self.settings)
+            
             self.log.info("api_startup_initiated", app_version=self.settings.app_version)
 
             # Create a DB connection pool on startup

@@ -17,7 +17,7 @@ from aie_estimator.sessions.tier_resolver import Tier
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
 
-_CRITIC_MAX_TOKENS: Final[int] = 1500
+_CRITIC_MAX_TOKENS: Final[int] = 2000
 
 
 @dataclass(frozen=True)

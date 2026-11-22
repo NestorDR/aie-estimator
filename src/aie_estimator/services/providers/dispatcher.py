@@ -30,7 +30,7 @@ async def call_llm(
 
     :param user_prompt: Pre-rendered user prompt string for single-turn calls, or ``None`` when ``messages`` is passed.
     :param system_prompt: Optional pre-rendered system prompt string.
-    :param opts: Generation options controlling model, engine, max_tokens, temperature, and reasoning.
+    :param opts: Generation options controlling model, engine, max_tokens, and reasoning_effort.
     :param messages: Optional multi-turn list of non-system ``user``/``assistant`` message dictionaries.
     :param response_model: Target Pydantic model class for structured output extraction.
 

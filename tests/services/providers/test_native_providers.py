@@ -97,8 +97,8 @@ def test_client_missing_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     [
         (
             "custom-standard-model",
-            {"temperature": 0.3},
-            ("reasoning_effort", "max_completion_tokens"),
+            {},
+            ("temperature", "reasoning_effort", "max_completion_tokens"),
             "max_tokens",
             None,
         ),
@@ -125,7 +125,7 @@ async def test_call_openai_model_parameter_selection(
     """
     GIVEN a target model identifier
     WHEN call_openai executes against the chat completions API
-    THEN reasoning models receive reasoning effort while non-reasoning models receive temperature.
+    THEN reasoning models receive reasoning effort while non-reasoning models omit both temperature and reasoning effort.
 
     :param sample_transcription: Sample transcript fixture.
     :param mock_async_openai_client: Reusable typed AsyncOpenAI mock fixture.
@@ -159,7 +159,6 @@ async def test_call_openai_model_parameter_selection(
     opts = GenerationOptions(
         model=model,
         max_tokens=3000,
-        temperature=0.3,
         reasoning_effort="medium",
     )
     result = await call_openai(
@@ -179,66 +178,6 @@ async def test_call_openai_model_parameter_selection(
     assert call_kwargs[expected_token_param] == 3000
     assert {k: call_kwargs.get(k) for k in expected_params} == expected_params
     assert all(k not in call_kwargs for k in absent_params)
-
-
-@pytest.mark.anyio
-async def test_call_openai_temperature_bad_request_stripping(
-    sample_transcription: str,
-    mock_async_openai_client: MagicMock,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    GIVEN an OpenAI call initially rejected due to an unsupported temperature parameter
-    WHEN BadRequestError mentioning temperature is received
-    THEN temperature is stripped and the call is retried successfully.
-
-    :param sample_transcription: Sample transcript fixture.
-    :param mock_async_openai_client: Reusable typed AsyncOpenAI mock fixture.
-    :param monkeypatch: Pytest monkeypatch fixture.
-    """
-    mock_create = AsyncMock()
-
-    mock_resp = MagicMock()
-    mock_choice = MagicMock()
-    mock_choice.finish_reason = "stop"
-    mock_choice.message.content = json.dumps(VALID_RESULT_DICT)
-    mock_choice.message.tool_calls = None
-    mock_resp.choices = [mock_choice]
-    mock_resp.model = "custom-standard-model"
-    mock_resp.usage.prompt_tokens = 100
-    mock_resp.usage.completion_tokens = 50
-    mock_resp.usage.total_tokens = 150
-
-    err_response = MagicMock()
-    err_response.status_code = 400
-    temp_err = BadRequestError(
-        message="Unsupported parameter: temperature is not supported by this model",
-        response=err_response,
-        body={"error": {"message": "temperature unsupported"}},
-    )
-    mock_create.side_effect = [temp_err, mock_resp]
-    mock_async_openai_client.chat.completions.create = mock_create
-
-    monkeypatch.setattr(
-        "aie_estimator.services.providers.native_providers.get_openai_client",
-        lambda: mock_async_openai_client,
-    )
-
-    opts = GenerationOptions(
-        model="custom-standard-model",
-        max_tokens=2000,
-        temperature=0.3,
-    )
-    result = await call_openai(
-        user_prompt=sample_transcription,
-        system_prompt=None,
-        opts=opts,
-    )
-
-    assert isinstance(result["result"], PmEstimation)
-    assert mock_create.call_count == 2
-    second_call_kwargs = mock_create.call_args_list[1].kwargs
-    assert "temperature" not in second_call_kwargs
 
 
 @pytest.mark.anyio
@@ -287,7 +226,6 @@ async def test_call_openai_converts_max_tokens_to_completion_tokens_on_bad_reque
     opts = GenerationOptions(
         model="custom-standard-model",
         max_tokens=2500,
-        temperature=0.3,
     )
     result = await call_openai(
         user_prompt=sample_transcription,
@@ -400,7 +338,6 @@ async def test_call_anthropic_thinking_and_omits_temperature(
     opts = GenerationOptions(
         model=DEFAULT_CLAUDE_LLM,
         max_tokens=4000,
-        temperature=0.3,
         reasoning_effort=reasoning_effort,
     )
     result = await call_anthropic(

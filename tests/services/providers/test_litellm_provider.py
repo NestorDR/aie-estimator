@@ -149,7 +149,7 @@ async def test_call_router_cost_extraction_and_response_structure(
 
     :param mock_router_response: Router response builder fixture.
     """
-    mock_router_response(
+    mock_router = mock_router_response(
         hidden_params={"response_cost": 0.00035, "custom_llm_provider": "openai"},
         prompt_tokens=250,
         completion_tokens=75,
@@ -161,6 +161,8 @@ async def test_call_router_cost_extraction_and_response_structure(
         system_prompt="You are an estimator",
         opts=opts,
     )
+
+    assert "temperature" not in mock_router.acompletion.call_args.kwargs
 
     assert isinstance(result["result"], PmEstimation)
     assert result["result"].total_cost_eur == 20000
@@ -294,7 +296,7 @@ async def test_call_router_supports_custom_response_model(
         hidden_params={"response_cost": 0.00012},
     )
 
-    opts = GenerationOptions(model=DEFAULT_FAST_PROFILE, max_tokens=500, temperature=0.0)
+    opts = GenerationOptions(model=DEFAULT_FAST_PROFILE, max_tokens=500, reasoning_effort="low")
     result = await call_litellm_router(
         user_prompt="Extract project metadata",
         system_prompt="You are a project facts extractor.",

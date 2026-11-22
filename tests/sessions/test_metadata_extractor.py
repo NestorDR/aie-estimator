@@ -246,7 +246,6 @@ def test_resolve_extractor_options_engine_and_model_routing(
     assert resolved.model == expected_model
     assert resolved.engine == expected_engine
     assert resolved.reasoning_effort == expected_effort
-    assert resolved.temperature == 0.0
     assert resolved.max_tokens == 1000
 
 

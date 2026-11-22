@@ -31,7 +31,6 @@ Always apply good software engineering practices: **KISS, YAGNI, DRY, SOLID, ACI
 - **Self-Descriptive Names**: Prefer clear and self-descriptive names; avoid acronyms and abbreviations.
 - **Package and Build System**: Dependencies and build backend are managed via `pyproject.toml` using `uv_build` as the build system (`requires = ["uv_build>=0.13.0"]`).
 - **Traceability**: Respect names already in use and do not break traceability with the original code. Do not assume unsolicited changes.
-- **Code Snippets**: Do not generate complete scripts unless explicitly requested.
 - **Dependencies**: If a new dependency is required, mention it without including installation instructions.
 - **Overengineering**: Avoid overengineering solutions. Focus on clarity, maintainability, and performance.
 - **Language**: Use English for all code comments, docstrings, and other text. Translations are welcome.

@@ -22,7 +22,6 @@ log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
 
 _NULL_LITERALS: Final[frozenset[str]] = frozenset({"null", "none", "n/a", "nil"})
 _EXTRACTOR_MAX_TOKENS: Final[int] = 1000
-_EXTRACTOR_TEMPERATURE: Final[float] = 0.0
 _EXTRACTOR_MAX_RETRIES: Final[int] = 2
 
 
@@ -101,7 +100,6 @@ def resolve_extractor_options(opts: GenerationOptions, settings: Settings) -> Ge
         max_tokens=_EXTRACTOR_MAX_TOKENS,
         reasoning_effort=reasoning_effort,
         engine=opts.engine,
-        temperature=_EXTRACTOR_TEMPERATURE,
         max_retries=_EXTRACTOR_MAX_RETRIES,
     )
 
