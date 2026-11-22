@@ -126,10 +126,6 @@ async def call_openai(
         log.error("provider_retries_exhausted", provider="openai", model=model)
         raise LLMProviderError("OpenAI call failed: request exhausted after retry attempts.")
 
-    if structured_result is None or response is None:
-        log.error("provider_retries_exhausted", provider="openai", model=model)
-        raise LLMProviderError("OpenAI call failed: request exhausted after retry attempts.")
-
     choice = response.choices[0]
     finish_reason = getattr(choice, "finish_reason", "stop") or "stop"
     usage = getattr(response, "usage", None)

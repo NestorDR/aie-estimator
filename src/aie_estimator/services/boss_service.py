@@ -54,19 +54,19 @@ class Boss:
 
         for iteration in range(self.max_iterations):
             current = await actor(feedback)
-            review = await critic(current)
+            feedback = await critic(current)
 
             iterations_left = self.max_iterations - iteration - 1
-            decision = self._decide(review, iterations_left=iterations_left)
+            decision = self._decide(feedback, iterations_left=iterations_left)
             trace.iterations.append(
                 ACBIteration(
                     iteration=iteration,
                     decision_after=decision,
-                    critic_verdict=review.verdict,
-                    critic_confidence=review.confidence_in_review,
+                    critic_verdict=feedback.verdict,
+                    critic_confidence=feedback.confidence_in_review,
                     issue_summary=[
                         f"[{issue.severity}] {issue.category} @ {issue.field_path}"
-                        for issue in review.issues[:_MAX_ISSUE_SUMMARY_ITEMS]
+                        for issue in feedback.issues[:_MAX_ISSUE_SUMMARY_ITEMS]
                     ],
                 )
             )
@@ -76,22 +76,20 @@ class Boss:
                 "boss_iteration_completed",
                 iteration=iteration,
                 decision=decision,
-                verdict=review.verdict,
-                issue_count=len(review.issues),
+                verdict=feedback.verdict,
+                issue_count=len(feedback.issues),
             )
 
             if decision == "accept":
                 trace.final_decision = "accept"
                 return current, trace
             if decision == "synthesize":
-                if review.verdict == "needs_iteration":
-                    log.info("boss_iteration_budget_exhausted", max_iterations=self.max_iterations)
-                trace.final_decision = "synthesize"
-                return self._synthesize_fallback(current, review), trace
+                break
 
-            feedback = review
-
-        raise AssertionError("Unreachable: Boss loop must terminate within max_iterations.")
+        if feedback and feedback.verdict == "needs_iteration":
+            log.info("boss_iteration_budget_exhausted", max_iterations=self.max_iterations)
+        trace.final_decision = "synthesize"
+        return self._synthesize_fallback(current, feedback), trace
 
     @staticmethod
     def _decide(review: CriticFeedback, *, iterations_left: int) -> BossDecision:
