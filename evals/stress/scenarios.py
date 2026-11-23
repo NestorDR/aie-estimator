@@ -6,6 +6,20 @@ Three 20-turn synthetic stress scenarios and 1-turn attachment sweep definitions
 Each multi-turn scenario is an immutable sequence of ``ScenarioTurn`` items evaluated in order
 against a single conversational session so turn N sees the compressed view of turns 1..N-1.
 ``fact_introduced`` and ``fact_field`` declare the substring target for ``MemoryDriftMetric``.
+
+The three scenarios target distinct failure modes of the CAG:
+
+- ``growing``        — the session monotonically accretes requirements.
+                       Stresses sliding-window eviction: by turn 20 the
+                       turn-1 anchor information needs to survive either
+                       as an explicit anchor or inside the cumulative
+                       summary.
+- ``pivot``          — turn 5 swaps the stack from React to Flutter.
+                       Tests whether ``mentioned_technologies`` accretes
+                       both (correct) or loses React (drift).
+- ``contradiction``  — turn 3 says budget 30k, turn 8 says budget 80k.
+                       Tests which version sticks in the metadata and/or
+                       summary.
 """
 
 # --- Python Standard Library ---
