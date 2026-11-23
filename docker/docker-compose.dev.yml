@@ -57,6 +57,35 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+  postgres:
+    image: pgvector/pgvector:pg17             # Precompiled pgvector extension (activated in Session 7 via migration)
+    container_name: estimator-postgres        # Fixed container name for the PostgreSQL persistence service
+    restart: unless-stopped                   # Restart automatically unless explicitly stopped
+    env_file:
+      - ../src/aie_estimator/.env.dev         # Unversioned file .env.* with secure credentials, its path is relative to this docker-compose.yml
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-estimator}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-estimator}
+      POSTGRES_DB: ${POSTGRES_DB:-estimator}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"         # Syntax: ${ENV_VAR_FOR_HOST_PORT:-DEFAULT_VALUE} : CONTAINER_PORT
+    volumes:
+      # Bind Mount (https://docs.docker.com/engine/storage/bind-mounts/), a file or dir on the host machine is mounted
+      # directly from the host into a container. Preferred over Named Volumes when accessing data from the host.
+      - ./volumes/postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # Wait until the database is ready to accept TCP commands before declaring it healthy.
+      # $$ Prevents Docker from expanding the variable before sending it to the container.
+      # -h 127.0.0.1 forces TCP connection to bypass the temporary init server (which uses Unix sockets).
+      test: [ "CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER:-estimator} -d $${POSTGRES_DB:-estimator}" ]
+      interval: 10s                           # Time between health checks
+      timeout: 5s                             # Timeout for each health check
+      retries: 5                              # Nº of retries before considering the container unhealthy
+      start_period: 20s                       # Initial delay before starting health checks
+    # Required to be connected from the aie-estimator project running on IDE or Windows
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # Maps host.docker.internal to the host IP
+
 # Network configuration for service communication
 networks:
   # Define the shared bridge network for inter-service communication.

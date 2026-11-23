@@ -1,21 +1,28 @@
 # tests/test_dependencies.py
 
 # --- Python Standard Library ---
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 # --- Third Party Libraries ---
 from fastapi import HTTPException
+from psycopg_pool import AsyncConnectionPool
 import pytest
 
 # --- App modules ---
 from aie_estimator.dependencies import (
     get_caller_tier,
+    get_db_pool,
     get_estimation_service,
     get_exact_cache,
+    get_jobs_repository,
+    get_mappings_repository,
     get_semantic_cache,
     get_session_store,
     get_settings,
 )
+from aie_estimator.persistence.repositories.jobs import JobsRepository
+from aie_estimator.persistence.repositories.mappings import MappingsRepository
 from aie_estimator.services.cache import (
     EstimationExactCache,
     EstimationSemanticCache,
@@ -177,3 +184,32 @@ def test_get_caller_tier_rejects_invalid_tier() -> None:
 
     assert exc_info.value.status_code == 400
     assert "Unknown tier" in str(exc_info.value.detail)
+
+
+def test_get_db_pool_returns_pool_or_raises_when_uninitialized() -> None:
+    """
+    GIVEN a FastAPI Request with app.state.db_pool initialized or None
+    WHEN get_db_pool is called
+    THEN the active pool is returned when present and ConnectionError is raised when uninitialized.
+    """
+    uninitialized_request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(db_pool=None)))
+    with pytest.raises(ConnectionError, match=r"not initialized"):
+        get_db_pool(uninitialized_request)  # type: ignore[arg-type]
+
+    mock_pool = MagicMock(spec=AsyncConnectionPool)
+    initialized_request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(db_pool=mock_pool)))
+    assert get_db_pool(initialized_request) is mock_pool  # type: ignore[arg-type]
+
+
+def test_get_persistence_repositories_wire_pool() -> None:
+    """
+    GIVEN an active AsyncConnectionPool
+    WHEN get_jobs_repository and get_mappings_repository are invoked
+    THEN each returns its repository bound to the provided pool.
+    """
+    mock_pool = MagicMock(spec=AsyncConnectionPool)
+    jobs_repo = get_jobs_repository(pool=mock_pool)
+    mappings_repo = get_mappings_repository(pool=mock_pool)
+
+    assert isinstance(jobs_repo, JobsRepository)
+    assert isinstance(mappings_repo, MappingsRepository)

@@ -438,3 +438,32 @@ def test_settings_history_compression_defaults_and_env_overrides(monkeypatch: py
     assert overridden.anchor_strategy == "llm"
     assert overridden.compression_model == "reasoner-deep"
     assert overridden.session_max_anchor_pairs == 2
+
+
+def test_settings_persistence_defaults_and_kwargs_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    GIVEN default test settings and discrete POSTGRES_* environment overrides
+    WHEN Settings is instantiated and get_database_kwargs is called
+    THEN postgres_password defaults to None in test and configured values return masked kwargs.
+
+    :param monkeypatch: Pytest monkeypatch fixture.
+    """
+    default_settings = Settings(app_env=Environment.TEST)
+    assert default_settings.postgres_password is None
+    assert default_settings.get_database_kwargs() is None
+
+    monkeypatch.setenv("POSTGRES_HOST", "postgres")
+    monkeypatch.setenv("POSTGRES_PORT", "5432")
+    monkeypatch.setenv("POSTGRES_USER", "est_user")
+    monkeypatch.setenv("POSTGRES_PASSWORD", "p@ss:word/1 +a")
+    monkeypatch.setenv("POSTGRES_DB", "est_db")
+    overridden = Settings(app_env=Environment.TEST)
+    assert isinstance(overridden.postgres_password, SecretStr)
+    assert overridden.get_database_kwargs() == {
+        "host": "postgres",
+        "port": 5432,
+        "user": "est_user",
+        "password": "p@ss:word/1 +a",
+        "dbname": "est_db",
+    }
+    assert "p@ss:word/1 +a" not in repr(overridden)

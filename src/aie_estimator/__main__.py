@@ -1,6 +1,7 @@
 # src/aie_estimator/__main__.py
 
 # --- Python Standard Library ---
+import sys
 from typing import Final
 
 # --- Third Party Libraries ---
@@ -20,6 +21,10 @@ def main() -> None:
     """
     settings = get_settings()
     configure_logging(settings)
+    reload_enabled = settings.app_env != Environment.PROD
+    # On Windows without --reload, Uvicorn's "auto" loop selects ProactorEventLoop, which psycopg async rejects.
+    loop_setting = "asyncio:SelectorEventLoop" if sys.platform == "win32" and not reload_enabled else "auto"
+
     log.info(
         "uvicorn_server_startup_initiated",
         server_host=settings.server_host,
@@ -32,8 +37,9 @@ def main() -> None:
         factory=True,
         host=settings.server_host,
         port=settings.server_port,
+        loop=loop_setting,
         log_level=settings.log_level.lower(),
-        reload=settings.app_env != Environment.PROD,
+        reload=reload_enabled,
         reload_dirs=["src/aie_estimator"],
         log_config=None,
     )

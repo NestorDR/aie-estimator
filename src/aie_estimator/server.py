@@ -11,6 +11,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
+import psycopg
 import structlog
 
 # --- App modules ---
@@ -18,6 +19,8 @@ from aie_estimator.attachments.extractor import AttachmentExtractionError
 from aie_estimator.guardrails.input import InputGuardrailViolation
 from aie_estimator.logging import configure_logging
 from aie_estimator.model_catalog import get_supported_models
+from aie_estimator.persistence.database import close_pool, open_pool
+from aie_estimator.persistence.repositories.jobs import JobsRepository
 from aie_estimator.routers import estimations_router, health_router, sessions_router
 from aie_estimator.services.cache import get_exact_cache, get_semantic_cache
 from aie_estimator.services.exceptions import LLMProviderError
@@ -100,18 +103,19 @@ class Server:
         :param app: FastAPI application instance.
         :return: Asynchronous context manager managing application lifespan.
         """
-        db_pool = None
+        app.state.db_pool = None
         try:
             # Initialize OpenTelemetry TracerProvider
             setup_telemetry(self.settings)
-            
+
             self.log.info("api_startup_initiated", app_version=self.settings.app_version)
 
-            # Create a DB connection pool on startup
-            # db_pool = await create_pool(self.settings)
-            # if not db_pool:
-            #     self.log.critical("database_pool_initialization_failed", error=f"create_pool returned a falsy value. {e!r}", exc_info=e)
-            #     raise RuntimeError("Database pool initialization failed: create_pool returned a falsy value.")
+            if self.settings.get_database_kwargs() is not None:
+                db_pool = await open_pool(self.settings)
+                app.state.db_pool = db_pool
+                await JobsRepository(db_pool).fail_stale_jobs()
+            else:
+                self.log.info("database_pool_skipped")
 
             app.state.settings = self.settings
 
@@ -123,7 +127,6 @@ class Server:
             yield  # Application runs here
 
         except ConnectionError as e:
-            self.log.critical("database_pool_failed", error=repr(e), exc_info=e)
             raise RuntimeError("Application startup failed to establish database connection pool.") from e
 
         except Exception as e:
@@ -133,9 +136,8 @@ class Server:
         finally:
             # Shutdown sequence
             self.log.info("application_shutdown_initiated")
-            if db_pool:
-                await db_pool.close()
-                self.log.info("database_pool_closed")
+            await close_pool(app.state.db_pool)
+            app.state.db_pool = None
             if self.settings.enable_exact_cache:
                 exact_cache = get_exact_cache()
                 if exact_cache:
@@ -271,13 +273,21 @@ class Server:
                 content={"detail": f"Database service unavailable: {e!r}"},
             )
 
-        # @app.exception_handler(psycopg.Error)
-        # async def psycopg_exception_handler(request: Request, e: psycopg.Error):
-        #     self.log.exception("database_error_unhandled", error=f"{e!r} (SQLSTATE: {e.sqlstate})", exc_info=e)
-        #     return JSONResponse(
-        #         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        #         content={"detail": f"A database error: {e!r}"},
-        #     )
+        @app.exception_handler(psycopg.Error)
+        async def psycopg_exception_handler(request: Request, e: psycopg.Error) -> JSONResponse:
+            """
+            Handle unhandled PostgreSQL driver errors and return structured HTTP 503 responses.
+
+            :param request: Incoming HTTP request during which the database error occurred.
+            :param e: Raised psycopg.Error instance.
+
+            :return: JSONResponse indicating database service unavailability.
+            """
+            self.log.exception("database_error_unhandled", error=repr(e), sqlstate=e.sqlstate, exc_info=e)
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                content={"detail": "Database service unavailable"},
+            )
 
         @app.exception_handler(LLMProviderError)
         async def llm_provider_exception_handler(request: Request, e: LLMProviderError) -> JSONResponse:

@@ -14,6 +14,8 @@ AIE Estimator processes software project descriptions and domain parameters (`pr
 
 - **Schemas** ([`src/aie_estimator/schemas/`](src/aie_estimator/schemas/)): Pydantic v2 contracts (`EstimationRequest`, `EstimationResponse`, `DeveloperEstimation`, `PmEstimation`, `ExecutiveEstimation`, `ACBResponse`, `CreateSessionResponse`, `SessionInfoResponse`).
 - **Attachments** ([`src/aie_estimator/attachments/`](src/aie_estimator/attachments/)): Local text extraction (`.pdf`, `.docx`, `.txt`, `.md`), per-file and per-turn character budgets, and XML delimiter wrapping.
+- **Ingestion** ([`src/aie_estimator/ingestion/`](src/aie_estimator/ingestion/)): Offline corpus ingestion package boundary separated from the latency-bound online CAG estimation path.
+- **Persistence** ([`src/aie_estimator/persistence/`](src/aie_estimator/persistence/)): Async raw-SQL PostgreSQL pool (`psycopg_pool.AsyncConnectionPool`), versioned `.sql` delta migrations (`migrate.py`), and `JobsRepository` / `MappingsRepository`.
 - **Sessions** ([`src/aie_estimator/sessions/`](src/aie_estimator/sessions/)): In-memory conversational session store, `ConversationHistory` with bounded anchor compression, 6-field `ProjectMetadata`, and post-turn metadata extractor.
 - **Routers** ([`src/aie_estimator/routers/`](src/aie_estimator/routers/)): HTTP routes (`POST /api/v1/estimate`, `POST /api/v1/sessions`, `GET /api/v1/sessions/{session_id}`, `POST /api/v1/sessions/{session_id}/estimate`, `POST /api/v1/sessions/{session_id}/estimate-acb`, `GET /health`, `GET /`).
 - **Guardrails** ([`src/aie_estimator/guardrails/`](src/aie_estimator/guardrails/)): Input validation (`omni-moderation-latest`, prompt injection, PII heuristics) and low-confidence output normalization.
@@ -71,7 +73,10 @@ aie-estimator/
 │       ├── telemetry.py                # OpenTelemetry TracerProvider and structlog context injection
 │       ├── llm_profiles.yml            # LiteLLM router profiles, tiers, and telemetry config
 │       ├── .env.example                # Example environment configuration
+│       ├── attachments/                # Local attachment text extraction and character budgets
 │       ├── guardrails/                 # Defense-in-depth semantic validation
+│       ├── ingestion/                  # Offline corpus ingestion pipeline boundary
+│       ├── persistence/                # Async raw-SQL PostgreSQL pool, migrations, and repositories
 │       ├── prompts/                    # Jinja2 prompt templates and loader
 │       ├── schemas/                    # Pydantic request/response contracts
 │       ├── sessions/                   # Conversational session state, history window, and store
@@ -94,7 +99,7 @@ aie-estimator/
 ## Requirements
 
 - Python >= 3.14 and [`uv`](https://docs.astral.sh/uv/)
-- Docker / Docker Compose (for Redis cache, Redis Insight, and Arize Phoenix)
+- Docker / Docker Compose (for Redis cache, Redis Insight, PostgreSQL `pgvector:pg17`, and Arize Phoenix)
 - Provider API keys (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, etc.)
 
 ## Installation & Setup
@@ -114,14 +119,20 @@ aie-estimator/
 
 Start infrastructure services from the project root using [`auto/dc.cmd`](auto/dc.cmd):
 
-- **Development** (Redis `:6379`, Redis Insight `:5540`, Arize Phoenix `:6006`, OTLP `:4317`/`4318` via [`docker/docker-compose.dev.yml`](docker/docker-compose.dev.yml)):
+- **Development** (Redis `:6379`, Redis Insight `:5540`, PostgreSQL `:5432`, Arize Phoenix `:6006`, OTLP `:4317`/`4318` via [`docker/docker-compose.dev.yml`](docker/docker-compose.dev.yml)):
   ```cmd
   auto\dc.cmd dev
   ```
-- **Production** (Multi-stage FastAPI image + Redis + Arize Phoenix via [`docker/docker-compose.prod.yml`](docker/docker-compose.prod.yml)):
+- **Production** (Multi-stage FastAPI image + Redis + PostgreSQL + Arize Phoenix via [`docker/docker-compose.prod.yml`](docker/docker-compose.prod.yml)):
   ```cmd
   auto\dc.cmd prod
   ```
+
+When `POSTGRES_*` credentials are configured, apply pending SQL migrations before starting the API:
+
+```bash
+uv run python -m aie_estimator.persistence.migrate
+```
 
 ### Local Development Services
 
@@ -170,6 +181,7 @@ Architecture and feature guides in [`docs/`](docs/):
 - [Actor-Critic-Boss Role Composition](docs/actor-critic-boss.md): Bounded Actor generation, structured Critic auditing, and deterministic Boss governance.
 - [API Schemas & Data Contracts](docs/api-schemas.md): Request/response schemas, validators, and HTTP 400 guardrail contracts.
 - [Attachment Ingestion](docs/attachment-ingestion.md): Local `.pdf`/`.docx`/`.txt`/`.md` text extraction, budgets, and XML prompt-injection delimiting.
+- [CAG-RAG Pipeline Boundary](docs/cag-rag-boundary.md): Online static/session CAG vs. offline ingestion boundary, execution model, and telemetry contracts.
 - [CAG Stress Testing](docs/cag-stress-testing.md): Synthetic 20-turn scenarios, deterministic budget/drift metrics, and async stress runner.
 - [Conversational Sessions](docs/conversational-sessions.md): In-memory session lifecycle, bounded sliding-window history, and `ProjectMetadata` merging.
 - [Dependency Injection & App Factory](docs/dependency-injection-and-app-factory.md): Application factory, composition root, and test dependency overrides.
@@ -178,6 +190,7 @@ Architecture and feature guides in [`docs/`](docs/):
 - [LLM Evaluation Harness](docs/llm-evaluation.md): Golden Dataset, Family 1-3 evaluators, and isolated CLI runner.
 - [Model Catalog](docs/model-catalog.md): Externalized model registry, logical profiles, and OpenAPI enrichment.
 - [Observability](docs/observability.md): Structlog event taxonomy, OpenTelemetry context injection, and Arize Phoenix tracing.
+- [PostgreSQL Persistence](docs/postgres-persistence.md): Async `psycopg_pool` lifecycle, versioned `.sql` delta migrations, and `JobsRepository` / `MappingsRepository`.
 - [Prompt Engine](docs/prompt-engine.md): Versioned Jinja2 templates and decoupled prompt/API versioning.
 - [Reasoning Profiles](docs/reasoning-profiles.md): Reasoning effort normalization, two-level failover, and credential pruning.
 - [Semantic Response Caching](docs/semantic-response-caching.md): Tier 1 exact SHA-256 cache, Tier 2 RediSearch vector cache, and shadow mode.

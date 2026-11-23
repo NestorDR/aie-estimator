@@ -1,8 +1,10 @@
 # tests/conftest.py
 
 # --- Python Standard Library ---
+import asyncio
 from collections.abc import Callable, Generator
 import io
+import sys
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -151,6 +153,18 @@ def app(monkeypatch: pytest.MonkeyPatch) -> Generator[FastAPI, None, None]:
     test_app.dependency_overrides.clear()
 
 
+@pytest.fixture(scope="session")
+def anyio_backend() -> str | tuple[str, dict[str, Any]]:
+    """
+    Configure anyio to use SelectorEventLoop on Windows for psycopg async compatibility.
+
+    :return: AnyIO backend configuration string or (backend, options) tuple.
+    """
+    if sys.platform == "win32":
+        return ("asyncio", {"loop_factory": asyncio.SelectorEventLoop})
+    return "asyncio"
+
+
 @pytest.fixture
 def client(app: FastAPI) -> Generator[TestClient, None, None]:
     """
@@ -159,7 +173,8 @@ def client(app: FastAPI) -> Generator[TestClient, None, None]:
     :param app: The FastAPI application fixture.
     :return: Active TestClient instance.
     """
-    with TestClient(app) as test_client:
+    backend_options = {"loop_factory": asyncio.SelectorEventLoop} if sys.platform == "win32" else None
+    with TestClient(app, backend_options=backend_options) as test_client:
         yield test_client
 
 

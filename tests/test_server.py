@@ -2,10 +2,13 @@
 
 # --- Python Standard Library ---
 from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # --- Third Party Libraries ---
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+import psycopg
+from pydantic import SecretStr
 import pytest
 
 # --- App modules ---
@@ -73,8 +76,9 @@ def test_server_llm_provider_error_handler(
     [
         (RuntimeError("Fatal memory segmentation or hardware error."), 500, "Unexpected server error"),
         (ConnectionError("Connection pool refused."), 503, "Database service unavailable"),
+        (psycopg.OperationalError("PostgreSQL connection lost."), 503, "Database service unavailable"),
     ],
-    ids=["unhandled_runtime_error", "connection_error"],
+    ids=["unhandled_runtime_error", "connection_error", "psycopg_error"],
 )
 def test_server_unhandled_exception_handler(
     app: FastAPI,
@@ -224,4 +228,68 @@ def test_server_attachment_exception_handler(
     assert detail["reason"] == expected_reason
     assert detail["filename"] == expected_filename
     assert error.message in detail["message"]
+
+
+def test_server_lifespan_skips_database_when_unconfigured(app: FastAPI) -> None:
+    """
+    GIVEN default test settings with postgres_password set to None
+    WHEN TestClient enters and exits the lifespan context
+    THEN app.state.db_pool remains None without attempting PostgreSQL connections.
+
+    :param app: Configured FastAPI test application fixture.
+    """
+    with TestClient(app) as test_client:
+        assert test_client.app.state.db_pool is None  # type: ignore[union-attr]
+
+
+def test_server_lifespan_opens_recovers_stale_jobs_and_closes_pool(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    GIVEN Settings with postgres_password configured
+    WHEN Server lifespan starts and shuts down
+    THEN open_pool runs, fail_stale_jobs recovers orphaned rows, and close_pool cleans up on exit.
+
+    :param monkeypatch: Pytest monkeypatch fixture.
+    """
+    monkeypatch.setattr(
+        "aie_estimator.services.cache.semantic.EstimationSemanticCache.initialize_index",
+        AsyncMock(return_value=None),
+    )
+    mock_pool = MagicMock()
+    mock_open = AsyncMock(return_value=mock_pool)
+    mock_close = AsyncMock(return_value=None)
+    mock_fail_stale = AsyncMock(return_value=1)
+
+    settings = Settings(openai_api_key="test-key", postgres_password=SecretStr("pass"))
+    test_app = create_app(settings)
+
+    with (
+        patch("aie_estimator.server.open_pool", mock_open),
+        patch("aie_estimator.server.close_pool", mock_close),
+        patch("aie_estimator.server.JobsRepository.fail_stale_jobs", mock_fail_stale),
+        TestClient(test_app) as test_client,
+    ):
+        assert test_client.app.state.db_pool is mock_pool  # type: ignore[union-attr]
+
+    mock_open.assert_awaited_once_with(settings)
+    mock_fail_stale.assert_awaited_once()
+    mock_close.assert_awaited_once_with(mock_pool)
+    assert test_app.state.db_pool is None
+
+
+def test_server_lifespan_raises_runtime_error_when_open_pool_fails() -> None:
+    """
+    GIVEN Settings with postgres_password configured when open_pool raises ConnectionError
+    WHEN TestClient starts the application lifespan
+    THEN RuntimeError is raised during startup.
+    """
+    settings = Settings(openai_api_key="test-key", postgres_password=SecretStr("pass"))
+    test_app = create_app(settings)
+
+    with (
+        patch("aie_estimator.server.open_pool", AsyncMock(side_effect=ConnectionError("Pool refused"))),
+        patch("aie_estimator.server.close_pool", AsyncMock(return_value=None)),
+        pytest.raises(RuntimeError, match=r"database connection pool"),
+        TestClient(test_app),
+    ):
+        pass
 

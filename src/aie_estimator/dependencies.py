@@ -5,12 +5,15 @@ from functools import lru_cache
 from typing import Final
 
 # --- Third Party Libraries ---
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from openai import AsyncOpenAI
+from psycopg_pool import AsyncConnectionPool
 import structlog
 
 # --- App modules ---
 from aie_estimator.guardrails.input import get_moderation_client
+from aie_estimator.persistence.repositories.jobs import JobsRepository
+from aie_estimator.persistence.repositories.mappings import MappingsRepository
 from aie_estimator.services.boss_service import Boss
 from aie_estimator.services.cache import (
     EstimationExactCache,
@@ -162,3 +165,44 @@ def get_caller_tier(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unknown tier '{x_user_tier}'. Expected one of: developer, pm, executive.",
         ) from e
+
+
+def get_db_pool(request: Request) -> AsyncConnectionPool:
+    """
+    Resolve the lifespan-managed PostgreSQL connection pool from application state.
+
+    :param request: Incoming FastAPI HTTP request.
+
+    :return: Active AsyncConnectionPool instance.
+    :raises ConnectionError: If PostgreSQL persistence is disabled or unconfigured.
+    """
+    db_pool: AsyncConnectionPool | None = getattr(request.app.state, "db_pool", None)
+    if db_pool is None:
+        raise ConnectionError("PostgreSQL connection pool is not initialized.")
+    return db_pool
+
+
+def get_jobs_repository(
+    pool: AsyncConnectionPool = Depends(get_db_pool),
+) -> JobsRepository:
+    """
+    Construct a JobsRepository bound to the active PostgreSQL connection pool.
+
+    :param pool: Active AsyncConnectionPool resolved from application state.
+
+    :return: Configured JobsRepository instance.
+    """
+    return JobsRepository(pool)
+
+
+def get_mappings_repository(
+    pool: AsyncConnectionPool = Depends(get_db_pool),
+) -> MappingsRepository:
+    """
+    Construct a MappingsRepository bound to the active PostgreSQL connection pool.
+
+    :param pool: Active AsyncConnectionPool resolved from application state.
+
+    :return: Configured MappingsRepository instance.
+    """
+    return MappingsRepository(pool)

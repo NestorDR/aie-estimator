@@ -81,6 +81,13 @@ class Settings(BaseSettings):
     semantic_cache_log_only: bool = False
     semantic_cache_ttl: int = SECONDS_PER_DAY
 
+    # Persistence settings
+    postgres_host: str = "localhost"
+    postgres_port: int = Field(default=5432, gt=0)
+    postgres_user: str = "estimator"
+    postgres_password: SecretStr | None = None
+    postgres_db: str = "estimator"
+
     # Attachment ingestion settings
     max_attachments_per_turn: int = Field(default=5, gt=0)
     max_attachment_bytes: int = Field(default=5_242_880, gt=0)  # 5 MB
@@ -197,6 +204,22 @@ class Settings(BaseSettings):
 
         if self.litellm_local_model_cost_map and not environ.get("LITELLM_LOCAL_MODEL_COST_MAP"):
             environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
+
+    def get_database_kwargs(self) -> dict[str, str | int] | None:
+        """
+        Return PostgreSQL connection keyword arguments when credentials are configured.
+
+        :return: Connection kwargs dictionary when postgres_password is set, or None otherwise.
+        """
+        if self.postgres_password is None:
+            return None
+        return {
+            "host": self.postgres_host,
+            "port": self.postgres_port,
+            "user": self.postgres_user,
+            "password": self.postgres_password.get_secret_value(),
+            "dbname": self.postgres_db,
+        }
 
     def configure_logging(self) -> None:
         """
