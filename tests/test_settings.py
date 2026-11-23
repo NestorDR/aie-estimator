@@ -467,3 +467,25 @@ def test_settings_persistence_defaults_and_kwargs_resolution(monkeypatch: pytest
         "dbname": "est_db",
     }
     assert "p@ss:word/1 +a" not in repr(overridden)
+
+
+def test_settings_catalog_paths_defaults_and_overrides(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """
+    GIVEN default test settings and INGESTION_DATA_ROOT / CATALOG_PATH overrides
+    WHEN Settings is instantiated
+    THEN defaults resolve to data/seed and data/catalog/catalog.yaml and env overrides take effect.
+
+    :param monkeypatch: Pytest monkeypatch fixture.
+    :param tmp_path: Temporary directory fixture.
+    """
+    default_settings = Settings(app_env=Environment.TEST)
+    assert default_settings.ingestion_data_root == Path("data/seed")
+    assert default_settings.catalog_path == Path("data/catalog/catalog.yaml")
+
+    custom_root = tmp_path / "custom_seed"
+    custom_catalog = tmp_path / "custom.yaml"
+    monkeypatch.setenv("INGESTION_DATA_ROOT", str(custom_root))
+    monkeypatch.setenv("CATALOG_PATH", str(custom_catalog))
+    overridden = Settings(app_env=Environment.TEST)
+    assert overridden.ingestion_data_root == custom_root
+    assert overridden.catalog_path == custom_catalog

@@ -1,5 +1,9 @@
 # src/aie_estimator/schemas/acb.py
 
+"""
+DTOs for the Actor-Critic-Boss audit trail.
+"""
+
 # --- Python Standard Library ---
 from typing import Final, Literal, Self
 

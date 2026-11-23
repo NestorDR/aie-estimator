@@ -88,6 +88,10 @@ class Settings(BaseSettings):
     postgres_password: SecretStr | None = None
     postgres_db: str = "estimator"
 
+    # Offline catalog & ingestion settings
+    catalog_path: Path = Path("data/catalog/catalog.yaml")
+    ingestion_data_root: Path = Path("data/seed")
+
     # Attachment ingestion settings
     max_attachments_per_turn: int = Field(default=5, gt=0)
     max_attachment_bytes: int = Field(default=5_242_880, gt=0)  # 5 MB

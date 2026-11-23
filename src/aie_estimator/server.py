@@ -17,11 +17,12 @@ import structlog
 # --- App modules ---
 from aie_estimator.attachments.extractor import AttachmentExtractionError
 from aie_estimator.guardrails.input import InputGuardrailViolation
+from aie_estimator.ingestion.orchestrator import IngestionRejected
 from aie_estimator.logging import configure_logging
 from aie_estimator.model_catalog import get_supported_models
 from aie_estimator.persistence.database import close_pool, open_pool
 from aie_estimator.persistence.repositories.jobs import JobsRepository
-from aie_estimator.routers import estimations_router, health_router, sessions_router
+from aie_estimator.routers import estimations_router, health_router, ingestion_router, sessions_router
 from aie_estimator.services.cache import get_exact_cache, get_semantic_cache
 from aie_estimator.services.exceptions import LLMProviderError
 from aie_estimator.sessions.store import SessionNotFoundError
@@ -104,9 +105,10 @@ class Server:
         :return: Asynchronous context manager managing application lifespan.
         """
         app.state.db_pool = None
+        tracer_provider = None
         try:
             # Initialize OpenTelemetry TracerProvider
-            setup_telemetry(self.settings)
+            tracer_provider = setup_telemetry(self.settings)
 
             self.log.info("api_startup_initiated", app_version=self.settings.app_version)
 
@@ -148,6 +150,8 @@ class Server:
                 if semantic_cache:
                     await semantic_cache.close()
                     self.log.info("cache_closed cache=semantic")
+            if tracer_provider is not None:
+                tracer_provider.shutdown()
             self.log.info("api_shutdown_completed")
 
     def _register_routers(self, app: FastAPI) -> None:
@@ -159,6 +163,7 @@ class Server:
         app.include_router(health_router.router)
         app.include_router(estimations_router.router)
         app.include_router(sessions_router.router)
+        app.include_router(ingestion_router.router)
 
         # Root endpoint
         @app.get("/", tags=["Root"])
@@ -192,6 +197,26 @@ class Server:
             """
             self.log.info(
                 "estimation_blocked_by_input_guardrail",
+                reason=e.reason,
+                message=e.message,
+            )
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"detail": {"reason": e.reason, "message": e.message}},
+            )
+
+        @app.exception_handler(IngestionRejected)
+        async def ingestion_rejected_exception_handler(request: Request, e: IngestionRejected) -> JSONResponse:
+            """
+            Handle rejected offline ingestion requests with structured HTTP 400 responses.
+
+            :param request: Incoming HTTP request targeting a non-included catalog source.
+            :param e: IngestionRejected instance.
+
+            :return: JSONResponse containing rejection reason and message.
+            """
+            self.log.info(
+                "ingestion_run_rejected",
                 reason=e.reason,
                 message=e.message,
             )

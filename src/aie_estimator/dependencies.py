@@ -12,6 +12,10 @@ import structlog
 
 # --- App modules ---
 from aie_estimator.guardrails.input import get_moderation_client
+from aie_estimator.ingestion.catalog.loader import load_catalog
+from aie_estimator.ingestion.catalog.models import DataCatalog
+from aie_estimator.ingestion.loaders.filesystem import FileSystemLoader
+from aie_estimator.ingestion.parsers.registry import ParserRegistry, default_registry
 from aie_estimator.persistence.repositories.jobs import JobsRepository
 from aie_estimator.persistence.repositories.mappings import MappingsRepository
 from aie_estimator.services.boss_service import Boss
@@ -206,3 +210,34 @@ def get_mappings_repository(
     :return: Configured MappingsRepository instance.
     """
     return MappingsRepository(pool)
+
+
+def get_catalog(settings: Settings = Depends(get_settings)) -> DataCatalog:
+    """
+    Load and validate the data-source catalog from disk for each resolution.
+
+    :param settings: Injected application configuration settings.
+
+    :return: Validated DataCatalog snapshot.
+    """
+    return load_catalog(settings.catalog_path)
+
+
+def get_filesystem_loader(settings: Settings = Depends(get_settings)) -> FileSystemLoader:
+    """
+    Construct a FileSystemLoader rooted at ``Settings.ingestion_data_root``.
+
+    :param settings: Injected application configuration settings.
+
+    :return: Configured FileSystemLoader instance.
+    """
+    return FileSystemLoader(settings.ingestion_data_root)
+
+
+def get_parser_registry() -> ParserRegistry:
+    """
+    Return the default ParserRegistry configured with built-in format parsers.
+
+    :return: Configured ParserRegistry instance.
+    """
+    return default_registry()

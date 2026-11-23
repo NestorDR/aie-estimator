@@ -1,0 +1,7 @@
+[10:00:12] Laura Fernández: Good morning, thanks for joining. I am here to review the final phase of budget BUDGET-2024-0001 that we signed in February.
+[10:00:48] Diego Marín: Hi Laura. I have client code CLI-0042 open. Remind me of the current deployment status.
+[10:01:30] Laura Fernández: It is in pre-production. The pilot starts next week with a team of fifteen people. The operational contact on our side will be Javier Romero, though I have not onboarded him yet.
+[10:02:10] Diego Marín: I need an email address to send the credentials to. Is laura.fernandez@acme.es still the right one?
+[10:02:32] Laura Fernández: Yes, that is the one. And for automated alerts please create an alias soporte-acme@acme.es. I do not want notifications sent to my personal account.
+[10:03:15] Diego Marín: Done. One last thing: I need you to confirm the billing address because the proforma invoice still lacks a street. The main office is in Madrid, but delivery was for the Bilbao site, right?
+[10:03:48] Laura Fernández: Correct, delivery in Bilbao. I will send you the billing address in writing tomorrow. Let's wrap up here.

@@ -14,10 +14,10 @@ AIE Estimator processes software project descriptions and domain parameters (`pr
 
 - **Schemas** ([`src/aie_estimator/schemas/`](src/aie_estimator/schemas/)): Pydantic v2 contracts (`EstimationRequest`, `EstimationResponse`, `DeveloperEstimation`, `PmEstimation`, `ExecutiveEstimation`, `ACBResponse`, `CreateSessionResponse`, `SessionInfoResponse`).
 - **Attachments** ([`src/aie_estimator/attachments/`](src/aie_estimator/attachments/)): Local text extraction (`.pdf`, `.docx`, `.txt`, `.md`), per-file and per-turn character budgets, and XML delimiter wrapping.
-- **Ingestion** ([`src/aie_estimator/ingestion/`](src/aie_estimator/ingestion/)): Offline corpus ingestion package boundary separated from the latency-bound online CAG estimation path.
+- **Ingestion** ([`src/aie_estimator/ingestion/`](src/aie_estimator/ingestion/)): Offline corpus ingestion package (`catalog/`, `documents/`, `loaders/`, `parsers/`, `normalizers/`, `orchestrator.py`) separated from the latency-bound online CAG estimation path.
 - **Persistence** ([`src/aie_estimator/persistence/`](src/aie_estimator/persistence/)): Async raw-SQL PostgreSQL pool (`psycopg_pool.AsyncConnectionPool`), versioned `.sql` delta migrations (`migrate.py`), and `JobsRepository` / `MappingsRepository`.
 - **Sessions** ([`src/aie_estimator/sessions/`](src/aie_estimator/sessions/)): In-memory conversational session store, `ConversationHistory` with bounded anchor compression, 6-field `ProjectMetadata`, and post-turn metadata extractor.
-- **Routers** ([`src/aie_estimator/routers/`](src/aie_estimator/routers/)): HTTP routes (`POST /api/v1/estimate`, `POST /api/v1/sessions`, `GET /api/v1/sessions/{session_id}`, `POST /api/v1/sessions/{session_id}/estimate`, `POST /api/v1/sessions/{session_id}/estimate-acb`, `GET /health`, `GET /`).
+- **Routers** ([`src/aie_estimator/routers/`](src/aie_estimator/routers/)): HTTP routes (`POST /api/v1/estimate`, `POST /api/v1/sessions`, `GET /api/v1/sessions/{session_id}`, `POST /api/v1/sessions/{session_id}/estimate`, `POST /api/v1/sessions/{session_id}/estimate-acb`, `POST /api/v1/ingestion/runs`, `GET /api/v1/ingestion/jobs/{job_id}`, `GET /health`, `GET /`).
 - **Guardrails** ([`src/aie_estimator/guardrails/`](src/aie_estimator/guardrails/)): Input validation (`omni-moderation-latest`, prompt injection, PII heuristics) and low-confidence output normalization.
 - **Services** ([`src/aie_estimator/services/`](src/aie_estimator/services/)): Estimation orchestration, two-tier Redis caching (Tier 1 exact SHA-256, Tier 2 RediSearch vector similarity), and multi-provider dispatch with intra-tier rotation and cross-tier failover.
 - **Prompts** ([`src/aie_estimator/prompts/`](src/aie_estimator/prompts/)): Versioned Jinja2 templates (`estimation/v3`, `metadata_extraction/v1`, `conversation_summary/v1`, `critic/v1`) and loader.
@@ -56,6 +56,7 @@ flowchart TD
 ```
 aie-estimator/
 ├── auto/                               # Developer automation scripts (dev.cmd, stl.cmd, dc.cmd, eval.cmd, test.cmd, lint.cmd, etc.)
+├── data/                               # Versioned data catalog and synthetic seed corpus
 ├── docker/                             # Containerization and Compose configurations
 ├── docs/                               # Architecture and feature guides
 ├── evals/                              # Golden Dataset and Family 1-3 LLM evaluation harness
@@ -161,6 +162,8 @@ Interactive documentation is available at `http://localhost:8000/docs` (Swagger 
 | `GET` | `/api/v1/sessions/{session_id}` | Inspects session turn counts, `ProjectMetadata`, and TTL timestamps |
 | `POST` | `/api/v1/sessions/{session_id}/estimate` | Executes a multi-turn `multipart/form-data` estimation with optional attachments |
 | `POST` | `/api/v1/sessions/{session_id}/estimate-acb` | Executes a bounded Actor-Critic-Boss conversational estimation returning `BossTrace` |
+| `POST` | `/api/v1/ingestion/runs` | Queues an offline ingestion run for an `include` catalog source (`202 Accepted`) |
+| `GET` | `/api/v1/ingestion/jobs/{job_id}` | Inspects the persisted status and document count of an ingestion job |
 
 See [API Schemas & Data Contracts](docs/api-schemas.md) and [Conversational Sessions](docs/conversational-sessions.md) for payload contracts, multipart examples, and error mappings.
 
@@ -189,6 +192,7 @@ Architecture and feature guides in [`docs/`](docs/):
 - [Guardrails & Semantic Validation](docs/guardrails.md): Input moderation/injection/PII checks and output low-confidence normalization.
 - [LLM Evaluation Harness](docs/llm-evaluation.md): Golden Dataset, Family 1-3 evaluators, and isolated CLI runner.
 - [Model Catalog](docs/model-catalog.md): Externalized model registry, logical profiles, and OpenAPI enrichment.
+- [Multi-Format Ingestion Pipeline](docs/multi-format-ingestion.md): Canonical `Document` contract, `loaders -> parsers -> normalizers` pipeline, and async ingestion HTTP control plane.
 - [Observability](docs/observability.md): Structlog event taxonomy, OpenTelemetry context injection, and Arize Phoenix tracing.
 - [PostgreSQL Persistence](docs/postgres-persistence.md): Async `psycopg_pool` lifecycle, versioned `.sql` delta migrations, and `JobsRepository` / `MappingsRepository`.
 - [Prompt Engine](docs/prompt-engine.md): Versioned Jinja2 templates and decoupled prompt/API versioning.
@@ -197,6 +201,7 @@ Architecture and feature guides in [`docs/`](docs/):
 - [Streamlit UI](docs/streamlit-conversational-ui.md): Session-only conversational chat UI, tier adaptation, ACB review toggle, multi-file upload, 404 recovery, and telemetry inspection.
 - [Testing Guidelines](docs/testing.md): Suite layout, shared fixtures, coverage gate, and Windows async execution policy.
 - [User Tier Adaptation](docs/user-tier-adaptation.md): Stakeholder tier resolution, `TIER_CONFIG` registry, modular `v3` templates, and tier-specific schemas.
+- [Versioned Data Catalog](docs/data-catalog.md): Audited YAML source catalog, filesystem census inspection, and Markdown audit reporting.
 
 ## CAG Stress Baseline and Conclusions
 

@@ -1,0 +1,15 @@
+{
+  "budget_id": "BUDGET-2024-0003",
+  "client_name": "TBD",
+  "client_code": "CLI-0103",
+  "currency": "EUR",
+  "total_amount": 18500,
+  "signed_at": "2024-05-02",
+  "phases": [
+    {"name": "Prototype", "weeks": 3, "amount": 9500},
+    {"name": "Gateway Integration", "weeks": 2, "amount": 9000}
+  ],
+  "contact": "N/A",
+  "contact_email": "",
+  "notes": "Client commercial close pending, unconfirmed."
+}

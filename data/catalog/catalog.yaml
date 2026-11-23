@@ -1,0 +1,87 @@
+# Repository Data Catalog (Session 6)
+# Validated by aie_estimator.ingestion.catalog.loader.load_catalog against DataCatalog.
+
+version: "1.0.0"
+description: >
+  Audited enterprise seed sources for offline ingestion.
+  Includes historical JSON budgets, holds mixed-format transcripts under review,
+  and excludes the obsolete 2024 rate card spreadsheet.
+
+sources:
+  - name: historical_budgets
+    description: >
+      Signed project budgets stored as JSON files.
+      Primary precedent corpus for similar-project estimation retrieval.
+    location: budgets
+    owners: ["sales@company.local"]
+    format: json
+    volume_estimate: "6 JSON files"
+    refresh_declared: "Weekly after commercial sign-off."
+    refresh_observed: "Initial seed load."
+    quality:
+      completeness: 4
+      consistency: 3
+      actuality: 5
+      reliability: 4
+    sensitivity:
+      has_pii: true
+      pii_flags: ["PERSON", "EMAIL", "BUDGET_ID", "CLIENT_CODE"]
+      access_level: confidential
+    lineage:
+      - "Exported from commercial CRM."
+      - "Approved by finance prior to signature."
+    decision: include
+    last_audited: 2026-11-23T00:00:00Z
+
+  - name: meeting_transcripts
+    description: >
+      Client scoping meeting transcripts in TXT format.
+      Coexists with legacy untagged transcripts from 2023.
+    location: transcripts
+    owners: ["delivery@company.local"]
+    format: txt
+    volume_estimate: "3 TXT files"
+    refresh_declared: "Weekly per client meeting."
+    refresh_observed: "Mixed: 2025 tagged transcript and 2023 untagged transcript."
+    quality:
+      completeness: 3
+      consistency: 2
+      actuality: 4
+      reliability: 3
+    sensitivity:
+      has_pii: true
+      pii_flags: ["PERSON", "EMAIL", "CLIENT_CODE", "LOCATION"]
+      access_level: confidential
+    lineage:
+      - "Captured via meeting transcription service."
+    decision: review
+    decision_reason: >
+      Pre-2024 untagged transcript breaks speaker-turn parsing. Awaiting
+      delivery sign-off on legacy fallback rules before promoting to include.
+    last_audited: 2026-11-23T00:00:00Z
+
+  - name: official_rate_card
+    description: >
+      Internal hourly rates per role and seniority in XLSX format.
+    location: rate_card_2024.xlsx
+    owners: ["operations@company.local"]
+    format: xlsx
+    volume_estimate: "1 workbook"
+    refresh_declared: "Annual direction review."
+    refresh_observed: "Last updated 2024-01-12; superseded by current pricing."
+    quality:
+      completeness: 4
+      consistency: 5
+      actuality: 1
+      reliability: 4
+    sensitivity:
+      has_pii: false
+      pii_flags: []
+      access_level: internal
+    lineage:
+      - "Maintained manually by operations."
+    decision: exclude
+    decision_reason: >
+      actuality=1: 2024 rate card contains obsolete pricing. Indexing it would
+      contaminate estimates with outdated rates until operations publishes an update.
+    last_audited: 2026-11-23T00:00:00Z

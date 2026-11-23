@@ -1,6 +1,7 @@
 # tests/test_dependencies.py
 
 # --- Python Standard Library ---
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -12,6 +13,7 @@ import pytest
 # --- App modules ---
 from aie_estimator.dependencies import (
     get_caller_tier,
+    get_catalog,
     get_db_pool,
     get_estimation_service,
     get_exact_cache,
@@ -30,7 +32,7 @@ from aie_estimator.services.cache import (
 from aie_estimator.services.estimations_service import EstimationService
 from aie_estimator.sessions.store import SessionStore
 from aie_estimator.sessions.tier_resolver import Tier
-from aie_estimator.settings import Settings
+from aie_estimator.settings import Environment, Settings
 
 
 def test_get_settings_returns_singleton() -> None:
@@ -213,3 +215,21 @@ def test_get_persistence_repositories_wire_pool() -> None:
 
     assert isinstance(jobs_repo, JobsRepository)
     assert isinstance(mappings_repo, MappingsRepository)
+
+
+def test_get_catalog_reloads_on_each_call(tmp_path: Path) -> None:
+    """
+    GIVEN a catalog YAML file updated on disk between get_catalog calls
+    WHEN get_catalog is called twice with the same Settings
+    THEN the second call reflects the updated file without process restart.
+    """
+    catalog_file = tmp_path / "catalog.yaml"
+    catalog_file.write_text('version: "1.0.0"\nsources: []\n', encoding="utf-8")
+    settings = Settings(app_env=Environment.TEST, catalog_path=catalog_file)
+
+    first = get_catalog(settings=settings)
+    assert first.version == "1.0.0"
+
+    catalog_file.write_text('version: "1.0.1"\nsources: []\n', encoding="utf-8")
+    second = get_catalog(settings=settings)
+    assert second.version == "1.0.1"
