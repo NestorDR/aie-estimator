@@ -9,6 +9,7 @@ in one module makes the contract easy to read against the router code.
 
 # --- Python Standard Library ---
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 # --- Third Party Libraries ---
@@ -45,6 +46,7 @@ class IngestionJobResponse(BaseModel):
     source_name: str
     status: JobStatus
     documents_count: int
+    validation_report: dict[str, Any] | None = None
     error_message: str | None
     started_at: datetime
     finished_at: datetime | None

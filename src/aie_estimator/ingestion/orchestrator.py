@@ -19,14 +19,33 @@ Three guarantees:
 
 # --- Python Standard Library ---
 from datetime import UTC, datetime
+from typing import Any
+
+# --- Third Party Libraries ---
+from pydantic import BaseModel, ConfigDict, Field
 
 # --- App modules ---
 from aie_estimator.ingestion.catalog.models import CatalogDecision, CatalogSource, DataCatalog
+from aie_estimator.ingestion.cleaning.budget_records import clean_budget_records, serialize_record_payload
+from aie_estimator.ingestion.cleaning.policy import validate_with_policy
+from aie_estimator.ingestion.cleaning.text import clean_text_documents
 from aie_estimator.ingestion.documents.models import Document
 from aie_estimator.ingestion.loaders.filesystem import FileSystemLoader
 from aie_estimator.ingestion.normalizers.canonical import normalize_documents
+from aie_estimator.ingestion.parsers.budget_json import BudgetJsonParser
 from aie_estimator.ingestion.parsers.protocol import ParseContext
 from aie_estimator.ingestion.parsers.registry import ParserRegistry
+from aie_estimator.persistence.repositories.quarantine import QuarantinedRecordInput
+
+
+class IngestionResult(BaseModel):
+    """Immutable outcome of a synchronous ingestion run."""
+
+    model_config = ConfigDict(frozen=True)
+
+    documents: list[Document]
+    quarantined: list[QuarantinedRecordInput] = Field(default_factory=list)
+    report: dict[str, Any] = Field(default_factory=dict)
 
 
 class IngestionRejected(Exception):  # noqa: N818
@@ -74,37 +93,68 @@ def ingest_source(
     source_name: str,
     loader: FileSystemLoader,
     registry: ParserRegistry,
-) -> list[Document]:
+) -> IngestionResult:
     """
-    Execute the ``loaders -> parsers -> normalizers`` pipeline for a single catalog source.
+    Execute ``loaders -> parsers -> cleaning -> normalizers`` for a single catalog source.
 
     :param catalog: Validated DataCatalog snapshot.
     :param source_name: Logical name of the source to ingest.
     :param loader: Filesystem loader resolving source blobs.
     :param registry: ParserRegistry providing the parser for ``source.format``.
 
-    :return: List of canonicalized Document instances.
+    :return: IngestionResult with canonical Documents, quarantined records, and validation report.
     :raises IngestionRejected: If the source is unknown or its decision is not ``include``.
     """
     source = require_included_source(catalog, source_name)
-
     parser = registry.get(source.format)
     context = ParseContext(
         source=source,
         source_version=catalog.version,
         ingested_at=datetime.now(UTC),
     )
+    blobs = list(loader.iter_blobs(source.location, {source.format}))
 
-    documents: list[Document] = []
-    for blob in loader.iter_blobs(source.location, {source.format}):
-        parsed = parser.parse(blob, context)
-        documents.extend(
-            normalize_documents(
-                parsed,
-                source=source,
-                source_version=context.source_version,
-                ingested_at=context.ingested_at,
-                source_location=blob.relative_path,
+    # Tabular JSON budgets must be cleaned, deduplicated, and validated as a batch
+    # before Markdown rendering so dirty values and divergent revisions never enter Document.text.
+    if isinstance(parser, BudgetJsonParser):
+        raw_records = [parser.decode_record(blob) for blob in blobs]
+        cleaned = clean_budget_records(raw_records)
+        validation = validate_with_policy(cleaned)
+        rendered_docs = [
+            parser.render_record(
+                serialize_record_payload(row),
+                source_location=str(row.get("_source_location") or source.location),
+                context=context,
             )
+            for _, row in validation.valid.iterrows()
+        ]
+        documents = normalize_documents(
+            rendered_docs,
+            source=source,
+            source_version=context.source_version,
+            ingested_at=context.ingested_at,
         )
-    return documents
+        return IngestionResult(
+            documents=documents,
+            quarantined=validation.quarantine_inputs,
+            report=validation.report,
+        )
+
+    parsed_docs: list[Document] = []
+    for blob in blobs:
+        for doc in parser.parse(blob, context):
+            # Stamp authoritative blob path before batch text cleaning and normalization.
+            parsed_docs.append(
+                doc.model_copy(
+                    update={"metadata": doc.metadata.model_copy(update={"source_location": blob.relative_path})}
+                )
+            )
+
+    text_result = clean_text_documents(parsed_docs)
+    normalized_docs = normalize_documents(
+        text_result.documents,
+        source=source,
+        source_version=context.source_version,
+        ingested_at=context.ingested_at,
+    )
+    return IngestionResult(documents=normalized_docs, quarantined=[], report=text_result.report)

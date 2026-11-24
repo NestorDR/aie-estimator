@@ -29,7 +29,7 @@ def normalize_documents(
     source: CatalogSource,
     source_version: str,
     ingested_at: datetime,
-    source_location: str,
+    source_location: str | None = None,
 ) -> list[Document]:
     """
     Canonicalize parsed Documents under authoritative catalog metadata and SHA-256 content hashes.
@@ -38,7 +38,7 @@ def normalize_documents(
     :param source: Authoritative CatalogSource entry governing the run.
     :param source_version: Active DataCatalog version string.
     :param ingested_at: UTC timestamp for the current ingestion run.
-    :param source_location: Resolved relative file path applied to each document.
+    :param source_location: Optional relative file path override applied to each document.
 
     :return: List of canonicalized Document instances.
     """
@@ -48,7 +48,7 @@ def normalize_documents(
             update={
                 "source_name": source.name,
                 "source_version": source_version,
-                "source_location": source_location,
+                "source_location": source_location if source_location is not None else document.metadata.source_location,
                 "ingested_at": ingested_at,
                 "lineage": source.lineage,
                 "contains_pii": source.sensitivity.has_pii,

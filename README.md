@@ -14,8 +14,8 @@ AIE Estimator processes software project descriptions and domain parameters (`pr
 
 - **Schemas** ([`src/aie_estimator/schemas/`](src/aie_estimator/schemas/)): Pydantic v2 contracts (`EstimationRequest`, `EstimationResponse`, `DeveloperEstimation`, `PmEstimation`, `ExecutiveEstimation`, `ACBResponse`, `CreateSessionResponse`, `SessionInfoResponse`).
 - **Attachments** ([`src/aie_estimator/attachments/`](src/aie_estimator/attachments/)): Local text extraction (`.pdf`, `.docx`, `.txt`, `.md`), per-file and per-turn character budgets, and XML delimiter wrapping.
-- **Ingestion** ([`src/aie_estimator/ingestion/`](src/aie_estimator/ingestion/)): Offline corpus ingestion package (`catalog/`, `documents/`, `loaders/`, `parsers/`, `normalizers/`, `orchestrator.py`) separated from the latency-bound online CAG estimation path.
-- **Persistence** ([`src/aie_estimator/persistence/`](src/aie_estimator/persistence/)): Async raw-SQL PostgreSQL pool (`psycopg_pool.AsyncConnectionPool`), versioned `.sql` delta migrations (`migrate.py`), and `JobsRepository` / `MappingsRepository`.
+- **Ingestion** ([`src/aie_estimator/ingestion/`](src/aie_estimator/ingestion/)): Offline corpus ingestion package (`catalog/`, `documents/`, `loaders/`, `parsers/`, `cleaning/`, `normalizers/`, `orchestrator.py`) separated from the latency-bound online CAG estimation path.
+- **Persistence** ([`src/aie_estimator/persistence/`](src/aie_estimator/persistence/)): Async raw-SQL PostgreSQL pool (`psycopg_pool.AsyncConnectionPool`), versioned `.sql` delta migrations (`migrate.py`), and `JobsRepository` / `MappingsRepository` / `QuarantinedRecordsRepository`.
 - **Sessions** ([`src/aie_estimator/sessions/`](src/aie_estimator/sessions/)): In-memory conversational session store, `ConversationHistory` with bounded anchor compression, 6-field `ProjectMetadata`, and post-turn metadata extractor.
 - **Routers** ([`src/aie_estimator/routers/`](src/aie_estimator/routers/)): HTTP routes (`POST /api/v1/estimate`, `POST /api/v1/sessions`, `GET /api/v1/sessions/{session_id}`, `POST /api/v1/sessions/{session_id}/estimate`, `POST /api/v1/sessions/{session_id}/estimate-acb`, `POST /api/v1/ingestion/runs`, `GET /api/v1/ingestion/jobs/{job_id}`, `GET /health`, `GET /`).
 - **Guardrails** ([`src/aie_estimator/guardrails/`](src/aie_estimator/guardrails/)): Input validation (`omni-moderation-latest`, prompt injection, PII heuristics) and low-confidence output normalization.
@@ -187,6 +187,7 @@ Architecture and feature guides in [`docs/`](docs/):
 - [CAG-RAG Pipeline Boundary](docs/cag-rag-boundary.md): Online static/session CAG vs. offline ingestion boundary, execution model, and telemetry contracts.
 - [CAG Stress Testing](docs/cag-stress-testing.md): Synthetic 20-turn scenarios, deterministic budget/drift metrics, and async stress runner.
 - [Conversational Sessions](docs/conversational-sessions.md): In-memory session lifecycle, bounded sliding-window history, and `ProjectMetadata` merging.
+- [Data Cleaning, Normalization & Schema Validation](docs/data-cleaning-validation.md): Tabular/text cleaning, content-hash deduplication, Pandera validation, and idempotent quarantine routing.
 - [Dependency Injection & App Factory](docs/dependency-injection-and-app-factory.md): Application factory, composition root, and test dependency overrides.
 - [Estimations Service & Providers](docs/estimations-service.md): Orchestration, LiteLLM/native dispatch, Instructor extraction, and multi-layer retries.
 - [Guardrails & Semantic Validation](docs/guardrails.md): Input moderation/injection/PII checks and output low-confidence normalization.

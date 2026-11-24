@@ -22,11 +22,18 @@ def test_list_migration_scripts_includes_initial_schema_without_connect_command(
     scripts = list_migration_scripts()
     versions = [version for version, _ in scripts]
     assert "0001_initial_schema.sql" in versions
+    assert "0002_quarantine_and_validation_report.sql" in versions
 
     initial_sql = dict(scripts)["0001_initial_schema.sql"]
     assert "ingestion_jobs" in initial_sql
     assert "pseudonym_mappings" in initial_sql
     assert "\\connect" not in initial_sql
+
+    quarantine_sql = dict(scripts)["0002_quarantine_and_validation_report.sql"]
+    assert "validation_report" in quarantine_sql
+    assert "quarantined_records" in quarantine_sql
+    assert "uq_quarantined_source_key_hash" in quarantine_sql
+    assert "\\connect" not in quarantine_sql
 
 
 def test_apply_migrations_executes_only_pending_versions() -> None:

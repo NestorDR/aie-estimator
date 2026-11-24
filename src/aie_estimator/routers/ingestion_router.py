@@ -26,12 +26,14 @@ from aie_estimator.dependencies import (
     get_filesystem_loader,
     get_jobs_repository,
     get_parser_registry,
+    get_quarantined_records_repository,
 )
 from aie_estimator.ingestion.catalog.models import DataCatalog
 from aie_estimator.ingestion.loaders.filesystem import FileSystemLoader
 from aie_estimator.ingestion.orchestrator import IngestionRejected, ingest_source, require_included_source
 from aie_estimator.ingestion.parsers.registry import ParserRegistry
 from aie_estimator.persistence.repositories.jobs import JobsRepository
+from aie_estimator.persistence.repositories.quarantine import QuarantinedRecordsRepository
 from aie_estimator.schemas.ingestion import (
     IngestionJobResponse,
     IngestionRunRequest,
@@ -55,6 +57,7 @@ async def _run_ingestion_job(
     loader: FileSystemLoader,
     registry: ParserRegistry,
     jobs_repo: JobsRepository,
+    quarantine_repo: QuarantinedRecordsRepository,
     parent_span_context: SpanContext | None,
 ) -> None:
     """
@@ -66,6 +69,7 @@ async def _run_ingestion_job(
     :param loader: Filesystem loader resolving source files.
     :param registry: ParserRegistry providing format parsers.
     :param jobs_repo: Async repository tracking job lifecycle state.
+    :param quarantine_repo: Async repository persisting quarantined records.
     :param parent_span_context: Optional triggering HTTP SpanContext for trace linking.
     """
     links = [Link(parent_span_context)] if parent_span_context is not None and parent_span_context.is_valid else []
@@ -77,13 +81,19 @@ async def _run_ingestion_job(
         log.info("ingestion_job_started", job_id=str(job_id), source_name=source_name)
 
         try:
-            documents = await asyncio.to_thread(
+            result = await asyncio.to_thread(
                 ingest_source,
                 catalog=catalog,
                 source_name=source_name,
                 loader=loader,
                 registry=registry,
             )
+            if result.quarantined:
+                await quarantine_repo.upsert_many(
+                    job_id=job_id,
+                    source_name=source_name,
+                    records=result.quarantined,
+                )
         except Exception as exc:  # noqa: BLE001
             span.record_exception(exc)
             log.exception(
@@ -96,14 +106,21 @@ async def _run_ingestion_job(
             await jobs_repo.mark_failed(job_id, error_message=str(exc))
             return
 
-        documents_count = len(documents)
+        documents_count = len(result.documents)
+        quarantined_count = len(result.quarantined)
         span.set_attribute("ingestion.documents_count", documents_count)
-        await jobs_repo.mark_completed(job_id, documents_count=documents_count)
+        span.set_attribute("ingestion.quarantined_count", quarantined_count)
+        await jobs_repo.mark_completed(
+            job_id,
+            documents_count=documents_count,
+            validation_report=result.report,
+        )
         log.info(
             "ingestion_job_completed",
             job_id=str(job_id),
             source_name=source_name,
             documents_count=documents_count,
+            quarantined_count=quarantined_count,
         )
 
 
@@ -121,6 +138,7 @@ async def create_ingestion_run(
     loader: FileSystemLoader = Depends(get_filesystem_loader),
     registry: ParserRegistry = Depends(get_parser_registry),
     jobs_repo: JobsRepository = Depends(get_jobs_repository),
+    quarantine_repo: QuarantinedRecordsRepository = Depends(get_quarantined_records_repository),
 ) -> IngestionRunResponse:
     """
     Queue an offline ingestion run for an ``include`` catalog source.
@@ -158,6 +176,7 @@ async def create_ingestion_run(
         loader=loader,
         registry=registry,
         jobs_repo=jobs_repo,
+        quarantine_repo=quarantine_repo,
         parent_span_context=parent_span_context,
     )
     return IngestionRunResponse(

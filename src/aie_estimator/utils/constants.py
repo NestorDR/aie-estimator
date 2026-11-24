@@ -42,3 +42,10 @@ DEFAULT_SESSION_MAX_ANCHOR_PAIRS: Final[int] = 4
 DEFAULT_SESSION_TTL_SECONDS: Final[int] = SECONDS_PER_DAY
 
 # endregion
+
+# region Ingestion
+
+# Disguised null strings normalized to missing values across tabular and text cleaners
+NULL_PLACEHOLDERS: Final[frozenset[str]] = frozenset({"tbd", "n/a", "na", "", "null", "none", "-"})
+
+# endregion

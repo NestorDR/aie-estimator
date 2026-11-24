@@ -28,9 +28,11 @@ from aie_estimator.ingestion.loaders.filesystem import LoadedBlob
 from aie_estimator.ingestion.parsers.protocol import ParseContext
 
 _MIN_TAGGED_LINES: Final[int] = 3
+# Example: [10:30:00] Speaker Name: text...
 _TURN_RE: Final[re.Pattern[str]] = re.compile(
     r"^\[(?P<ts>\d{1,2}:\d{2}(?::\d{2})?)\]\s*(?P<speaker>[^:]+?):\s*(?P<text>.*)$",
 )
+# Split on blank lines (one or more newlines with optional whitespace).
 _BLANK_LINE_SPLIT_RE: Final[re.Pattern[str]] = re.compile(r"\n\s*\n")
 
 

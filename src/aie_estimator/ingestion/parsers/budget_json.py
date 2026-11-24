@@ -21,30 +21,48 @@ from aie_estimator.ingestion.parsers.protocol import ParseContext
 
 
 class BudgetJsonParser:
-    """Parses historical JSON budget files into structured Markdown Document objects."""
+    """Parses historical JSON budget files into structured records and Markdown Document objects."""
 
     supported_formats: ClassVar[set[str]] = {"json"}
 
-    def parse(self, blob: LoadedBlob, context: ParseContext) -> Iterable[Document]:
+    def decode_record(self, blob: LoadedBlob) -> dict[str, Any]:
         """
-        Decode a JSON budget payload and render it as structured Markdown.
+        Decode a raw JSON budget blob into a dictionary with source location provenance.
 
         :param blob: Raw JSON file blob.
-        :param context: Run-scoped catalog and timestamp metadata.
 
-        :return: Single-element iterable containing the rendered budget Document.
+        :return: Decoded JSON dictionary annotated with ``_source_location``.
         """
         payload: dict[str, Any] = json.loads(blob.bytes_.decode("utf-8"))
+        payload["_source_location"] = blob.relative_path
+        return payload
+
+    def render_record(
+        self,
+        payload: dict[str, Any],
+        *,
+        source_location: str,
+        context: ParseContext,
+    ) -> Document:
+        """
+        Render a structured budget dictionary into a Markdown Document.
+
+        :param payload: Decoded (and optionally cleaned) budget dictionary.
+        :param source_location: Relative file path of the source blob.
+        :param context: Run-scoped catalog and timestamp metadata.
+
+        :return: Rendered budget Document.
+        """
         text = _render_budget_markdown(payload)
-        budget_id = payload.get("budget_id", "unknown")
-        doc_id = f"{context.source.name}:{budget_id}:{blob.relative_path}"
-        yield Document(
+        budget_id = payload.get("budget_id") or "unknown"
+        doc_id = f"{context.source.name}:{budget_id}:{source_location}"
+        return Document(
             id=doc_id,
             text=text,
             metadata=DocumentMetadata(
                 source_name=context.source.name,
                 source_version=context.source_version,
-                source_location=blob.relative_path,
+                source_location=source_location,
                 ingested_at=context.ingested_at,
                 extra={
                     "budget_id": payload.get("budget_id"),
@@ -55,6 +73,18 @@ class BudgetJsonParser:
                 },
             ),
         )
+
+    def parse(self, blob: LoadedBlob, context: ParseContext) -> Iterable[Document]:
+        """
+        Decode a JSON budget payload and render it as structured Markdown.
+
+        :param blob: Raw JSON file blob.
+        :param context: Run-scoped catalog and timestamp metadata.
+
+        :return: Single-element iterable containing the rendered budget Document.
+        """
+        payload = self.decode_record(blob)
+        yield self.render_record(payload, source_location=blob.relative_path, context=context)
 
 
 def _render_budget_markdown(payload: dict[str, Any]) -> str:

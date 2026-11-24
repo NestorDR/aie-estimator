@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 # --- Third Party Libraries ---
 from psycopg.rows import class_row
 from psycopg.sql import SQL, Composable, Composed, Identifier
+from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
 from pydantic import BaseModel, ConfigDict
 import structlog
@@ -39,6 +40,7 @@ class Job(BaseModel):
     source_name: str
     status: JobStatus
     documents_count: int
+    validation_report: dict[str, Any] | None = None
     error_message: str | None
     started_at: datetime
     finished_at: datetime | None
@@ -54,7 +56,7 @@ _SELECT_JOB_SQL: Final[Composed] = SQL("SELECT {cols} FROM {table} WHERE job_id 
 
 _MARK_RUNNING_SQL: Final[Composed] = SQL("UPDATE {table} SET status = %s WHERE job_id = %s;").format(table=JOB_TABLE)
 _MARK_COMPLETED_SQL: Final[Composed] = SQL(
-    "UPDATE {table} SET status = %s, documents_count = %s, finished_at = %s WHERE job_id = %s;"
+    "UPDATE {table} SET status = %s, documents_count = %s, validation_report = %s, finished_at = %s WHERE job_id = %s;"
 ).format(table=JOB_TABLE)
 _MARK_FAILED_SQL: Final[Composed] = SQL(
     "UPDATE {table} SET status = %s, error_message = %s, finished_at = %s WHERE job_id = %s;"
@@ -114,15 +116,23 @@ class JobsRepository:
         await self._execute_update(_MARK_RUNNING_SQL, (JobStatus.RUNNING, job_id))
         log.info("ingestion_job_updated", job_id=str(job_id), status=JobStatus.RUNNING)
 
-    async def mark_completed(self, job_id: UUID, *, documents_count: int) -> None:
+    async def mark_completed(
+        self,
+        job_id: UUID,
+        *,
+        documents_count: int,
+        validation_report: dict[str, Any] | None = None,
+    ) -> None:
         """
-        Transition an ingestion job to ``completed`` with the emitted document count.
+        Transition an ingestion job to ``completed`` with the emitted document count and report.
 
         :param job_id: UUID of the ingestion job.
         :param documents_count: Total canonical documents emitted by the run.
+        :param validation_report: Optional JSON-serializable cleaning and validation summary.
         """
         finished_at = datetime.now(UTC)
-        await self._execute_update(_MARK_COMPLETED_SQL, (JobStatus.COMPLETED, documents_count, finished_at, job_id))
+        report_param = Jsonb(validation_report) if validation_report is not None else None
+        await self._execute_update(_MARK_COMPLETED_SQL, (JobStatus.COMPLETED, documents_count, report_param, finished_at, job_id))
         log.info("ingestion_job_updated", job_id=str(job_id), status=JobStatus.COMPLETED, documents_count=documents_count)
 
     async def mark_failed(self, job_id: UUID, *, error_message: str) -> None:

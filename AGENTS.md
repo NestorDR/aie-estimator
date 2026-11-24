@@ -47,7 +47,8 @@ Always apply good software engineering practices: **KISS, YAGNI, DRY, SOLID, ACI
 ## 4. Comments and Documentation
 - **Preservation**: Do not delete existing comments unless the associated code is modified or deleted. When modifying commented code, update the comments to match the new behavior.
 - **New Comments**: Write concise, professional English comments that explain *why* something is done, not *what* the syntax does. Avoid extreme "clean code" dogmatism that strips helpful context.
-- **Docstrings**: Document all classes, functions, and methods using the Sphinx format (`:param`, `:return`, `:raises:` but not `type` or `rtype:`).
+- **Module Docstrings**: Every non-empty module (excluding empty `__init__.py` files) MUST include a concise English module-level docstring immediately after the first-line path comment and before top-level imports. State the module's purpose and the architectural/domain *why* behind the chosen implementation (key design trade-offs, invariants, or downstream constraints), rather than listing its symbols.
+- **Symbol Docstrings**: Document all classes, functions, and methods using the Sphinx format (`:param`, `:return`, `:raises:` but not `type` or `rtype:`).
 - **Feature Documentation**: 
   - After implementing any new feature, create or update the corresponding Markdown documentation in `docs/<feature-name>.md`.
   - Maintain the style of existing documentation.

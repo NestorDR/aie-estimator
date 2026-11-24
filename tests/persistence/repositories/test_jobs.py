@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 # --- Third Party Libraries ---
+from psycopg.types.json import Jsonb
 import pytest
 
 # --- App modules ---
@@ -141,7 +142,8 @@ async def test_jobs_repository_status_transitions_and_truncation() -> None:
     job_id = uuid4()
 
     await repo.mark_running(job_id)
-    await repo.mark_completed(job_id, documents_count=12)
+    report = {"input_rows": 6, "valid_rows": 2, "quarantined_rows": 3, "discarded_rows": 1}
+    await repo.mark_completed(job_id, documents_count=2, validation_report=report)
     await repo.mark_failed(job_id, error_message="x" * (MAX_ERROR_MESSAGE_LENGTH + 50))
     recovered = await repo.fail_stale_jobs()
 
@@ -149,8 +151,10 @@ async def test_jobs_repository_status_transitions_and_truncation() -> None:
     calls = conn.execute.await_args_list
     assert calls[0].args[1] == (JobStatus.RUNNING, job_id)
     assert calls[1].args[1][0] is JobStatus.COMPLETED
-    assert calls[1].args[1][1] == 12
-    assert calls[1].args[1][3] == job_id
+    assert calls[1].args[1][1] == 2
+    assert isinstance(calls[1].args[1][2], Jsonb)
+    assert calls[1].args[1][2].obj == report
+    assert calls[1].args[1][4] == job_id
     assert calls[2].args[1][0] is JobStatus.FAILED
     assert len(calls[2].args[1][1]) == MAX_ERROR_MESSAGE_LENGTH
     assert calls[2].args[1][3] == job_id

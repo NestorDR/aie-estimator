@@ -52,19 +52,21 @@ def test_ingest_source_processes_seed_budgets() -> None:
     """
     GIVEN the repository catalog and seed corpus
     WHEN ingest_source runs for historical_budgets
-    THEN all 6 seed JSON budgets are returned with stamped catalog metadata and content hashes.
+    THEN 2 valid seed budgets emit Documents, 3 route to quarantined, and 1 is discarded.
     """
     catalog = load_catalog(Path("data/catalog/catalog.yaml"))
-    docs = ingest_source(
+    result = ingest_source(
         catalog=catalog,
         source_name="historical_budgets",
         loader=FileSystemLoader(Path("data/seed")),
         registry=default_registry(),
     )
-    assert len(docs) == 6
-    assert all(doc.metadata.source_name == "historical_budgets" for doc in docs)
-    assert all(doc.metadata.contains_pii is True for doc in docs)
-    assert all(doc.content_hash == compute_content_hash(doc.text) for doc in docs)
+    assert len(result.documents) == 2
+    assert len(result.quarantined) == 3
+    assert result.report["discarded_rows"] == 1
+    assert all(doc.metadata.source_name == "historical_budgets" for doc in result.documents)
+    assert all(doc.metadata.contains_pii is True for doc in result.documents)
+    assert all(doc.content_hash == compute_content_hash(doc.text) for doc in result.documents)
 
 
 @pytest.mark.parametrize(
@@ -122,14 +124,14 @@ def test_normalizer_overrides_spoofed_parser_metadata(tmp_path: Path) -> None:
     registry = ParserRegistry()
     registry.register(_SpoofingJsonParser())
 
-    docs = ingest_source(
+    result = ingest_source(
         catalog=catalog,
         source_name="historical_budgets",
         loader=FileSystemLoader(tmp_path),
         registry=registry,
     )
-    assert len(docs) == 1
-    doc = docs[0]
+    assert len(result.documents) == 1
+    doc = result.documents[0]
     assert doc.content_hash == compute_content_hash("canonical body")
     assert doc.metadata.source_name == "historical_budgets"
     assert doc.metadata.source_version == "2.1.0"

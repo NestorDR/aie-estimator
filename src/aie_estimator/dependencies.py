@@ -18,6 +18,7 @@ from aie_estimator.ingestion.loaders.filesystem import FileSystemLoader
 from aie_estimator.ingestion.parsers.registry import ParserRegistry, default_registry
 from aie_estimator.persistence.repositories.jobs import JobsRepository
 from aie_estimator.persistence.repositories.mappings import MappingsRepository
+from aie_estimator.persistence.repositories.quarantine import QuarantinedRecordsRepository
 from aie_estimator.services.boss_service import Boss
 from aie_estimator.services.cache import (
     EstimationExactCache,
@@ -210,6 +211,19 @@ def get_mappings_repository(
     :return: Configured MappingsRepository instance.
     """
     return MappingsRepository(pool)
+
+
+def get_quarantined_records_repository(
+    pool: AsyncConnectionPool = Depends(get_db_pool),
+) -> QuarantinedRecordsRepository:
+    """
+    Construct a QuarantinedRecordsRepository bound to the active PostgreSQL connection pool.
+
+    :param pool: Active AsyncConnectionPool resolved from application state.
+
+    :return: Configured QuarantinedRecordsRepository instance.
+    """
+    return QuarantinedRecordsRepository(pool)
 
 
 def get_catalog(settings: Settings = Depends(get_settings)) -> DataCatalog:

@@ -17,6 +17,7 @@ from aie_estimator.dependencies import (
     get_filesystem_loader,
     get_jobs_repository,
     get_parser_registry,
+    get_quarantined_records_repository,
 )
 from aie_estimator.ingestion.catalog.loader import load_catalog
 from aie_estimator.ingestion.loaders.filesystem import FileSystemLoader
@@ -43,20 +44,25 @@ def _make_job(
     )
 
 
-def _build_client(mock_repo: MagicMock) -> TestClient:
+def _build_client(mock_repo: MagicMock, mock_quarantine_repo: MagicMock | None = None) -> TestClient:
     app = create_app()
     app.dependency_overrides[get_catalog] = lambda: load_catalog(Path("data/catalog/catalog.yaml"))
     app.dependency_overrides[get_filesystem_loader] = lambda: FileSystemLoader(Path("data/seed"))
     app.dependency_overrides[get_parser_registry] = default_registry
     app.dependency_overrides[get_jobs_repository] = lambda: mock_repo
+    app.dependency_overrides[get_quarantined_records_repository] = lambda: MagicMock()
+    if mock_quarantine_repo is None:
+        mock_quarantine_repo = MagicMock()
+        mock_quarantine_repo.upsert_many = AsyncMock(return_value=0)
+    app.dependency_overrides[get_quarantined_records_repository] = lambda: mock_quarantine_repo
     return TestClient(app)
 
 
 def test_post_ingestion_run_dispatches_background_job() -> None:
     """
-    GIVEN an include catalog source and mocked JobsRepository
+    GIVEN an include catalog source and mocked repositories
     WHEN POST /api/v1/ingestion/runs is called
-    THEN HTTP 202 is returned and the background task transitions the job to completed.
+    THEN HTTP 202 is returned, quarantined records are upserted, and the job completes with validation_report.
     """
     job_id = uuid4()
     mock_repo = MagicMock()
@@ -65,7 +71,10 @@ def test_post_ingestion_run_dispatches_background_job() -> None:
     mock_repo.mark_completed = AsyncMock()
     mock_repo.mark_failed = AsyncMock()
 
-    with _build_client(mock_repo) as client:
+    mock_quarantine_repo = MagicMock()
+    mock_quarantine_repo.upsert_many = AsyncMock(return_value=3)
+
+    with _build_client(mock_repo, mock_quarantine_repo) as client:
         response = client.post("/api/v1/ingestion/runs", json={"source_name": "historical_budgets"})
 
     assert response.status_code == status.HTTP_202_ACCEPTED
@@ -73,7 +82,11 @@ def test_post_ingestion_run_dispatches_background_job() -> None:
     assert payload == {"job_id": str(job_id), "source_name": "historical_budgets", "status": "pending"}
     mock_repo.create.assert_awaited_once_with("historical_budgets")
     mock_repo.mark_running.assert_awaited_once_with(job_id)
-    mock_repo.mark_completed.assert_awaited_once_with(job_id, documents_count=6)
+    mock_quarantine_repo.upsert_many.assert_awaited_once()
+    assert len(mock_quarantine_repo.upsert_many.await_args.kwargs["records"]) == 3
+    mock_repo.mark_completed.assert_awaited_once()
+    assert mock_repo.mark_completed.await_args.kwargs["documents_count"] == 2
+    assert mock_repo.mark_completed.await_args.kwargs["validation_report"]["valid_rows"] == 2
     mock_repo.mark_failed.assert_not_awaited()
 
 
@@ -95,6 +108,7 @@ def test_post_ingestion_run_marks_failed_when_background_errors() -> None:
     app.dependency_overrides[get_filesystem_loader] = lambda: FileSystemLoader(Path("data/nonexistent_root"))
     app.dependency_overrides[get_parser_registry] = default_registry
     app.dependency_overrides[get_jobs_repository] = lambda: mock_repo
+    app.dependency_overrides[get_quarantined_records_repository] = lambda: MagicMock()
 
     with TestClient(app) as client:
         response = client.post("/api/v1/ingestion/runs", json={"source_name": "historical_budgets"})
