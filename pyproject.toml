@@ -7,6 +7,8 @@ authors = [{ name = "NestorDR", email = "ndr1970@gmail.com" }]
 requires-python = ">=3.14"
 dependencies = [
     "anthropic>=2.3.0",
+    "en-core-web-sm",
+    "faker>=40.63.0",
     "fastapi>=0.146.0",
     "httpx>=0.28.1",
     "instructor>=1.17.0",
@@ -19,6 +21,9 @@ dependencies = [
     "opentelemetry-exporter-otlp>=1.30.0",
     "opentelemetry-instrumentation-fastapi>=0.51b0",
     "opentelemetry-sdk>=1.30.0",
+    "pandas>=3.1.1",
+    "pandera>=0.36.0",
+    "presidio-analyzer>=2.2.366",
     "psycopg[binary,pool]>=3.3.0",
     "pydantic-settings>=2.16.0",
     "pypdf>=7.0.1",
@@ -117,3 +122,6 @@ OPENAI_API_KEY = ""
 # - LiteLLM initiates three retries with exponential backoff, causing a blocking ~15-second hang on test startup and emitting warning logs before falling back to its packaged copy.
 # - Setting LITELLM_LOCAL_MODEL_COST_MAP="True" instructs LiteLLM to bypass remote network requests and read its bundled model_prices_and_context_window_backup.json immediately.
 LITELLM_LOCAL_MODEL_COST_MAP = "True"
+
+[tool.uv.sources]
+en-core-web-sm = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" }
