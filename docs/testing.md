@@ -2,7 +2,7 @@
 
 ## Overview
 
-[`pyproject.toml`](../pyproject.toml) configures pytest for `aie-estimator` (`testpaths = ["tests"]`, `pythonpath = [".", "src"]`). Test modules mirror the source tree under [`tests/`](../tests/), complemented by end-to-end conversational scenario modules under [`tests/integration/`](../tests/integration/) (`test_session_metadata_chaining.py`, `test_session_pdf_attachment.py`, and `test_session_sliding_window.py`).
+[`pyproject.toml`](../pyproject.toml) configures pytest for `aie-estimator` (`testpaths = ["tests"]`, `pythonpath = [".", "src"]`). Test modules mirror the source tree under [`tests/`](../tests/), complemented by end-to-end scenario modules under [`tests/integration/`](../tests/integration/) (`test_session_metadata_chaining.py`, `test_session_pdf_attachment.py`, `test_session_sliding_window.py`, `test_ingestion_pipeline_e2e.py`, and opt-in `test_live_postgres_ingestion.py`).
 
 Core shared fixtures are defined in [`tests/conftest.py`](../tests/conftest.py):
 - `anyio_backend` (session): Configures `SelectorEventLoop` via `loop_factory` on Windows (`win32`) for `psycopg` async compatibility.
@@ -78,7 +78,8 @@ async def test_cache_miss_returns_none() -> None:
 ### 6. CLI Execution
 
 ```powershell
-rtk uv run pytest --cov-fail-under=85   # Full regression suite with coverage gate
+rtk uv run pytest --cov-fail-under=85   # Full offline regression suite with coverage gate (skips live_db)
+rtk uv run pytest --live-db --no-cov    # Opt-in live PostgreSQL integration suite (requires estimator-postgres)
 rtk uv run pytest tests/routers/test_health_router.py  # Single test file with local coverage
 rtk uv run pytest --no-cov             # Zero-overhead iterative feedback
 ```
@@ -90,7 +91,7 @@ rtk uv run pytest --no-cov             # Zero-overhead iterative feedback
 1. **Test Design Conventions**:
    - Every test docstring follows GIVEN-WHEN-THEN structure with Sphinx `:param` definitions.
    - Assert exceptions with `pytest.raises(Exc, match=r'...')` using concise, distinctive keywords.
-   - Tests never make real network or I/O calls to LLM providers, Redis, or PostgreSQL.
+   - Tests never make real network or I/O calls to LLM providers, Redis, or PostgreSQL by default; `@pytest.mark.live_db` tests are auto-skipped in [`tests/conftest.py`](../tests/conftest.py) unless `--live-db` is explicitly passed.
 2. **Runtime Isolation Mechanics**:
    - `clean_settings_cache` and `auto_sync_settings_on_env_mutation` in [`tests/conftest.py`](../tests/conftest.py) ensure zero state leakage between tests.
    - `app` fixture neutralizes `EstimationSemanticCache.initialize_index`, and `postgres_password` defaults to `None` under `APP_ENV=test`, so lifespan startup skips Redis and PostgreSQL socket connections in offline environments.

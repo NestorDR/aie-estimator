@@ -1,12 +1,13 @@
 # src/aie_estimator/ingestion/normalizers/canonical.py
 
 """
-Placeholder canonicalization stage for the ``loaders -> parsers -> normalizers`` flow.
+Canonicalization stage for the ``loaders -> parsers -> cleaning -> normalizers`` pipeline.
 
-Currently enforces authoritative catalog metadata override and SHA-256 ``content_hash``
-calculation. Later, we will introduce dedicated cleaning and schema validation
-before this stage to address the four recurring families of dirtiness in enterprise RAG
-systems:
+Enforces authoritative catalog metadata overrides (``source_name``, ``source_version``,
+``source_location``, ``ingested_at``, ``lineage``, ``contains_pii``, ``pii_flags``, and
+``access_level``) and computes SHA-256 ``content_hash`` digests before downstream PII
+pseudonymization and chunking. Upstream cleaning and schema validation address
+the four recurring families of dirtiness in enterprise RAG systems before this stage:
 
 - Heterogeneity of format: ``€ vs EUR vs eur``
 - Duplicates with divergence: ``Same id, different totals``

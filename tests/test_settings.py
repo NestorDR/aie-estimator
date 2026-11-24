@@ -510,6 +510,9 @@ def test_settings_pii_defaults_and_overrides(monkeypatch: pytest.MonkeyPatch) ->
     assert test_settings.pii_hash_salt.get_secret_value() == "test-pii-hash-salt"
     assert "test-pii-hash-salt" not in repr(test_settings)
 
+    # Isolate from any local unversioned .env.prod so the non-test default (None) is deterministic.
+    original_exists = Path.exists
+    monkeypatch.setattr(Path, "exists", lambda p: False if p.name == ".env.prod" else original_exists(p))
     prod_settings = Settings(app_env=Environment.PROD)
     assert prod_settings.pii_hash_salt is None
 

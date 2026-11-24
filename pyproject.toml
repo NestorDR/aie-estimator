@@ -110,6 +110,9 @@ pythonpath = [".", "src"]
 # Specify test directory and files
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+markers = [
+    "live_db: opt-in integration tests requiring a live PostgreSQL instance (--live-db)",
+]
 
 [tool.pytest_env]
 APP_ENV = "test"

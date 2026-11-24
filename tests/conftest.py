@@ -308,3 +308,33 @@ def mock_async_anthropic_client() -> MagicMock:
     client = MagicMock(spec=AsyncAnthropic)
     client.messages = MagicMock()
     return client
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    """
+    Register the opt-in ``--live-db`` CLI flag for live PostgreSQL integration tests.
+
+    :param parser: Pytest CLI option parser.
+    """
+    parser.addoption(
+        "--live-db",
+        action="store_true",
+        default=False,
+        help="Run @pytest.mark.live_db integration tests against a live PostgreSQL instance.",
+    )
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """
+    Skip ``live_db`` tests by default so the offline suite runs without a live database.
+
+    :param config: Active pytest configuration.
+    :param items: Collected test items.
+    """
+    if config.getoption("--live-db"):
+        return
+    # Attach skip at collection time so default `pytest` runs stay offline without `-m` filter flags.
+    skip_live_db = pytest.mark.skip(reason="requires --live-db and a running PostgreSQL instance")
+    for item in items:
+        if "live_db" in item.keywords:
+            item.add_marker(skip_live_db)

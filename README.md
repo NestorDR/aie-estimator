@@ -129,7 +129,7 @@ Start infrastructure services from the project root using [`auto/dc.cmd`](auto/d
   auto\dc.cmd prod
   ```
 
-When `POSTGRES_*` credentials are configured, apply pending SQL migrations before starting the API:
+When `POSTGRES_*` credentials are configured, apply pending SQL migrations before starting the API (`auto\migrate.cmd` or):
 
 ```bash
 uv run python -m aie_estimator.persistence.migrate
@@ -163,7 +163,7 @@ Interactive documentation is available at `http://localhost:8000/docs` (Swagger 
 | `POST` | `/api/v1/sessions/{session_id}/estimate` | Executes a multi-turn `multipart/form-data` estimation with optional attachments |
 | `POST` | `/api/v1/sessions/{session_id}/estimate-acb` | Executes a bounded Actor-Critic-Boss conversational estimation returning `BossTrace` |
 | `POST` | `/api/v1/ingestion/runs` | Queues an offline ingestion run for an `include` catalog source (`202 Accepted`) |
-| `GET` | `/api/v1/ingestion/jobs/{job_id}` | Inspects the persisted status and document count of an ingestion job |
+| `GET` | `/api/v1/ingestion/jobs/{job_id}` | Inspects the persisted status, document count, and `validation_report` of an ingestion job |
 
 See [API Schemas & Data Contracts](docs/api-schemas.md) and [Conversational Sessions](docs/conversational-sessions.md) for payload contracts, multipart examples, and error mappings.
 
@@ -196,7 +196,7 @@ Architecture and feature guides in [`docs/`](docs/):
 - [GDPR PII Detection & Pseudonymization](docs/pii-pseudonymization.md): Presidio/spaCy PII detection, reversible entity-consistent pseudonymization, HMAC mapping store, and GDPR Article 17 erasure.
 - [Multi-Format Ingestion Pipeline](docs/multi-format-ingestion.md): Canonical `Document` contract, `loaders -> parsers -> normalizers` pipeline, and async ingestion HTTP control plane.
 - [Observability](docs/observability.md): Structlog event taxonomy, OpenTelemetry context injection, and Arize Phoenix tracing.
-- [PostgreSQL Persistence](docs/postgres-persistence.md): Async `psycopg_pool` lifecycle, versioned `.sql` delta migrations, and `JobsRepository` / `MappingsRepository`.
+- [PostgreSQL Persistence](docs/postgres-persistence.md): Async `psycopg_pool` lifecycle, versioned `.sql` delta migrations, and `JobsRepository` / `MappingsRepository` / `QuarantinedRecordsRepository`.
 - [Prompt Engine](docs/prompt-engine.md): Versioned Jinja2 templates and decoupled prompt/API versioning.
 - [Reasoning Profiles](docs/reasoning-profiles.md): Reasoning effort normalization, two-level failover, and credential pruning.
 - [Semantic Response Caching](docs/semantic-response-caching.md): Tier 1 exact SHA-256 cache, Tier 2 RediSearch vector cache, and shadow mode.

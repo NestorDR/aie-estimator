@@ -13,6 +13,8 @@ services:
       - ../src/aie_estimator/.env.prod # Unversioned file .env.* with secure credentials, its path is relative to this docker-compose.yml
     ports:
       - "${SERVER_PORT:-8000}:8000" # Syntax: ${ENV_VAR_FOR_HOST_PORT:-DEFAULT_VALUE} : CONTAINER_PORT
+    volumes:
+      - ../data:/app/data:ro # Mount audited catalog and seed corpus read-only for offline ingestion runs
     depends_on:
       redis:
         condition: service_healthy # Wait until Redis passes its healthcheck before starting
