@@ -26,12 +26,14 @@ from aie_estimator.dependencies import (
     get_filesystem_loader,
     get_jobs_repository,
     get_parser_registry,
+    get_pii_pseudonymizer,
     get_quarantined_records_repository,
 )
-from aie_estimator.ingestion.catalog.models import DataCatalog
+from aie_estimator.ingestion.catalog.models import CatalogSource, DataCatalog
 from aie_estimator.ingestion.loaders.filesystem import FileSystemLoader
 from aie_estimator.ingestion.orchestrator import IngestionRejected, ingest_source, require_included_source
 from aie_estimator.ingestion.parsers.registry import ParserRegistry
+from aie_estimator.ingestion.pii.pseudonymizer import ConsistentPseudonymizer
 from aie_estimator.persistence.repositories.jobs import JobsRepository
 from aie_estimator.persistence.repositories.quarantine import QuarantinedRecordsRepository
 from aie_estimator.schemas.ingestion import (
@@ -52,26 +54,29 @@ router = APIRouter(
 async def _run_ingestion_job(
     *,
     job_id: UUID,
-    source_name: str,
+    source: CatalogSource,
     catalog: DataCatalog,
     loader: FileSystemLoader,
     registry: ParserRegistry,
     jobs_repo: JobsRepository,
     quarantine_repo: QuarantinedRecordsRepository,
+    pseudonymizer: ConsistentPseudonymizer | None,
     parent_span_context: SpanContext | None,
 ) -> None:
     """
     Execute an offline ingestion job in the background with an isolated OTel root span.
 
     :param job_id: Persisted ingestion job UUID.
-    :param source_name: Catalog source identifier to ingest.
+    :param source: Approved CatalogSource entry to ingest.
     :param catalog: Validated DataCatalog snapshot resolved for the run.
     :param loader: Filesystem loader resolving source files.
     :param registry: ParserRegistry providing format parsers.
     :param jobs_repo: Async repository tracking job lifecycle state.
     :param quarantine_repo: Async repository persisting quarantined records.
+    :param pseudonymizer: Optional async ConsistentPseudonymizer for PII sources.
     :param parent_span_context: Optional triggering HTTP SpanContext for trace linking.
     """
+    source_name = source.name
     links = [Link(parent_span_context)] if parent_span_context is not None and parent_span_context.is_valid else []
     with _TRACER.start_as_current_span("ingestion.run", links=links) as span:
         span.set_attribute("ingestion.job_id", str(job_id))
@@ -88,6 +93,26 @@ async def _run_ingestion_job(
                 loader=loader,
                 registry=registry,
             )
+            # Perform pseudonymization asynchronously after the execution of `ingest_source()`, 
+            # so that rejected or discarded records never contaminate `pseudonym_mappings` and
+            #  `ingest_source()` remains free of database dependencies.
+            if source.sensitivity.has_pii and pseudonymizer is not None:
+                documents = await pseudonymizer.pseudonymize_documents(
+                    result.documents,
+                    source_name=source_name,
+                )
+                span.set_attribute("ingestion.pii_pseudonymized", True)
+            else:
+                documents = result.documents
+                skip_reason = "source_has_no_pii" if not source.sensitivity.has_pii else "pseudonymization_disabled"
+                log.info(
+                    "ingestion_pii_skipped",
+                    job_id=str(job_id),
+                    source_name=source_name,
+                    reason=skip_reason,
+                )
+                span.set_attribute("ingestion.pii_pseudonymized", False)
+
             if result.quarantined:
                 await quarantine_repo.upsert_many(
                     job_id=job_id,
@@ -106,7 +131,7 @@ async def _run_ingestion_job(
             await jobs_repo.mark_failed(job_id, error_message=str(exc))
             return
 
-        documents_count = len(result.documents)
+        documents_count = len(documents)
         quarantined_count = len(result.quarantined)
         span.set_attribute("ingestion.documents_count", documents_count)
         span.set_attribute("ingestion.quarantined_count", quarantined_count)
@@ -139,6 +164,7 @@ async def create_ingestion_run(
     registry: ParserRegistry = Depends(get_parser_registry),
     jobs_repo: JobsRepository = Depends(get_jobs_repository),
     quarantine_repo: QuarantinedRecordsRepository = Depends(get_quarantined_records_repository),
+    pseudonymizer: ConsistentPseudonymizer | None = Depends(get_pii_pseudonymizer),
 ) -> IngestionRunResponse:
     """
     Queue an offline ingestion run for an ``include`` catalog source.
@@ -149,13 +175,15 @@ async def create_ingestion_run(
     :param loader: Filesystem loader rooted at ``Settings.ingestion_data_root``.
     :param registry: Configured ParserRegistry instance.
     :param jobs_repo: Async JobsRepository bound to the lifespan connection pool.
+    :param quarantine_repo: Async QuarantinedRecordsRepository bound to the connection pool.
+    :param pseudonymizer: Optional async ConsistentPseudonymizer for PII sources.
 
     :return: Immediate 202 Accepted response containing the created ``job_id``.
     :raises HTTPException: HTTP 404 if the source name is absent from the catalog.
     :raises IngestionRejected: If the source decision is not ``include``.
     """
     try:
-        require_included_source(catalog, request.source_name)
+        source = require_included_source(catalog, request.source_name)
     except IngestionRejected as exc:
         if exc.reason == "unknown_source":
             raise HTTPException(
@@ -171,12 +199,13 @@ async def create_ingestion_run(
     background_tasks.add_task(
         _run_ingestion_job,
         job_id=job.job_id,
-        source_name=request.source_name,
+        source=source,
         catalog=catalog,
         loader=loader,
         registry=registry,
         jobs_repo=jobs_repo,
         quarantine_repo=quarantine_repo,
+        pseudonymizer=pseudonymizer,
         parent_span_context=parent_span_context,
     )
     return IngestionRunResponse(

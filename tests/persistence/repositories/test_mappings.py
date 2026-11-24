@@ -39,18 +39,24 @@ def _make_mock_pool(cursor: MagicMock) -> tuple[MagicMock, MagicMock]:
 @pytest.mark.anyio
 async def test_mappings_repository_lookup_or_create_returns_existing_without_factory() -> None:
     """
-    GIVEN an existing pseudonym mapping row
+    GIVEN an existing pseudonym mapping row that already records the source
     WHEN lookup_or_create is awaited
-    THEN the existing Mapping is returned without invoking new_pseudonym_factory.
+    THEN the existing Mapping is returned without invoking new_pseudonym_factory or updating.
     """
-    expected = Mapping(entity_type="PERSON", original_hash="hash123", pseudonym="Alice Smith", created_at=datetime.now(UTC))
+    expected = Mapping(
+        entity_type="PERSON",
+        original_hash="hash123",
+        pseudonym="Alice Smith",
+        source_names=("historical_budgets",),
+        created_at=datetime.now(UTC),
+    )
     cursor = MagicMock()
     cursor.execute = AsyncMock(return_value=None)
     cursor.fetchone = AsyncMock(return_value=expected)
     pool, _ = _make_mock_pool(cursor)
     factory = MagicMock(return_value="Unused Name")
 
-    result = await MappingsRepository(pool).lookup_or_create("PERSON", "hash123", factory)
+    result = await MappingsRepository(pool).lookup_or_create("PERSON", "hash123", factory, source_name="historical_budgets")
 
     assert result == expected
     factory.assert_not_called()
@@ -58,20 +64,60 @@ async def test_mappings_repository_lookup_or_create_returns_existing_without_fac
 
 
 @pytest.mark.anyio
+async def test_mappings_repository_lookup_or_create_appends_unseen_source_name() -> None:
+    """
+    GIVEN an existing pseudonym mapping row without the new source_name
+    WHEN lookup_or_create is awaited with a new source_name
+    THEN the unseen source_name is appended without invoking new_pseudonym_factory.
+    """
+    now = datetime.now(UTC)
+    existing = Mapping(
+        entity_type="PERSON",
+        original_hash="hash123",
+        pseudonym="Alice Smith",
+        source_names=("historical_budgets",),
+        created_at=now,
+    )
+    updated = existing.model_copy(update={"source_names": ("historical_budgets", "meeting_transcripts")})
+    cursor = MagicMock()
+    cursor.execute = AsyncMock(return_value=None)
+    cursor.fetchone = AsyncMock(side_effect=[existing, updated])
+    pool, _ = _make_mock_pool(cursor)
+    factory = MagicMock(return_value="Unused Name")
+
+    result = await MappingsRepository(pool).lookup_or_create("PERSON", "hash123", factory, source_name="meeting_transcripts")
+
+    assert result == updated
+    factory.assert_not_called()
+    assert cursor.execute.await_count == 2
+
+
+@pytest.mark.anyio
 async def test_mappings_repository_lookup_or_create_inserts_on_miss() -> None:
     """
     GIVEN no existing mapping row
     WHEN lookup_or_create is awaited and INSERT ... RETURNING succeeds
-    THEN the factory is called once and the inserted Mapping is returned.
+    THEN the factory is called once and the inserted Mapping is returned with source_names.
     """
-    expected = Mapping(entity_type="EMAIL", original_hash="hash456", pseudonym="anon@example.test", created_at=datetime.now(UTC))
+    expected = Mapping(
+        entity_type="EMAIL_ADDRESS",
+        original_hash="hash456",
+        pseudonym="anon@example.test",
+        source_names=("historical_budgets",),
+        created_at=datetime.now(UTC),
+    )
     cursor = MagicMock()
     cursor.execute = AsyncMock(return_value=None)
     cursor.fetchone = AsyncMock(side_effect=[None, expected])
     pool, _ = _make_mock_pool(cursor)
     factory = MagicMock(return_value="anon@example.test")
 
-    result = await MappingsRepository(pool).lookup_or_create("EMAIL", "hash456", factory)
+    result = await MappingsRepository(pool).lookup_or_create(
+        "EMAIL_ADDRESS",
+        "hash456",
+        factory,
+        source_name="historical_budgets",
+    )
 
     factory.assert_called_once()
     assert result == expected

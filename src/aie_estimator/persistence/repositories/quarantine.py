@@ -9,7 +9,6 @@ re-running ingestion over an unchanged corpus refreshes ``job_id`` and increment
 """
 
 # --- Python Standard Library ---
-from collections.abc import Sequence
 from datetime import datetime
 from typing import Any, ClassVar, Final
 from uuid import UUID
@@ -84,14 +83,14 @@ class QuarantinedRecordsRepository:
         *,
         job_id: UUID,
         source_name: str,
-        records: Sequence[QuarantinedRecordInput],
+        records: list[QuarantinedRecordInput],
     ) -> int:
         """
         Idempotently upsert quarantined records for an ingestion run.
 
         :param job_id: Ingestion job UUID that observed the records.
         :param source_name: Audited catalog source identifier.
-        :param records: Sequence of quarantined record payloads to persist.
+        :param records: List of quarantined record payloads to persist.
 
         :return: Number of quarantined records processed.
         """

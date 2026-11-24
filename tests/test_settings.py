@@ -489,3 +489,44 @@ def test_settings_catalog_paths_defaults_and_overrides(monkeypatch: pytest.Monke
     overridden = Settings(app_env=Environment.TEST)
     assert overridden.ingestion_data_root == custom_root
     assert overridden.catalog_path == custom_catalog
+
+
+def test_settings_pii_defaults_and_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    GIVEN default test settings, non-test settings, and PII_* environment overrides
+    WHEN Settings is instantiated
+    THEN test mode injects a deterministic redacted salt, non-test leaves it None, and env overrides apply.
+
+    :param monkeypatch: Pytest monkeypatch fixture.
+    """
+    monkeypatch.delenv("PII_HASH_SALT", raising=False)
+    test_settings = Settings(app_env=Environment.TEST)
+    assert test_settings.pii_pseudonymization_enabled is True
+    assert test_settings.pii_confidence_threshold == 0.7
+    assert test_settings.pii_spacy_model == "en_core_web_sm"
+    assert test_settings.pii_language == "en"
+    assert test_settings.pii_faker_locale == "en_US"
+    assert isinstance(test_settings.pii_hash_salt, SecretStr)
+    assert test_settings.pii_hash_salt.get_secret_value() == "test-pii-hash-salt"
+    assert "test-pii-hash-salt" not in repr(test_settings)
+
+    prod_settings = Settings(app_env=Environment.PROD)
+    assert prod_settings.pii_hash_salt is None
+
+    monkeypatch.setenv("PII_HASH_SALT", "prod-secret-salt")
+    monkeypatch.setenv("PII_PSEUDONYMIZATION_ENABLED", "false")
+    monkeypatch.setenv("PII_CONFIDENCE_THRESHOLD", "0.85")
+    monkeypatch.setenv("PII_SPACY_MODEL", "es_core_news_md")
+    monkeypatch.setenv("PII_LANGUAGE", "es")
+    monkeypatch.setenv("PII_FAKER_LOCALE", "es_ES")
+    overridden = Settings(app_env=Environment.TEST)
+    assert overridden.pii_hash_salt is not None
+    assert overridden.pii_hash_salt.get_secret_value() == "prod-secret-salt"
+    assert overridden.pii_pseudonymization_enabled is False
+    assert overridden.pii_confidence_threshold == 0.85
+    assert overridden.pii_spacy_model == "es_core_news_md"
+    assert overridden.pii_language == "es"
+    assert overridden.pii_faker_locale == "es_ES"
+
+    with pytest.raises(ValidationError, match=r"less than or equal to 1"):
+        Settings(app_env=Environment.TEST, pii_confidence_threshold=1.5)

@@ -16,6 +16,9 @@ from aie_estimator.ingestion.catalog.loader import load_catalog
 from aie_estimator.ingestion.catalog.models import DataCatalog
 from aie_estimator.ingestion.loaders.filesystem import FileSystemLoader
 from aie_estimator.ingestion.parsers.registry import ParserRegistry, default_registry
+from aie_estimator.ingestion.pii.analyzer import PiiAnalyzer, PresidioPiiAnalyzer
+from aie_estimator.ingestion.pii.mapping_store import PostgresMappingStore
+from aie_estimator.ingestion.pii.pseudonymizer import ConsistentPseudonymizer, resolve_pii_salt
 from aie_estimator.persistence.repositories.jobs import JobsRepository
 from aie_estimator.persistence.repositories.mappings import MappingsRepository
 from aie_estimator.persistence.repositories.quarantine import QuarantinedRecordsRepository
@@ -255,3 +258,45 @@ def get_parser_registry() -> ParserRegistry:
     :return: Configured ParserRegistry instance.
     """
     return default_registry()
+
+
+def get_pii_analyzer(settings: Settings = Depends(get_settings)) -> PiiAnalyzer:
+    """
+    Build the configured Presidio-backed ``PiiAnalyzer`` for offline ingestion.
+
+    :param settings: Injected application configuration settings.
+
+    :return: Configured PresidioPiiAnalyzer instance.
+    """
+    return PresidioPiiAnalyzer(
+        spacy_model=settings.pii_spacy_model,
+        language=settings.pii_language,
+        score_threshold=settings.pii_confidence_threshold,
+    )
+
+
+def get_pii_pseudonymizer(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+) -> ConsistentPseudonymizer | None:
+    """
+    Build the async ``ConsistentPseudonymizer`` backed by PostgreSQL when PII pseudonymization is enabled.
+
+    Checks ``pii_pseudonymization_enabled`` before constructing the analyzer or resolving the
+    database pool so disabled deployments never eagerly load ``spaCy`` models.
+
+    :param request: Incoming FastAPI HTTP request used to resolve the lifespan DB pool.
+    :param settings: Injected application configuration settings.
+
+    :return: Configured ConsistentPseudonymizer, or None when disabled in settings.
+    """
+    if not settings.pii_pseudonymization_enabled:
+        return None
+    analyzer = get_pii_analyzer(settings=settings)
+    mappings_repo = get_mappings_repository(pool=get_db_pool(request))
+    return ConsistentPseudonymizer(
+        analyzer=analyzer,
+        mapping_store=PostgresMappingStore(mappings_repo),
+        salt=resolve_pii_salt(settings),
+        faker_locale=settings.pii_faker_locale,
+    )

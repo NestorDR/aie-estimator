@@ -1,6 +1,6 @@
-[09:15:02] Javier Romero: Hi there. We are reviewing budget BUDGET-2024-0002 signed in March, client code CLI-0078. I wanted to ask about scaling the ERP integration.
-[09:15:40] Diego Marín: Yes, I have it right here. The backend phase is closed. What questions do you have?
-[09:16:18] Javier Romero: Our logistics lead, Pilar Alonso, wants to bring the Zaragoza warehouse into scope. That adds three more weeks and an extra cost we have not signed yet.
-[09:17:05] Diego Marín: Understood. I will send you a detailed addendum and copy both j.romero@betanorte.com and the operations alias you gave me, ops-betanorte@betanorte.com.
-[09:17:35] Javier Romero: Great. One more question on compliance: do audit logs fall under the master agreement, or do I need a GDPR addendum?
-[09:18:12] Diego Marín: A specific addendum. I will prepare it for you this week.
+[09:15:02] James Reynolds: Hi there. We are reviewing budget BUDGET-2024-0002 signed in March, client code CLI-0078. I wanted to ask about scaling the ERP integration.
+[09:15:40] David Martin: Yes, I have it right here. The backend phase is closed. What questions do you have?
+[09:16:18] James Reynolds: Our logistics lead, Claire Allen, wants to bring the Zaragoza warehouse into scope. That adds three more weeks and an extra cost we have not signed yet.
+[09:17:05] David Martin: Understood. I will send you a detailed addendum and copy both j.reynolds@betanorte.com and the operations alias you gave me, ops-betanorte@betanorte.com.
+[09:17:35] James Reynolds: Great. One more question on compliance: do audit logs fall under the master agreement, or do I need a GDPR addendum?
+[09:18:12] David Martin: A specific addendum. I will prepare it for you this week.

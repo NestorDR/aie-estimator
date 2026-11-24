@@ -11,6 +11,12 @@ import structlog
 
 # --- App modules ---
 from aie_estimator.settings import get_settings
+from aie_estimator.utils.constants import (
+    PII_CREDIT_CARD_RE,
+    PII_EMAIL_RE,
+    PII_IBAN_RE,
+    PII_NUMERIC_IDENTIFIER_RE,
+)
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
 
@@ -76,48 +82,13 @@ _PROMPT_INJECTION_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
 
 # --- PII Detection Patterns --------------------------------------------------
 
-# Email Addresses
-# Checks standard RFC 5322-compliant email formats (local-part@domain.tld).
-# Requires at least 2 alphabetic characters for the top-level domain to avoid
-# matching code identifiers or object references (e.g. 'obj.property').
-_EMAIL_RE: Final[re.Pattern[str]] = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
-
-# International Bank Account Numbers (IBAN)
-# Checks international bank account numbers across all SEPA and international formats.
-# Pattern: Two uppercase ISO country code letters, two check digits, followed by
-# 10 to 30 alphanumeric Basic Bank Account Number (BBAN) characters bounded by word boundaries.
-_IBAN_RE: Final[re.Pattern[str]] = re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{10,30}\b")
-
-# Numeric Identifiers and Telephone Numbers
-# Checks international phone formats (prefixed with '+' and 1-3 country code digits) or
-# 10-to-13-digit numeric identifiers with optional spaces, dots, or hyphens (covering national
-# telephone numbers, 12-digit AWS account IDs, 13-digit epoch timestamps, and long numeric IDs).
-# Guard against false positives: Requires at least 10 digits to avoid matching
-# calendar dates (YYYY-MM-DD), shorter timestamps, IP addresses, or semantic versions (e.g., 1.16.1).
-_NUMERIC_IDENTIFIER_RE: Final[re.Pattern[str]] = re.compile(r"(?:\+\d{1,3}[\s.-]?)?(?:\d[\s.-]?){9,12}\d")
-
-# Credit Card Numbers
-# Checks major credit card formats:
-# - Visa (starts with 4, 16 digits)
-# - MasterCard (starts with 51-55 or 22-27, 16 digits)
-# - American Express (starts with 34 or 37, 15 digits)
-# - Discover (starts with 6011 or 65, 16 digits)
-# - Generic 16-digit cards formatted in 4 groups of 4 digits separated by spaces or hyphens.
-_CREDIT_CARD_RE: Final[re.Pattern[str]] = re.compile(
-    r"\b(?:4\d{3}|5[1-5]\d{2}|2[2-7]\d{2}|6(?:011|5\d{2}))[ -]?\d{4}[ -]?\d{4}[ -]?\d{4}\b"
-    r"|"
-    r"\b3[47]\d{2}[ -]?\d{6}[ -]?\d{5}\b"
-    r"|"
-    r"\b\d{4}[ -]\d{4}[ -]\d{4}[ -]\d{4}\b"
-)
-
 # Ordered from most specific to broadest (credit_card before numeric_identifier so 16-digit
 # cards are never partially matched as 13-digit numeric identifiers).
 _PII_RULES: Final[tuple[tuple[str, re.Pattern[str], str, str], ...]] = (
-    ("email", _EMAIL_RE, "[REDACTED_EMAIL]", "Email address"),
-    ("iban", _IBAN_RE, "[REDACTED_IBAN]", "IBAN"),
-    ("credit_card", _CREDIT_CARD_RE, "[REDACTED_CREDIT_CARD]", "Credit card number"),
-    ("numeric_identifier", _NUMERIC_IDENTIFIER_RE, "[REDACTED_NUMERIC_ID]", "Phone number or numeric identifier"),
+    ("email", PII_EMAIL_RE, "[REDACTED_EMAIL]", "Email address"),
+    ("iban", PII_IBAN_RE, "[REDACTED_IBAN]", "IBAN"),
+    ("credit_card", PII_CREDIT_CARD_RE, "[REDACTED_CREDIT_CARD]", "Credit card number"),
+    ("numeric_identifier", PII_NUMERIC_IDENTIFIER_RE, "[REDACTED_NUMERIC_ID]", "Phone number or numeric identifier"),
 )
 
 

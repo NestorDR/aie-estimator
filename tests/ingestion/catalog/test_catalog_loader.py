@@ -35,7 +35,7 @@ sources:
       reliability: 4
     sensitivity:
       has_pii: true
-      pii_flags: ["EMAIL", "PERSON"]
+      pii_flags: ["EMAIL_ADDRESS", "PERSON"]
       access_level: confidential
     decision: include
 """,

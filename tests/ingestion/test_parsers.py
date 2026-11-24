@@ -120,7 +120,7 @@ def test_transcript_txt_parser_tagged_and_legacy_modes() -> None:
     )
     assert len(tagged_docs) >= 3
     assert tagged_docs[0].metadata.extra["format_mode"] == "tagged"
-    assert tagged_docs[0].metadata.extra["speaker"] == "Laura Fernández"
+    assert tagged_docs[0].metadata.extra["speaker"] == "Laura Miller"
     assert tagged_docs[0].metadata.extra["timestamp"] == "10:00:12"
 
     legacy_path = Path("data/seed/transcripts/transcripcion_2023-09-08_legacy.txt")

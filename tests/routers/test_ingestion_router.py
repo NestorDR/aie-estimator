@@ -17,6 +17,7 @@ from aie_estimator.dependencies import (
     get_filesystem_loader,
     get_jobs_repository,
     get_parser_registry,
+    get_pii_pseudonymizer,
     get_quarantined_records_repository,
 )
 from aie_estimator.ingestion.catalog.loader import load_catalog
@@ -44,17 +45,24 @@ def _make_job(
     )
 
 
-def _build_client(mock_repo: MagicMock, mock_quarantine_repo: MagicMock | None = None) -> TestClient:
+def _build_client(
+    mock_repo: MagicMock,
+    mock_quarantine_repo: MagicMock | None = None,
+    mock_pseudonymizer: MagicMock | None = None,
+) -> TestClient:
     app = create_app()
     app.dependency_overrides[get_catalog] = lambda: load_catalog(Path("data/catalog/catalog.yaml"))
     app.dependency_overrides[get_filesystem_loader] = lambda: FileSystemLoader(Path("data/seed"))
     app.dependency_overrides[get_parser_registry] = default_registry
     app.dependency_overrides[get_jobs_repository] = lambda: mock_repo
-    app.dependency_overrides[get_quarantined_records_repository] = lambda: MagicMock()
     if mock_quarantine_repo is None:
         mock_quarantine_repo = MagicMock()
         mock_quarantine_repo.upsert_many = AsyncMock(return_value=0)
     app.dependency_overrides[get_quarantined_records_repository] = lambda: mock_quarantine_repo
+    if mock_pseudonymizer is None:
+        mock_pseudonymizer = MagicMock()
+        mock_pseudonymizer.pseudonymize_documents = AsyncMock(side_effect=lambda docs, **_: list(docs))
+    app.dependency_overrides[get_pii_pseudonymizer] = lambda: mock_pseudonymizer
     return TestClient(app)
 
 
@@ -74,7 +82,10 @@ def test_post_ingestion_run_dispatches_background_job() -> None:
     mock_quarantine_repo = MagicMock()
     mock_quarantine_repo.upsert_many = AsyncMock(return_value=3)
 
-    with _build_client(mock_repo, mock_quarantine_repo) as client:
+    mock_pseudonymizer = MagicMock()
+    mock_pseudonymizer.pseudonymize_documents = AsyncMock(side_effect=lambda docs, **_: list(docs))
+
+    with _build_client(mock_repo, mock_quarantine_repo, mock_pseudonymizer) as client:
         response = client.post("/api/v1/ingestion/runs", json={"source_name": "historical_budgets"})
 
     assert response.status_code == status.HTTP_202_ACCEPTED
@@ -82,6 +93,7 @@ def test_post_ingestion_run_dispatches_background_job() -> None:
     assert payload == {"job_id": str(job_id), "source_name": "historical_budgets", "status": "pending"}
     mock_repo.create.assert_awaited_once_with("historical_budgets")
     mock_repo.mark_running.assert_awaited_once_with(job_id)
+    mock_pseudonymizer.pseudonymize_documents.assert_awaited_once()
     mock_quarantine_repo.upsert_many.assert_awaited_once()
     assert len(mock_quarantine_repo.upsert_many.await_args.kwargs["records"]) == 3
     mock_repo.mark_completed.assert_awaited_once()
@@ -109,6 +121,7 @@ def test_post_ingestion_run_marks_failed_when_background_errors() -> None:
     app.dependency_overrides[get_parser_registry] = default_registry
     app.dependency_overrides[get_jobs_repository] = lambda: mock_repo
     app.dependency_overrides[get_quarantined_records_repository] = lambda: MagicMock()
+    app.dependency_overrides[get_pii_pseudonymizer] = lambda: None
 
     with TestClient(app) as client:
         response = client.post("/api/v1/ingestion/runs", json={"source_name": "historical_budgets"})
@@ -162,3 +175,35 @@ def test_get_ingestion_job_returns_job_or_404() -> None:
     assert found.json()["documents_count"] == 6
     assert found.json()["status"] == "completed"
     assert missing.status_code == status.HTTP_404_NOT_FOUND
+
+
+def test_post_ingestion_run_skips_pseudonymization_when_disabled() -> None:
+    """
+    GIVEN an include PII source with get_pii_pseudonymizer returning None
+    WHEN POST /api/v1/ingestion/runs executes the background task
+    THEN pseudonymization is skipped cleanly and the job completes.
+    """
+    job_id = uuid4()
+    mock_repo = MagicMock()
+    mock_repo.create = AsyncMock(return_value=_make_job(job_id))
+    mock_repo.mark_running = AsyncMock()
+    mock_repo.mark_completed = AsyncMock()
+    mock_repo.mark_failed = AsyncMock()
+
+    mock_quarantine_repo = MagicMock()
+    mock_quarantine_repo.upsert_many = AsyncMock(return_value=3)
+
+    app = create_app()
+    app.dependency_overrides[get_catalog] = lambda: load_catalog(Path("data/catalog/catalog.yaml"))
+    app.dependency_overrides[get_filesystem_loader] = lambda: FileSystemLoader(Path("data/seed"))
+    app.dependency_overrides[get_parser_registry] = default_registry
+    app.dependency_overrides[get_jobs_repository] = lambda: mock_repo
+    app.dependency_overrides[get_quarantined_records_repository] = lambda: mock_quarantine_repo
+    app.dependency_overrides[get_pii_pseudonymizer] = lambda: None
+
+    with TestClient(app) as client:
+        response = client.post("/api/v1/ingestion/runs", json={"source_name": "historical_budgets"})
+
+    assert response.status_code == status.HTTP_202_ACCEPTED
+    mock_repo.mark_completed.assert_awaited_once()
+    mock_repo.mark_failed.assert_not_awaited()

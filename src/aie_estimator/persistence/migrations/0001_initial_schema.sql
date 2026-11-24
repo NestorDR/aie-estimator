@@ -27,13 +27,15 @@ CREATE TABLE IF NOT EXISTS public.pseudonym_mappings
     entity_type   text        NOT NULL,
     original_hash text        NOT NULL,
     pseudonym     text        NOT NULL,
+    source_names  text[]      NOT NULL DEFAULT '{}',
     created_at    timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT uq_mappings_entity_hash UNIQUE (entity_type, original_hash)
 );
 
 COMMENT ON TABLE public.pseudonym_mappings IS 'GDPR-auditable hashed mapping store for reversible PII pseudonymization';
 COMMENT ON COLUMN public.pseudonym_mappings.id IS 'Internal surrogate identifier';
-COMMENT ON COLUMN public.pseudonym_mappings.entity_type IS 'Detected PII entity category (e.g., PERSON, EMAIL, PHONE)';
+COMMENT ON COLUMN public.pseudonym_mappings.entity_type IS 'Detected PII entity category (e.g., PERSON, EMAIL_ADDRESS, PHONE_NUMBER)';
 COMMENT ON COLUMN public.pseudonym_mappings.original_hash IS 'Salted HMAC-SHA256 digest of the original PII value';
 COMMENT ON COLUMN public.pseudonym_mappings.pseudonym IS 'Deterministic replacement token emitted into normalized documents';
+COMMENT ON COLUMN public.pseudonym_mappings.source_names IS 'Catalog source identifiers where this entity was observed';
 COMMENT ON COLUMN public.pseudonym_mappings.created_at IS 'Timestamp when the pseudonym mapping was persisted';

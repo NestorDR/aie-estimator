@@ -14,7 +14,7 @@ AIE Estimator processes software project descriptions and domain parameters (`pr
 
 - **Schemas** ([`src/aie_estimator/schemas/`](src/aie_estimator/schemas/)): Pydantic v2 contracts (`EstimationRequest`, `EstimationResponse`, `DeveloperEstimation`, `PmEstimation`, `ExecutiveEstimation`, `ACBResponse`, `CreateSessionResponse`, `SessionInfoResponse`).
 - **Attachments** ([`src/aie_estimator/attachments/`](src/aie_estimator/attachments/)): Local text extraction (`.pdf`, `.docx`, `.txt`, `.md`), per-file and per-turn character budgets, and XML delimiter wrapping.
-- **Ingestion** ([`src/aie_estimator/ingestion/`](src/aie_estimator/ingestion/)): Offline corpus ingestion package (`catalog/`, `documents/`, `loaders/`, `parsers/`, `cleaning/`, `normalizers/`, `orchestrator.py`) separated from the latency-bound online CAG estimation path.
+- **Ingestion** ([`src/aie_estimator/ingestion/`](src/aie_estimator/ingestion/)): Offline corpus ingestion package (`catalog/`, `documents/`, `loaders/`, `parsers/`, `cleaning/`, `normalizers/`, `pii/`, `orchestrator.py`) separated from the latency-bound online CAG estimation path.
 - **Persistence** ([`src/aie_estimator/persistence/`](src/aie_estimator/persistence/)): Async raw-SQL PostgreSQL pool (`psycopg_pool.AsyncConnectionPool`), versioned `.sql` delta migrations (`migrate.py`), and `JobsRepository` / `MappingsRepository` / `QuarantinedRecordsRepository`.
 - **Sessions** ([`src/aie_estimator/sessions/`](src/aie_estimator/sessions/)): In-memory conversational session store, `ConversationHistory` with bounded anchor compression, 6-field `ProjectMetadata`, and post-turn metadata extractor.
 - **Routers** ([`src/aie_estimator/routers/`](src/aie_estimator/routers/)): HTTP routes (`POST /api/v1/estimate`, `POST /api/v1/sessions`, `GET /api/v1/sessions/{session_id}`, `POST /api/v1/sessions/{session_id}/estimate`, `POST /api/v1/sessions/{session_id}/estimate-acb`, `POST /api/v1/ingestion/runs`, `GET /api/v1/ingestion/jobs/{job_id}`, `GET /health`, `GET /`).
@@ -193,6 +193,7 @@ Architecture and feature guides in [`docs/`](docs/):
 - [Guardrails & Semantic Validation](docs/guardrails.md): Input moderation/injection/PII checks and output low-confidence normalization.
 - [LLM Evaluation Harness](docs/llm-evaluation.md): Golden Dataset, Family 1-3 evaluators, and isolated CLI runner.
 - [Model Catalog](docs/model-catalog.md): Externalized model registry, logical profiles, and OpenAPI enrichment.
+- [GDPR PII Detection & Pseudonymization](docs/pii-pseudonymization.md): Presidio/spaCy PII detection, reversible entity-consistent pseudonymization, HMAC mapping store, and GDPR Article 17 erasure.
 - [Multi-Format Ingestion Pipeline](docs/multi-format-ingestion.md): Canonical `Document` contract, `loaders -> parsers -> normalizers` pipeline, and async ingestion HTTP control plane.
 - [Observability](docs/observability.md): Structlog event taxonomy, OpenTelemetry context injection, and Arize Phoenix tracing.
 - [PostgreSQL Persistence](docs/postgres-persistence.md): Async `psycopg_pool` lifecycle, versioned `.sql` delta migrations, and `JobsRepository` / `MappingsRepository`.

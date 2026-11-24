@@ -24,6 +24,7 @@ from aie_estimator.utils.constants import (
 )
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
+_TEST_PII_HASH_SALT: Final[str] = "test-pii-hash-salt"
 
 
 class Environment(str, Enum):
@@ -91,6 +92,14 @@ class Settings(BaseSettings):
     # Offline catalog & ingestion settings
     catalog_path: Path = Path("data/catalog/catalog.yaml")
     ingestion_data_root: Path = Path("data/seed")
+
+    # PII detection & GDPR pseudonymization settings
+    pii_hash_salt: SecretStr | None = None
+    pii_pseudonymization_enabled: bool = True
+    pii_confidence_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
+    pii_spacy_model: str = "en_core_web_sm"
+    pii_language: str = "en"
+    pii_faker_locale: str = "en_US"
 
     # Attachment ingestion settings
     max_attachments_per_turn: int = Field(default=5, gt=0)
@@ -170,9 +179,11 @@ class Settings(BaseSettings):
             # Initialize the base class with the identified environment
             super().__init__(**kwargs)
 
-            # Guarantee local cost map fallback when executing under test environment
+            # Guarantee local cost map fallback and deterministic PII test salt in test environment
             if self.app_env == Environment.TEST:
                 self.litellm_local_model_cost_map = True
+                if self.pii_hash_salt is None:
+                    self.pii_hash_salt = SecretStr(_TEST_PII_HASH_SALT)
 
             # Mirror secret API keys into os.environ for LiteLLM and external SDKs
             self.mirror_secrets_to_environ()

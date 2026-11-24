@@ -20,7 +20,7 @@ def test_generate_audit_report_includes_all_decision_sections() -> None:
                     "location": "budgets",
                     "format": "json",
                     "quality": {"completeness": 4, "consistency": 3, "actuality": 5, "reliability": 4},
-                    "sensitivity": {"has_pii": True, "pii_flags": ["EMAIL"], "access_level": "confidential"},
+                    "sensitivity": {"has_pii": True, "pii_flags": ["EMAIL_ADDRESS"], "access_level": "confidential"},
                     "decision": "include",
                 },
                 {

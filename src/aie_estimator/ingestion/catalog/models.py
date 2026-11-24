@@ -23,14 +23,15 @@ class CatalogDecision(str, Enum):
 
 
 class PiiFlag(StrEnum):
-    """Closed vocabulary of PII entity categories declared on catalog sources."""
+    """Closed vocabulary of Presidio-aligned PII entity categories declared on catalog sources."""
 
-    EMAIL = "EMAIL"
-    IBAN = "IBAN"
+    EMAIL_ADDRESS = "EMAIL_ADDRESS"
+    IBAN_CODE = "IBAN_CODE"
     CREDIT_CARD = "CREDIT_CARD"
     NUMERIC_IDENTIFIER = "NUMERIC_IDENTIFIER"
     PERSON = "PERSON"
     LOCATION = "LOCATION"
+    ORGANIZATION = "ORGANIZATION"
     CLIENT_CODE = "CLIENT_CODE"
     BUDGET_ID = "BUDGET_ID"
     PHONE_NUMBER = "PHONE_NUMBER"

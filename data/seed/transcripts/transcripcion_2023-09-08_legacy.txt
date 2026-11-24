@@ -1,9 +1,9 @@
 Follow-up meeting - legacy client (pre-2024 format, without timestamps)
 
-Carmen Vidal opens the session recalling that the active budget is BUDGET-2024-0005 and that the internal client code remains CLI-0288. The main point of contact on the vendor side is the technical lead, who takes notes during the call.
+Catherine Vance opens the session recalling that the active budget is BUDGET-2024-0005 and that the internal client code remains CLI-0288. The main point of contact on the vendor side is the technical lead, who takes notes during the call.
 
-Carmen mentions that after the April 11 meeting the scope was expanded. The Toledo plant team also needs a real-time dashboard with OEE metrics. This adds work to the implementation phase and requires updating the total amount.
+Catherine mentions that after the April 11 meeting the scope was expanded. The Toledo plant team also needs a real-time dashboard with OEE metrics. This adds work to the implementation phase and requires updating the total amount.
 
-The vendor replies that the increase is around two thousand euros and will be reflected in a new budget version. Carmen confirms alignment and asks for the documentation to be sent to carmen.vidal@toledo-ind.es and copied to her CFO, Antonio Salgado, whose email is a.salgado@toledo-ind.es.
+The vendor replies that the increase is around two thousand euros and will be reflected in a new budget version. Catherine confirms alignment and asks for the documentation to be sent to catherine.vance@toledo-ind.com and copied to her CFO, Anthony Sanders, whose email is a.sanders@toledo-ind.com.
 
-The call closes with an agreement that Antonio Salgado will schedule the next meeting after the new version is signed.
+The call closes with an agreement that Anthony Sanders will schedule the next meeting after the new version is signed.

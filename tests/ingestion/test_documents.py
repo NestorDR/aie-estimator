@@ -26,7 +26,7 @@ def test_document_and_metadata_accept_valid_payload() -> None:
         ingested_at=now,
         lineage=("CRM",),
         contains_pii=True,
-        pii_flags=(PiiFlag.PERSON, PiiFlag.EMAIL),
+        pii_flags=(PiiFlag.PERSON, PiiFlag.EMAIL_ADDRESS),
         access_level="confidential",
         extra={"budget_id": "BUDGET-2024-0001"},
     )

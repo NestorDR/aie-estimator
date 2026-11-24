@@ -11,7 +11,7 @@
     {"name": "MVP Implementation", "weeks": 6, "amount": 20000},
     {"name": "Testing and Deployment", "weeks": 1, "amount": 5000}
   ],
-  "contact": "Laura Fernández",
-  "contact_email": "laura.fernandez@acme.es",
+  "contact": "Laura Miller",
+  "contact_email": "laura.miller@acme.com",
   "notes": "Internal B2B SaaS project with Workday integration."
 }

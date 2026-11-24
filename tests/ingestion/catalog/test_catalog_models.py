@@ -25,7 +25,7 @@ def _make_source(**overrides: Any) -> dict[str, Any]:
         "location": "budgets",
         "format": "json",
         "quality": {"completeness": 4, "consistency": 3, "actuality": 5, "reliability": 4},
-        "sensitivity": {"has_pii": True, "pii_flags": ["EMAIL", "PERSON"], "access_level": "confidential"},
+        "sensitivity": {"has_pii": True, "pii_flags": ["EMAIL_ADDRESS", "PERSON"], "access_level": "confidential"},
         "decision": "include",
     }
     base.update(overrides)
@@ -132,4 +132,7 @@ def test_data_catalog_included_sources_and_find() -> None:
     assert catalog.find("transcripts_txt") is not None
     assert catalog.find("transcripts_txt").decision is CatalogDecision.REVIEW
     assert catalog.find("missing") is None
-    assert Sensitivity(has_pii=True, pii_flags=(PiiFlag.EMAIL,)).pii_flags == (PiiFlag.EMAIL,)
+    assert Sensitivity(has_pii=True, pii_flags=(PiiFlag.EMAIL_ADDRESS, PiiFlag.ORGANIZATION)).pii_flags == (
+        PiiFlag.EMAIL_ADDRESS,
+        PiiFlag.ORGANIZATION,
+    )

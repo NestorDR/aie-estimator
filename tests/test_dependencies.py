@@ -19,10 +19,14 @@ from aie_estimator.dependencies import (
     get_exact_cache,
     get_jobs_repository,
     get_mappings_repository,
+    get_pii_analyzer,
+    get_pii_pseudonymizer,
     get_semantic_cache,
     get_session_store,
     get_settings,
 )
+from aie_estimator.ingestion.pii.analyzer import PresidioPiiAnalyzer
+from aie_estimator.ingestion.pii.pseudonymizer import ConsistentPseudonymizer
 from aie_estimator.persistence.repositories.jobs import JobsRepository
 from aie_estimator.persistence.repositories.mappings import MappingsRepository
 from aie_estimator.services.cache import (
@@ -233,3 +237,26 @@ def test_get_catalog_reloads_on_each_call(tmp_path: Path) -> None:
     catalog_file.write_text('version: "1.0.1"\nsources: []\n', encoding="utf-8")
     second = get_catalog(settings=settings)
     assert second.version == "1.0.1"
+
+
+def test_get_pii_dependencies_enabled_and_disabled() -> None:
+    """
+    GIVEN Settings with PII pseudonymization enabled or disabled
+    WHEN get_pii_analyzer and get_pii_pseudonymizer are resolved
+    THEN enabled returns ConsistentPseudonymizer and disabled returns None without touching db_pool.
+    """
+    enabled_settings = Settings(app_env=Environment.TEST, pii_pseudonymization_enabled=True)
+    analyzer = get_pii_analyzer(settings=enabled_settings)
+    assert isinstance(analyzer, PresidioPiiAnalyzer)
+
+    mock_pool = MagicMock(spec=AsyncConnectionPool)
+    initialized_request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(db_pool=mock_pool)))
+    pseudonymizer = get_pii_pseudonymizer(
+        request=initialized_request,  # type: ignore[arg-type]
+        settings=enabled_settings,
+    )
+    assert isinstance(pseudonymizer, ConsistentPseudonymizer)
+
+    uninitialized_request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(db_pool=None)))
+    disabled_settings = Settings(app_env=Environment.TEST, pii_pseudonymization_enabled=False)
+    assert get_pii_pseudonymizer(request=uninitialized_request, settings=disabled_settings) is None  # type: ignore[arg-type]

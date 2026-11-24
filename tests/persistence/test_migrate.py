@@ -27,6 +27,7 @@ def test_list_migration_scripts_includes_initial_schema_without_connect_command(
     initial_sql = dict(scripts)["0001_initial_schema.sql"]
     assert "ingestion_jobs" in initial_sql
     assert "pseudonym_mappings" in initial_sql
+    assert "source_names" in initial_sql
     assert "\\connect" not in initial_sql
 
     quarantine_sql = dict(scripts)["0002_quarantine_and_validation_report.sql"]

@@ -10,7 +10,7 @@
     {"name": "Backend Integrations", "weeks": 4, "amount": 14000},
     {"name": "Dashboards", "weeks": 2, "amount": 8000}
   ],
-  "contact": "Javier Romero",
-  "contact_email": "j.romero@betanorte.com",
+  "contact": "James Reynolds",
+  "contact_email": "j.reynolds@betanorte.com",
   "notes": "Legacy ERP migration. Three warehouses."
 }

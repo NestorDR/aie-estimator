@@ -25,7 +25,7 @@ sources:
       reliability: 4
     sensitivity:
       has_pii: true
-      pii_flags: ["PERSON", "EMAIL", "BUDGET_ID", "CLIENT_CODE"]
+      pii_flags: ["PERSON", "EMAIL_ADDRESS", "ORGANIZATION", "BUDGET_ID", "CLIENT_CODE"]
       access_level: confidential
     lineage:
       - "Exported from commercial CRM."
@@ -50,7 +50,7 @@ sources:
       reliability: 3
     sensitivity:
       has_pii: true
-      pii_flags: ["PERSON", "EMAIL", "CLIENT_CODE", "LOCATION"]
+      pii_flags: ["PERSON", "EMAIL_ADDRESS", "CLIENT_CODE", "LOCATION"]
       access_level: confidential
     lineage:
       - "Captured via meeting transcription service."
