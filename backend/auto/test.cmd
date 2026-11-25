@@ -1,6 +1,7 @@
 :: auto/test.cmd
 :: Purpose: Run all tests in the project and clean up temporary test artifacts
 :: Usage: auto\test.cmd [target_test_script.py]
+:: Usage: auto\test.cmd --live-db  # Run tests against a live database (requires .env.dev to be configured)
 
 @echo off
 cls
@@ -30,6 +31,7 @@ set VIRTUAL_ENV=.venv
 :: --basetemp: Route temporary fixture directories to the system TEMP folder.
 :: --cov-fail-under=85: Require overall test coverage of at least 85%.
 uv run --locked --active pytest %* --cache-clear --basetemp="%TEMP%\pytest_runner" --cov-fail-under=85
+
 set _EXIT_CODE=%ERRORLEVEL%
 
 :: Post-test cleanup of project root artifacts
