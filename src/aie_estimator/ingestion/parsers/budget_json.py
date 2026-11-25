@@ -1,12 +1,13 @@
 # src/aie_estimator/ingestion/parsers/budget_json.py
 
 """
-Parser for budget JSON schemas.
+Parser and strict JSON contract for historical budget schemas.
 
-The key design choice: each budget is rendered to structured markdown, not
-``json.dumps``. The downstream retriever embeds prose, not key-value soup;
-markdown gives the embedder semantic anchors (## Client, ## Total, ## Phases)
-that a raw JSON dump lacks. The numbers stay; only the framing changes.
+Each budget is rendered to structured markdown for semantic prose retrieval while
+retaining all 10 cleaned fields as plain JSON-serializable values in
+``DocumentMetadata.extra``. Keeping plain dicts/lists in ``extra`` lets
+``ConsistentPseudonymizer`` scrub nested string leaves in place before downstream
+consumers validate the payload through ``CleanedBudget``.
 """
 
 # --- Python Standard Library ---
@@ -14,10 +15,40 @@ from collections.abc import Iterable
 import json
 from typing import Any, ClassVar
 
+# --- Third Party Libraries ---
+from pydantic import BaseModel, ConfigDict, Field
+
 # --- App modules ---
 from aie_estimator.ingestion.documents.models import Document, DocumentMetadata
 from aie_estimator.ingestion.loaders.filesystem import LoadedBlob
 from aie_estimator.ingestion.parsers.protocol import ParseContext
+
+
+class BudgetPhase(BaseModel):
+    """Single delivery phase within a cleaned historical budget."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    weeks: int | float
+    amount: float
+
+
+class CleanedBudget(BaseModel):
+    """Strict Pydantic v2 contract for cleaned, pseudonymized Session 6 budget JSON."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    budget_id: str
+    client_name: str
+    client_code: str
+    currency: str
+    total_amount: float
+    signed_at: str
+    phases: list[BudgetPhase] = Field(default_factory=list)
+    contact: str | None = None
+    contact_email: str | None = None
+    notes: str | None = None
 
 
 class BudgetJsonParser:
@@ -55,6 +86,8 @@ class BudgetJsonParser:
         """
         text = _render_budget_markdown(payload)
         budget_id = payload.get("budget_id") or "unknown"
+        # Deterministic ID stays unpseudonymized for incremental re-indexing; downstream
+        # RAG consumers must read the pseudonymized budget_id from metadata.extra instead.
         doc_id = f"{context.source.name}:{budget_id}:{source_location}"
         return Document(
             id=doc_id,
@@ -64,12 +97,20 @@ class BudgetJsonParser:
                 source_version=context.source_version,
                 source_location=source_location,
                 ingested_at=context.ingested_at,
+                # Store plain JSON-serializable dicts/lists (not Pydantic models) so
+                # ConsistentPseudonymizer._pseudonymize_metadata_value() can recursively scrub
+                # nested string leaves (including phases[].name) before CleanedBudget validation.
                 extra={
                     "budget_id": payload.get("budget_id"),
+                    "client_name": payload.get("client_name"),
                     "client_code": payload.get("client_code"),
                     "currency": payload.get("currency"),
                     "total_amount": payload.get("total_amount"),
                     "signed_at": payload.get("signed_at"),
+                    "phases": list(payload.get("phases") or []),
+                    "contact": payload.get("contact"),
+                    "contact_email": payload.get("contact_email"),
+                    "notes": payload.get("notes"),
                 },
             ),
         )

@@ -3,6 +3,7 @@
 """Unit tests for ConsistentPseudonymizer, AsyncMappingStore, and metadata scrubbing."""
 
 # --- Python Standard Library ---
+from collections.abc import Callable
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
@@ -12,7 +13,7 @@ import pytest
 # --- App modules ---
 from aie_estimator.ingestion.catalog.models import PiiFlag
 from aie_estimator.ingestion.documents.models import Document, DocumentMetadata, compute_content_hash
-from aie_estimator.ingestion.pii.analyzer import PiiSpan
+from aie_estimator.ingestion.pii.analyzer import PiiAnalyzer
 from aie_estimator.ingestion.pii.mapping_store import (
     AsyncMappingStore,
     InMemoryMappingStore,
@@ -25,25 +26,6 @@ from aie_estimator.ingestion.pii.pseudonymizer import (
 )
 from aie_estimator.persistence.repositories.mappings import Mapping
 from aie_estimator.settings import Environment, Settings
-
-
-class _StubAnalyzer:
-    """Deterministic substring-matching PiiAnalyzer stub for offline unit tests."""
-
-    def __init__(self, needles: dict[str, str]) -> None:
-        self._needles = needles
-
-    def analyze(self, text: str) -> list[PiiSpan]:
-        spans: list[PiiSpan] = []
-        for literal, entity_type in self._needles.items():
-            start = 0
-            while True:
-                idx = text.find(literal, start)
-                if idx == -1:
-                    break
-                spans.append(PiiSpan(start=idx, end=idx + len(literal), entity_type=entity_type, score=0.95))
-                start = idx + len(literal)
-        return spans
 
 
 def _make_doc(doc_id: str, text: str, extra: dict[str, object] | None = None) -> Document:
@@ -65,13 +47,15 @@ def _make_doc(doc_id: str, text: str, extra: dict[str, object] | None = None) ->
 
 
 @pytest.mark.anyio
-async def test_pseudonymizer_is_consistent_across_documents_and_preserves_offsets() -> None:
+async def test_pseudonymizer_is_consistent_across_documents_and_preserves_offsets(
+    make_stub_analyzer: Callable[[dict[str, str]], PiiAnalyzer],
+) -> None:
     """
     GIVEN two documents sharing the same person name, email, and budget ID
     WHEN ConsistentPseudonymizer.pseudonymize_documents is awaited
     THEN every occurrence maps to the same pseudonym, offsets remain intact, and plaintext never enters the store.
     """
-    analyzer = _StubAnalyzer(
+    analyzer = make_stub_analyzer(
         {
             "Laura Miller": PiiFlag.PERSON.value,
             "laura.miller@acme.com": PiiFlag.EMAIL_ADDRESS.value,
@@ -124,14 +108,16 @@ async def test_pseudonymizer_is_consistent_across_documents_and_preserves_offset
 
 
 @pytest.mark.anyio
-async def test_pseudonymizer_leaves_clean_document_unchanged() -> None:
+async def test_pseudonymizer_leaves_clean_document_unchanged(
+    make_stub_analyzer: Callable[[dict[str, str]], PiiAnalyzer],
+) -> None:
     """
     GIVEN a document with no detected PII spans
     WHEN pseudonymize_document is awaited
     THEN text and content_hash remain identical.
     """
     pseudonymizer = ConsistentPseudonymizer(
-        analyzer=_StubAnalyzer({}),
+        analyzer=make_stub_analyzer({}),
         mapping_store=InMemoryMappingStore(),
         salt="unit-salt",
     )
@@ -176,7 +162,9 @@ async def test_postgres_mapping_store_delegates_to_repository() -> None:
     repo.forget.assert_awaited_once_with(PiiFlag.PERSON.value, "abc123")
 
 
-def test_salt_validation_rejects_missing_or_blank_salt() -> None:
+def test_salt_validation_rejects_missing_or_blank_salt(
+    make_stub_analyzer: Callable[[dict[str, str]], PiiAnalyzer],
+) -> None:
     """
     GIVEN an empty salt or non-test Settings with pii_hash_salt=None
     WHEN compute_pii_hash, resolve_pii_salt, or ConsistentPseudonymizer is called
@@ -186,7 +174,7 @@ def test_salt_validation_rejects_missing_or_blank_salt() -> None:
         compute_pii_hash("Laura Miller", "   ")
 
     with pytest.raises(ValueError, match=r"non-empty"):
-        ConsistentPseudonymizer(analyzer=_StubAnalyzer({}), mapping_store=InMemoryMappingStore(), salt="")
+        ConsistentPseudonymizer(analyzer=make_stub_analyzer({}), mapping_store=InMemoryMappingStore(), salt="")
 
     prod_settings = Settings(app_env=Environment.PROD, pii_hash_salt=None)
     with pytest.raises(ValueError, match=r"PII_HASH_SALT"):

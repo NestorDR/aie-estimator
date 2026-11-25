@@ -6,7 +6,7 @@ The offline multi-format ingestion pipeline converts catalog-approved enterprise
 
 - **Canonical Contract**: [`documents/models.py`](../src/aie_estimator/ingestion/documents/models.py) defines `Document`, `DocumentMetadata` (`extra="forbid"`), and `compute_content_hash()` (SHA-256 text fingerprint used for Topic 5 deduplication and Session 7 incremental re-indexing).
 - **Loaders**: [`loaders/filesystem.py`](../src/aie_estimator/ingestion/loaders/filesystem.py) provides `LoadedBlob` and `FileSystemLoader` rooted at `Settings.ingestion_data_root`.
-- **Parsers**: [`parsers/protocol.py`](../src/aie_estimator/ingestion/parsers/protocol.py) defines `ParseContext` and the `Parser` `Protocol`; [`parsers/registry.py`](../src/aie_estimator/ingestion/parsers/registry.py) provides `ParserRegistry` and `default_registry()`, preloading [`BudgetJsonParser`](../src/aie_estimator/ingestion/parsers/budget_json.py) (`json`, exposing `decode_record()` and `render_record()` for pre-render batch cleaning) and [`TranscriptTxtParser`](../src/aie_estimator/ingestion/parsers/transcript_txt.py) (`txt`).
+- **Parsers**: [`parsers/protocol.py`](../src/aie_estimator/ingestion/parsers/protocol.py) defines `ParseContext` and the `Parser` `Protocol`; [`parsers/registry.py`](../src/aie_estimator/ingestion/parsers/registry.py) provides `ParserRegistry` and `default_registry()`, preloading [`BudgetJsonParser`](../src/aie_estimator/ingestion/parsers/budget_json.py) (`json`, exposing `decode_record()`, `render_record()`, and strict `BudgetPhase`/`CleanedBudget` validation models over the 10 cleaned fields retained in `DocumentMetadata.extra`) and [`TranscriptTxtParser`](../src/aie_estimator/ingestion/parsers/transcript_txt.py) (`txt`).
 - **Cleaning, Normalizers & Orchestrator**: [`cleaning/`](../src/aie_estimator/ingestion/cleaning/__init__.py) and [`normalizers/canonical.py`](../src/aie_estimator/ingestion/normalizers/canonical.py) (`normalize_documents`) enforce data quality rules and authoritative catalog metadata; [`orchestrator.py`](../src/aie_estimator/ingestion/orchestrator.py) (`ingest_source`, `IngestionResult`, `IngestionRejected`) gates runs on `CatalogDecision.INCLUDE` and returns canonical `documents`, `quarantined` records, and `report`.
 - **HTTP Control Plane**: [`schemas/ingestion.py`](../src/aie_estimator/schemas/ingestion.py) and [`routers/ingestion_router.py`](../src/aie_estimator/routers/ingestion_router.py) expose `POST /api/v1/ingestion/runs` (`202 Accepted`) and `GET /api/v1/ingestion/jobs/{job_id}`, wired in [`dependencies.py`](../src/aie_estimator/dependencies.py) and [`server.py`](../src/aie_estimator/server.py).
 
@@ -42,6 +42,14 @@ result = ingest_source(
     registry=get_parser_registry(),
 )
 # result.documents, result.quarantined, result.report
+```
+
+Inspect cleaned, GDPR-pseudonymized budget JSON on `stdout` without writing to PostgreSQL or disk ([`inspect_budgets.py`](../src/aie_estimator/ingestion/inspect_budgets.py)):
+
+```bash
+uv run python -m aie_estimator.ingestion.inspect_budgets
+# Windows convenience wrapper (status banners routed to stderr so stdout stays valid JSON):
+auto\inspect-budgets --no-pii
 ```
 
 ---

@@ -23,6 +23,7 @@ from aie_estimator.ingestion.catalog.models import PiiFlag
 from aie_estimator.ingestion.documents.models import Document, DocumentMetadata, compute_content_hash
 from aie_estimator.ingestion.loaders.filesystem import FileSystemLoader
 from aie_estimator.ingestion.orchestrator import ingest_source
+from aie_estimator.ingestion.parsers.budget_json import CleanedBudget
 from aie_estimator.ingestion.parsers.registry import default_registry
 from aie_estimator.ingestion.pii.analyzer import PresidioPiiAnalyzer
 from aie_estimator.ingestion.pii.forget import forget_entity
@@ -33,6 +34,8 @@ _CATALOG_PATH: Final[Path] = Path("data/catalog/catalog.yaml")
 _SEED_ROOT: Final[Path] = Path("data/seed")
 _TEST_SALT: Final[str] = "offline-e2e-pii-salt"
 _RAW_PII_VALUES: Final[tuple[str, ...]] = (
+    "Acme Spain Ltd.",
+    "BetaNorte Distribution",
     "Laura Miller",
     "laura.miller@acme.com",
     "CLI-0042",
@@ -94,10 +97,14 @@ async def test_offline_ingestion_pipeline_pseudonymizes_seed_corpus(
 
     assert len(safe_docs) == len(ingestion_result.documents)
     for safe_doc in safe_docs:
+        cleaned_budget = CleanedBudget.model_validate(safe_doc.metadata.extra)
+        assert len(cleaned_budget.phases) >= 3
         serialized_extra = json.dumps(safe_doc.metadata.extra)
+        serialized_budget = cleaned_budget.model_dump_json()
         for raw_value in _RAW_PII_VALUES:
             assert raw_value not in safe_doc.text
             assert raw_value not in serialized_extra
+            assert raw_value not in serialized_budget
         assert safe_doc.content_hash == compute_content_hash(safe_doc.text)
         assert safe_doc.content_hash != raw_hashes[safe_doc.id]
 

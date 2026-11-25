@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 # --- Third Party Libraries ---
+from pydantic import ValidationError
 import pytest
 
 # --- App modules ---
@@ -16,7 +17,7 @@ from aie_estimator.ingestion.catalog.models import (
     Sensitivity,
 )
 from aie_estimator.ingestion.loaders.filesystem import LoadedBlob
-from aie_estimator.ingestion.parsers.budget_json import BudgetJsonParser
+from aie_estimator.ingestion.parsers.budget_json import BudgetJsonParser, BudgetPhase, CleanedBudget
 from aie_estimator.ingestion.parsers.protocol import ParseContext
 from aie_estimator.ingestion.parsers.registry import ParserRegistry, default_registry
 from aie_estimator.ingestion.parsers.transcript_txt import TranscriptTxtParser
@@ -76,7 +77,24 @@ def test_budget_json_parser_renders_seed_budget_markdown() -> None:
     assert "## Phases" in doc.text
     assert "## Notes" in doc.text
     assert doc.metadata.extra["budget_id"] == "BUDGET-2024-0001"
+    assert doc.metadata.extra["client_name"] == "Acme Spain Ltd."
+    assert doc.metadata.extra["client_code"] == "CLI-0042"
     assert doc.metadata.extra["currency"] == "EUR"
+    assert doc.metadata.extra["total_amount"] == 45000
+    assert doc.metadata.extra["signed_at"] == "2024-02-14"
+    assert len(doc.metadata.extra["phases"]) == 4
+    assert doc.metadata.extra["contact"] == "Laura Miller"
+    assert doc.metadata.extra["contact_email"] == "laura.miller@acme.com"
+    assert doc.metadata.extra["notes"] == "Internal B2B SaaS project with Workday integration."
+
+    cleaned = CleanedBudget.model_validate(doc.metadata.extra)
+    assert cleaned.budget_id == "BUDGET-2024-0001"
+    assert len(cleaned.phases) == 4
+    assert isinstance(cleaned.phases[0], BudgetPhase)
+    assert cleaned.phases[0].name == "Discovery"
+
+    with pytest.raises(ValidationError, match=r"Extra inputs are not permitted"):
+        CleanedBudget.model_validate({**doc.metadata.extra, "unexpected_field": True})
 
 
 def test_budget_json_parser_handles_missing_optional_fields() -> None:
