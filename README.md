@@ -12,7 +12,7 @@ AIE Estimator processes software project descriptions and domain parameters (`pr
 
 ## Architecture
 
-- **Schemas** ([`src/aie_estimator/schemas/`](src/aie_estimator/schemas/)): Pydantic v2 contracts (`EstimationRequest`, `EstimationResponse`, `DeveloperEstimation`, `PmEstimation`, `ExecutiveEstimation`, `ACBResponse`, `CreateSessionResponse`, `SessionInfoResponse`).
+- **Schemas** ([`src/aie_estimator/schemas/`](src/aie_estimator/schemas/)): Pydantic v2 contracts (`EstimationRequest`, `ACBResponse`, `SessionInfoResponse`, `IngestionRunResponse`, etc.).
 - **Attachments** ([`src/aie_estimator/attachments/`](src/aie_estimator/attachments/)): Local text extraction (`.pdf`, `.docx`, `.txt`, `.md`), per-file and per-turn character budgets, and XML delimiter wrapping.
 - **Ingestion** ([`src/aie_estimator/ingestion/`](src/aie_estimator/ingestion/)): Offline corpus ingestion package (`catalog/`, `documents/`, `loaders/`, `parsers/`, `cleaning/`, `normalizers/`, `pii/`, `orchestrator.py`) separated from the latency-bound online CAG estimation path.
 - **Persistence** ([`src/aie_estimator/persistence/`](src/aie_estimator/persistence/)): Async raw-SQL PostgreSQL pool (`psycopg_pool.AsyncConnectionPool`), versioned `.sql` delta migrations (`migrate.py`), and `JobsRepository` / `MappingsRepository` / `QuarantinedRecordsRepository`.
@@ -165,7 +165,7 @@ Interactive documentation is available at `http://localhost:8000/docs` (Swagger 
 | `POST` | `/api/v1/ingestion/runs` | Queues an offline ingestion run for an `include` catalog source (`202 Accepted`) |
 | `GET` | `/api/v1/ingestion/jobs/{job_id}` | Inspects the persisted status, document count, and `validation_report` of an ingestion job |
 
-See [API Schemas & Data Contracts](docs/api-schemas.md) and [Conversational Sessions](docs/conversational-sessions.md) for payload contracts, multipart examples, and error mappings.
+See [API Schemas & Data Contracts](docs/api-schemas.md), [Conversational Sessions](docs/conversational-sessions.md), and [Multi-Format Ingestion Pipeline](docs/multi-format-ingestion.md) for payload contracts, multipart examples, and error mappings.
 
 ## Code Quality & Standards
 
