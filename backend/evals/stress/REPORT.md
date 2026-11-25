@@ -1,7 +1,7 @@
 # CAG Baseline Stress Test Report
 
 - **Model / Profile**: `reasoner-fast (openai/gpt-6-luna prioritized)` (`--http http://127.0.0.1:8000`, `--repeats 1`)
-- **Dataset**: [`evals/stress/results.csv`](./results.csv) — **65 turns** executed (**0 errors**)
+- **Dataset**: [`results.csv`](results.csv) — **65 turns** executed (**0 errors**)
 - **Total Spend**: **\$0.1149** (`65/65` turns passed the \$0.05/turn cost budget)
 - **Latency Budget (8,000 ms)**: **4/65** turns passed (`61/65` exceeded 8 seconds)
 

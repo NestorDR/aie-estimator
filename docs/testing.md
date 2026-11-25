@@ -2,9 +2,9 @@
 
 ## Overview
 
-[`pyproject.toml`](../pyproject.toml) configures pytest for `aie-estimator` (`testpaths = ["tests"]`, `pythonpath = [".", "src"]`). Test modules mirror the source tree under [`tests/`](../tests/), complemented by end-to-end scenario modules under [`tests/integration/`](../tests/integration/) (`test_session_metadata_chaining.py`, `test_session_pdf_attachment.py`, `test_session_sliding_window.py`, `test_ingestion_pipeline_e2e.py`, and opt-in `test_live_postgres_ingestion.py`).
+[`../backend/pyproject.toml`](../backend/pyproject.toml) configures pytest for `aie-estimator` (`testpaths = ["tests"]`, `pythonpath = [".", "src"]`). Test modules mirror the source tree under [`../backend/tests`](../backend/tests/), complemented by end-to-end scenario modules under [`../backend/tests`](../backend/tests/integration/) (`test_session_metadata_chaining.py`, `test_session_pdf_attachment.py`, `test_session_sliding_window.py`, `test_ingestion_pipeline_e2e.py`, and opt-in `test_live_postgres_ingestion.py`).
 
-Core shared fixtures are defined in [`tests/conftest.py`](../tests/conftest.py):
+Core shared fixtures are defined in [`../backend/tests`](../backend/tests/conftest.py):
 - `anyio_backend` (session): Configures `SelectorEventLoop` via `loop_factory` on Windows (`win32`) for `psycopg` async compatibility.
 - `app`: Instantiates the FastAPI application via `create_app()` and clears dependency overrides on teardown.
 - `client`: `TestClient` executing application startup and shutdown lifespan handlers (`SelectorEventLoop` `backend_options` on `win32`).
@@ -57,8 +57,8 @@ def test_environment_override(monkeypatch: pytest.MonkeyPatch) -> None:
 
 ```python
 from unittest.mock import AsyncMock
-from aie_estimator.dependencies import get_estimation_service
-from aie_estimator.services.estimations_service import EstimationService
+from aie_estimator import get_estimation_service
+from aie_estimator import EstimationService
 
 mock_service = AsyncMock(spec=EstimationService)
 mock_service.generate_estimation.return_value = sample_response
@@ -91,10 +91,10 @@ rtk uv run pytest --no-cov             # Zero-overhead iterative feedback
 1. **Test Design Conventions**:
    - Every test docstring follows GIVEN-WHEN-THEN structure with Sphinx `:param` definitions.
    - Assert exceptions with `pytest.raises(Exc, match=r'...')` using concise, distinctive keywords.
-   - Tests never make real network or I/O calls to LLM providers, Redis, or PostgreSQL by default; `@pytest.mark.live_db` tests are auto-skipped in [`tests/conftest.py`](../tests/conftest.py) unless `--live-db` is explicitly passed.
+   - Tests never make real network or I/O calls to LLM providers, Redis, or PostgreSQL by default; `@pytest.mark.live_db` tests are auto-skipped in [`../backend/tests`](../backend/tests/conftest.py) unless `--live-db` is explicitly passed.
 2. **Runtime Isolation Mechanics**:
-   - `clean_settings_cache` and `auto_sync_settings_on_env_mutation` in [`tests/conftest.py`](../tests/conftest.py) ensure zero state leakage between tests.
+   - `clean_settings_cache` and `auto_sync_settings_on_env_mutation` in [`../backend/tests`](../backend/tests/conftest.py) ensure zero state leakage between tests.
    - `app` fixture neutralizes `EstimationSemanticCache.initialize_index`, and `postgres_password` defaults to `None` under `APP_ENV=test`, so lifespan startup skips Redis and PostgreSQL socket connections in offline environments.
-3. **Environment Isolation**: The suite runs under `APP_ENV=test` configured in `[tool.pytest_env]` in [`pyproject.toml`](../pyproject.toml). Tests must never produce `logs/dev.log`.
-4. **Coverage Policy**: Minimum 85% line and branch coverage across `aie_estimator` and `streamlit_app`. `--cov-fail-under` is enforced via CLI during full regression runs and must not be placed in `pyproject.toml` `addopts`.
+3. **Environment Isolation**: The suite runs under `APP_ENV=test` configured in `[tool.pytest_env]` in [`../backend/pyproject.toml`](../backend/pyproject.toml). Tests must never produce `logs/dev.log`.
+4. **Coverage Policy**: Minimum 85% line and branch coverage across `aie_estimator` and `streamlit_app`. `--cov-fail-under` is enforced via CLI during full regression runs and must not be placed in `../backend/pyproject.toml` `addopts`.
 5. **Windows 11 & Python 3.14 Async Execution Policy**: Python 3.14's `ProactorEventLoop` uses Windows I/O Completion Ports (IOCP) and local loopback sockets restricted by standard process sandboxes. When executing test suites or async scripts on Windows, always pass `BypassSandbox: true`.

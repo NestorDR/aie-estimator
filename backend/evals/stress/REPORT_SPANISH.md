@@ -1,7 +1,7 @@
 # Informe de Pruebas de Estrés — Línea Base CAG
 
 - **Modelo / Perfil**: `reasoner-fast (openai/gpt-6-luna priorizado)` (`--http http://127.0.0.1:8000`, `--repeats 1`)
-- **Dataset**: [`evals/stress/results.csv`](./results.csv) — **65 turnos** ejecutados (**0 errores**)
+- **Dataset**: [`results.csv`](results.csv) — **65 turnos** ejecutados (**0 errores**)
 - **Coste total**: **\$0.1149** (`65/65` turnos cumplieron el presupuesto de \$0.05/turno)
 - **Presupuesto de latencia (8,000 ms)**: **4/65** turnos cumplieron (`61/65` superaron los 8 segundos)
 

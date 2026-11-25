@@ -2,10 +2,10 @@
 
 ## Overview
 
-The application implements the Application Factory pattern in [`src/aie_estimator/server.py`](../src/aie_estimator/server.py) and a centralized Composition Root in [`src/aie_estimator/dependencies.py`](../src/aie_estimator/dependencies.py). This architecture decouples the HTTP transport layer from domain orchestration, eliminates shared mutable singletons across test executions, and enables deterministic mocking via FastAPI's `app.dependency_overrides`.
+The application implements the Application Factory pattern in [`../backend/src`](../backend/src/aie_estimator/server.py) and a centralized Composition Root in [`../backend/src`](../backend/src/aie_estimator/dependencies.py). This architecture decouples the HTTP transport layer from domain orchestration, eliminates shared mutable singletons across test executions, and enables deterministic mocking via FastAPI's `app.dependency_overrides`.
 
 Layer flow:
-`create_app()` ([`server.py`](../src/aie_estimator/server.py)) → Route Handlers ([`src/aie_estimator/routers/`](../src/aie_estimator/routers/)) → `Depends(get_estimation_service)` ([`dependencies.py`](../src/aie_estimator/dependencies.py)) → [`EstimationService`](../src/aie_estimator/services/estimations_service.py).
+`create_app()` ([`server.py`](../backend/src/aie_estimator/server.py)) → Route Handlers ([`../backend/src`](../backend/src/aie_estimator/routers/)) → `Depends(get_estimation_service)` ([`dependencies.py`](../backend/src/aie_estimator/dependencies.py)) → [`EstimationService`](../backend/src/aie_estimator/services/estimations_service.py).
 
 ---
 
@@ -14,8 +14,8 @@ Layer flow:
 ### 1. Application Factory Instantiation
 
 ```python
-from aie_estimator.server import create_app
-from aie_estimator.settings import Settings
+from aie_estimator import create_app
+from aie_estimator import Settings
 
 # Default configuration from environment variables
 app = create_app()
@@ -28,17 +28,17 @@ custom_app = create_app(settings=Settings(server_port=9000))
 
 ```python
 from fastapi import APIRouter, Depends
-from aie_estimator.dependencies import get_estimation_service
-from aie_estimator.schemas.estimations import EstimationRequest, EstimationResponse
-from aie_estimator.services.estimations_service import EstimationService
+from aie_estimator import get_estimation_service
+from aie_estimator import EstimationRequest, EstimationResponse
+from aie_estimator import EstimationService
 
 router = APIRouter(prefix="/api/v1")
 
 
 @router.post("/estimate", response_model=EstimationResponse)
 async def create_estimation(
-    request: EstimationRequest,
-    service: EstimationService = Depends(get_estimation_service),
+        request: EstimationRequest,
+        service: EstimationService = Depends(get_estimation_service),
 ) -> EstimationResponse:
     return await service.generate_estimation(request)
 ```
@@ -47,8 +47,8 @@ async def create_estimation(
 
 ```python
 from unittest.mock import AsyncMock
-from aie_estimator.dependencies import get_estimation_service
-from aie_estimator.services.estimations_service import EstimationService
+from aie_estimator import get_estimation_service
+from aie_estimator import EstimationService
 
 mock_service = AsyncMock(spec=EstimationService)
 client.app.dependency_overrides[get_estimation_service] = lambda: mock_service
@@ -58,7 +58,7 @@ client.app.dependency_overrides[get_estimation_service] = lambda: mock_service
 
 ## Technical Considerations
 
-1. **Separation of Concerns**: [`Settings`](../src/aie_estimator/settings.py) is consumed only at the factory (`create_app`) and Composition Root ([`dependencies.py`](../src/aie_estimator/dependencies.py)). Domain services receive concrete collaborators (`exact_cache`, `semantic_cache`, `moderation_client`) rather than entire settings instances.
-2. **Factory Invocation**: ASGI entry points ([`src/aie_estimator/__main__.py`](../src/aie_estimator/__main__.py)) invoke Uvicorn using the factory string (`"aie_estimator.server:create_app"`, `factory=True`), eliminating module-level singleton state.
-3. **Test Isolation & Lifespan State**: Stateless factories in [`dependencies.py`](../src/aie_estimator/dependencies.py) use `@lru_cache(maxsize=1)` and are cleared before and after each test via `_clear_all_caches()` in [`tests/conftest.py`](../tests/conftest.py). Lifespan-owned PostgreSQL pooling (`app.state.db_pool`) is resolved via `get_db_pool`, `get_jobs_repository`, `get_mappings_repository`, `get_quarantined_records_repository`, and `get_pii_pseudonymizer` (which returns `None` before loading `spaCy` or touching `db_pool` when `pii_pseudonymization_enabled` is `False`), raising `ConnectionError` when unconfigured.
-4. **Centralized Exception Handling**: [`Server._register_exception_handlers`](../src/aie_estimator/server.py) maps domain exceptions to consistent HTTP status codes across all routers: `InputGuardrailViolation` (`400`), `SessionNotFoundError` (`404`), `RequestValidationError` and `AttachmentExtractionError` (`422`), `LLMProviderError` (`500`), and `ConnectionError` / `psycopg.Error` (`503`).
+1. **Separation of Concerns**: [`Settings`](../backend/src/aie_estimator/settings.py) is consumed only at the factory (`create_app`) and Composition Root ([`dependencies.py`](../backend/src/aie_estimator/dependencies.py)). Domain services receive concrete collaborators (`exact_cache`, `semantic_cache`, `moderation_client`) rather than entire settings instances.
+2. **Factory Invocation**: ASGI entry points ([`../backend/src`](../backend/src/aie_estimator/__main__.py)) invoke Uvicorn using the factory string (`"aie_estimator.server:create_app"`, `factory=True`), eliminating module-level singleton state.
+3. **Test Isolation & Lifespan State**: Stateless factories in [`dependencies.py`](../backend/src/aie_estimator/dependencies.py) use `@lru_cache(maxsize=1)` and are cleared before and after each test via `_clear_all_caches()` in [`../backend/tests`](../backend/tests/conftest.py). Lifespan-owned PostgreSQL pooling (`app.state.db_pool`) is resolved via `get_db_pool`, `get_jobs_repository`, `get_mappings_repository`, `get_quarantined_records_repository`, and `get_pii_pseudonymizer` (which returns `None` before loading `spaCy` or touching `db_pool` when `pii_pseudonymization_enabled` is `False`), raising `ConnectionError` when unconfigured.
+4. **Centralized Exception Handling**: [`Server._register_exception_handlers`](../backend/src/aie_estimator/server.py) maps domain exceptions to consistent HTTP status codes across all routers: `InputGuardrailViolation` (`400`), `SessionNotFoundError` (`404`), `RequestValidationError` and `AttachmentExtractionError` (`422`), `LLMProviderError` (`500`), and `ConnectionError` / `psycopg.Error` (`503`).

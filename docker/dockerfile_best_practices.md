@@ -40,7 +40,7 @@ Below is a comprehensive Dockerfile best practices checklist, grouped by goal.
 
 - **Order instructions from least to most frequently changed:** Put base setup and dependency installation before application-source copies.
 - **Copy manifests before source code:** Copy dependency manifests and lockfiles first so dependency layers are reused when source files change.
-- **Use a `.dockerignore` file:** Exclude Git metadata, virtual environments, build output, tests where unnecessary, local secrets, and caches.
+- **Use a `../backend/.dockerignore` file:** Exclude Git metadata, virtual environments, build output, tests where unnecessary, local secrets, and caches.
 - **Keep related commands in a single layer:** Combine dependent package installation and cleanup commands to avoid retaining intermediate data.
 - **Use BuildKit cache mounts where useful:** Cache package-manager downloads during builds without embedding them in image layers.
 - **Avoid invalidating dependency layers unnecessarily:** Do not copy all source files before installing dependencies if only manifest files determine them.

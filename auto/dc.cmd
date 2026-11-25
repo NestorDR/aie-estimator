@@ -75,7 +75,7 @@ if not "%2"=="" (
 :: --build ........: reconstructs images if it detects changes in the build context or the Dockerfile
 :: --force-recreate: ensures that containers are created again (stops and removes existing containers and creates new ones)
 :: %* .............: for extra arguments
-docker compose --env-file src/aie_estimator/.env.!TARGET_DEPLOY! -f docker/docker-compose.!TARGET_DEPLOY!.yml -p estimator-!TARGET_DEPLOY! up -d --build || goto command_failed
+docker compose --env-file backend/src/aie_estimator/.env.!TARGET_DEPLOY! -f docker/docker-compose.!TARGET_DEPLOY!.yml -p estimator-!TARGET_DEPLOY! up -d --build || goto command_failed
 
 :: Check if the command was successful
 echo [SUCCESS] !TARGET_DEPLOY! Environment is up.

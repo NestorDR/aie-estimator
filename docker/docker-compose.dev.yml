@@ -6,7 +6,7 @@ services:
     container_name: estimator-redis
     restart: unless-stopped
     env_file:
-      - ../src/aie_estimator/.env.dev         # Unversioned file .env.* with secure credentials, its path is relative to this docker-compose.yml
+      - ../backend/src/aie_estimator/.env.dev # Unversioned file .env.* with secure credentials, its path is relative to this docker-compose.yml
     ports:
       - "${REDIS_PORT:-6379}:6379"            # Syntax: ${ENV_VAR_FOR_HOST_PORT:-DEFAULT_VALUE} : CONTAINER_PORT
     volumes:
@@ -62,7 +62,7 @@ services:
     container_name: estimator-postgres        # Fixed container name for the PostgreSQL persistence service
     restart: unless-stopped                   # Restart automatically unless explicitly stopped
     env_file:
-      - ../src/aie_estimator/.env.dev         # Unversioned file .env.* with secure credentials, its path is relative to this docker-compose.yml
+      - ../backend/src/aie_estimator/.env.dev  # Unversioned file .env.* with secure credentials, its path is relative to this docker-compose.yml
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-estimator}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-estimator}

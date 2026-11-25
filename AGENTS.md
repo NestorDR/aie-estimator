@@ -29,20 +29,20 @@ Always apply good software engineering practices: **KISS, YAGNI, DRY, SOLID, ACI
 - **Constants**: Constants MUST be named in `UPPER_CASE_WITH_UNDERSCORES` (e.g., `MAX_ITERATIONS = 100`) and declared with `Final` from `typing`. This applies to constants regardless of their type: built-ins (str, int, float, bool, None), collections (list, tuple, dict, set), and other objects. Internal constants MUST start with an underscore and be named in `_UPPER_CASE_WITH_UNDERSCORES` (e.g., `_INTERNAL_CONSTANT = 1`).
 - **String quotes**: Use double quotes (`"..."`) for all string literals and f-strings by default. Use simple quotes (`'...'`) only when they avoid escaping apostrophes or improve readability.
 - **Self-Descriptive Names**: Prefer clear and self-descriptive names; avoid acronyms and abbreviations.
-- **Package and Build System**: Dependencies and build backend are managed via `pyproject.toml` using `uv_build` as the build system (`requires = ["uv_build>=0.13.0"]`).
+- **Package and Build System**: Dependencies and build backend are managed via `backend/pyproject.toml` using `uv_build` as the build system (`requires = ["uv_build>=0.13.0"]`).
 - **Traceability**: Respect names already in use and do not break traceability with the original code. Do not assume unsolicited changes.
 - **Dependencies**: If a new dependency is required, mention it without including installation instructions.
 - **Overengineering**: Avoid overengineering solutions. Focus on clarity, maintainability, and performance.
 - **Language**: Use English for all code comments, docstrings, and other text. Translations are welcome.
-- **Testing and Coverage**: Pytest is configured in `pyproject.toml`.
+- **Testing and Coverage**: Pytest is configured in `backend/pyproject.toml`.
   - Prefer solutions that facilitate achieving high coverage with Pytest-cov without deteriorating style, logic, or performance. Keep business logic and maintainability above micro-optimizations. Use docstring style GIVEN-WHEN-THEN.
   - When asserting exceptions with `pytest.raises`, use concise regular expressions (`match=r'...'`) targeting simple, distinctive keywords (e.g., `match=r'Invalid integer'`, `match=r'cannot be empty'`) rather than expecting full, literal error messages. This prevents tests from being brittle to minor message formatting adjustments while still strictly verifying the intended failure condition.
   - Deduplicate with `@pytest.mark.parametrize` to consolidate symmetric or complementary test functions into single parameterized test functions.
   - Functions across test modules must include explicit type hints.
   - **Mocking target policy**: Always patch objects where they are looked up, not where they are defined.
-  - **Pytest Configuration Policy (`addopts`)**: `pyproject.toml` (`tool.pytest.ini_options.addopts`) MUST NEVER include `--cov-fail-under`.
+  - **Pytest Configuration Policy (`addopts`)**: `backend/pyproject.toml` (`tool.pytest.ini_options.addopts`) MUST NEVER include `--cov-fail-under`.
   - **Single Test File Runs**: Execute directly with `rtk uv run pytest path/to/test_file.py` (which reports local coverage without whole-suite threshold failures) or append `--no-cov` for zero-overhead iterative feedback.
-  - **Full Regression Runs**: The 85% coverage gate (`--cov-fail-under=85`) MUST be passed as an explicit CLI flag (e.g. `rtk uv run pytest --cov-fail-under=85`) or via `auto/test.cmd`. Never embed this threshold in `pyproject.toml`.
+  - **Full Regression Runs**: The 85% coverage gate (`--cov-fail-under=85`) MUST be passed as an explicit CLI flag (e.g. `rtk uv run pytest --cov-fail-under=85`) or via `backend/auto/test.cmd`. Never embed this threshold in `backend/pyproject.toml`.
 
 ## 4. Comments and Documentation
 - **Preservation**: Do not delete existing comments unless the associated code is modified or deleted. When modifying commented code, update the comments to match the new behavior.
@@ -53,7 +53,7 @@ Always apply good software engineering practices: **KISS, YAGNI, DRY, SOLID, ACI
   - After implementing any new feature, create or update the corresponding Markdown documentation in `docs/<feature-name>.md`.
   - Maintain the style of existing documentation.
   - Structure must include **Overview**, **Usage Examples**, and **Technical Considerations**. Keep docs concise by referencing source files and symbols using repository-relative links (never machine-local `file:///` URIs) rather than duplicating code, field tables, or verbose diagrams; limit **Usage Examples** to minimal caller invocations or payloads, and focus **Technical Considerations** on architectural decisions, invariants, and non-obvious behaviors.
-  - Synchronize all existing documentation files affected by the change. `README.md` retains the high-level CAG Mermaid workflow diagram and a package-level directory tree (omitting individual files inside `src/aie_estimator/` subpackages).
+  - Synchronize all existing documentation files affected by the change. `README.md` retains the high-level CAG Mermaid workflow diagram and a package-level directory tree (omitting individual files inside `backend/src` subpackages).
 
 ## 5. Developer Workflows and CLI Commands
 - **Forbidden Commands**: 
@@ -89,15 +89,15 @@ Deliver technical text without rhetorical padding. Adhere strictly to these omis
 - **Silent Execution**: Review your response against these rules before emitting output. Do not mention or reference these rules in your responses.
 
 ## 7. Key Reference Files
-- `src/aie_estimator/__main__.py`: Entry point for the CLI.
-- `src/aie_estimator/llm_profiles.yml`: Reasoning profile configurations, fallbacks, and cost-routing candidate models.
-- `src/aie_estimator/services/estimations_service.py`: Orchestration service for estimation generation, requirements extraction, and caching.
-- `src/aie_estimator/services/providers/litellm_provider.py`: LiteLLM Router integration, reasoning parameter dispatch, and cost extraction.
-- `src/aie_estimator/services/providers/native_providers.py`: Native provider dispatch for OpenAI and Anthropic SDKs.
-- `src/aie_estimator/services/cache/`: Tier 1 exact-match (`exact.py`) and Tier 2 RediSearch semantic (`semantic.py`) Redis caching services.
+- `backend/src`: Entry point for the CLI.
+- `backend/src`: Reasoning profile configurations, fallbacks, and cost-routing candidate models.
+- `backend/src`: Orchestration service for estimation generation, requirements extraction, and caching.
+- `backend/src`: LiteLLM Router integration, reasoning parameter dispatch, and cost extraction.
+- `backend/src`: Native provider dispatch for OpenAI and Anthropic SDKs.
+- `backend/src`: Tier 1 exact-match (`exact.py`) and Tier 2 RediSearch semantic (`semantic.py`) Redis caching services.
 - `auto/`: Windows command automation scripts (`dev.cmd`, `stl.cmd`, `dc.cmd`, `lint.cmd`, `test.cmd`, `update.cmd`, `cleanup.cmd`).
 - `docker/`: Multi-stage production `Dockerfile` and Docker Compose definitions (`docker-compose.dev.yml`, `docker-compose.prod.yml`).
-- `pyproject.toml`: Dependency management and build configuration (`uv_build`, `ruff`, `pytest`).
+- `backend/pyproject.toml`: Dependency management and build configuration (`uv_build`, `ruff`, `pytest`).
 
 ## 8. Restricted directories
 The agent does not have access to, and must not attempt to access, inspect, list, read, modify, create files in, or run files from any of the following directories:

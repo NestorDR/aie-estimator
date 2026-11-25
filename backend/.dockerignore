@@ -12,7 +12,6 @@
 
 #  Exclusions, even if they are inside !src/
 # Python caches
-__pycache__/
-*$py.class
-*.yml
-.env*
+**/__pycache__/
+**/*$py.class
+**/.env*
