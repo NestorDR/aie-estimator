@@ -19,7 +19,7 @@ All commands below assume `backend/` as the working directory:
 
 ```bash
 # Apply pending PostgreSQL migrations
-auto\migrate.cmd          # or: uv run python -m aie_estimator.persistence.migrate
+auto\migrate.cmd          # or: uv run python -m aie_estimator.foundation.persistence.migrate
 
 # FastAPI backend (http://localhost:8000, Swagger UI at /docs)
 auto\dev.cmd              # or: uv run aie-estimator

@@ -3,7 +3,7 @@
 """
 Parser and strict JSON contract for historical budget schemas.
 
-Each budget is rendered to structured markdown for semantic prose retrieval while
+Each budget is rendered to structured Markdown for semantic prose retrieval while
 retaining all 10 cleaned fields as plain JSON-serializable values in
 ``DocumentMetadata.extra``. Keeping plain dicts/lists in ``extra`` lets
 ``ConsistentPseudonymizer`` scrub nested string leaves in place before downstream
