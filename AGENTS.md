@@ -69,7 +69,7 @@ Always apply good software engineering practices: **KISS, YAGNI, DRY, SOLID, ACI
 - **LiteLLM Cost Map Policy**: LiteLLM is permanently configured to use its bundled local cost map via `Settings` and `[tool.pytest_env]`. Never execute ad-hoc scripts that fetch remote pricing or inject import-time `os.environ` hacks. Always run test suites via `rtk uv run pytest`.
 - **Windows Async Execution Mode**: When executing test suites (`rtk uv run pytest` or `uv run pytest`) or running ad-hoc Python scripts that invoke `asyncio` event loops or Streamlit AppTest on Windows, always pass `BypassSandbox: true`. Python 3.14's default `asyncio.ProactorEventLoop` requires Windows I/O Completion Ports (IOCP) and local loopback socket creation (`WSASocket`) that are restricted by the standard process sandbox, causing async processes to hang indefinitely.
 - **OpenSpec & Ponytail Integration**:
-  - When running OpenSpec planning workflows (`/openspec-propose`, `/openspec-explore`), activate Ponytail (`/ponytail ultra`) to prune unnecessary scope and prevent over-engineering in `design.md` and `tasks.md`.
+  - When running OpenSpec planning workflows (`/openspec-propose`, `/openspec-explore`), activate Ponytail (`/ponytail full`) to prune unnecessary scope and prevent over-engineering in `design.md` and `tasks.md`.
   - When running `/openspec-apply-change`, execute tasks using the smallest working diff, leveraging existing code and standard library primitives before introducing new abstractions.
 
 ## 6. User Interaction Rules
