@@ -18,7 +18,7 @@ from collections.abc import Callable
 from typing import Protocol, runtime_checkable
 
 # --- App modules ---
-from aie_estimator.persistence.repositories.mappings import MappingsRepository
+from aie_estimator.foundation.persistence.repositories.mappings import MappingsRepository
 
 
 @runtime_checkable

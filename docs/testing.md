@@ -80,7 +80,7 @@ async def test_cache_miss_returns_none() -> None:
 ```powershell
 rtk uv run pytest --cov-fail-under=85   # Full offline regression suite with coverage gate (skips live_db)
 rtk uv run pytest --live-db --no-cov    # Opt-in live PostgreSQL integration suite (requires estimator-postgres)
-rtk uv run pytest tests/routers/test_health_router.py  # Single test file with local coverage
+rtk uv run pytest tests/api/test_health_router.py  # Single test file with local coverage
 rtk uv run pytest --no-cov             # Zero-overhead iterative feedback
 ```
 

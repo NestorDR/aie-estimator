@@ -4,10 +4,10 @@
 
 The Actor-Critic-Boss (ACB) pipeline decouples initial estimation generation (**Actor**), structured defect auditing (**Critic**), and bounded deterministic governance (**Boss**) on conversational sessions via `POST /api/v1/sessions/{session_id}/estimate-acb`.
 
-- **Schemas**: [acb.py](../backend/src/aie_estimator/schemas/acb.py) (`CriticFeedback`, `CriticIssue`, `ACBIteration`, `BossTrace`, `ACBResponse`)
-- **Services**: [critic_service.py](../backend/src/aie_estimator/services/critic_service.py), [boss_service.py](../backend/src/aie_estimator/services/boss_service.py), [estimations_service.py](../backend/src/aie_estimator/services/estimations_service.py)
-- **Prompts**: [critic/v1/system.j2](../backend/src/aie_estimator/prompts/critic/v1/system.j2), [critic/v1/user.j2](../backend/src/aie_estimator/prompts/critic/v1/user.j2), [estimation/v3/user.j2](../backend/src/aie_estimator/prompts/estimation/v3/user.j2), [loader.py](../backend/src/aie_estimator/prompts/loader.py)
-- **Router & DI**: [sessions_router.py](../backend/src/aie_estimator/routers/sessions_router.py), [dependencies.py](../backend/src/aie_estimator/dependencies.py), [settings.py](../backend/src/aie_estimator/settings.py)
+- **Schemas**: [acb.py](../backend/src/aie_estimator/domain/schemas/acb.py) (`CriticFeedback`, `CriticIssue`, `ACBIteration`, `BossTrace`, `ACBResponse`)
+- **Services**: [critic_service.py](../backend/src/aie_estimator/generation/agentic/critic_service.py), [boss_service.py](../backend/src/aie_estimator/generation/agentic/boss_service.py), [estimations_service.py](../backend/src/aie_estimator/domain/estimations_service.py)
+- **Prompts**: [critic/v1/system.j2](../backend/src/aie_estimator/foundation/prompts/critic/v1/system.j2), [critic/v1/user.j2](../backend/src/aie_estimator/foundation/prompts/critic/v1/user.j2), [estimation/v3/user.j2](../backend/src/aie_estimator/foundation/prompts/estimation/v3/user.j2), [loader.py](../backend/src/aie_estimator/foundation/prompts/loader.py)
+- **Router & DI**: [sessions_router.py](../backend/src/aie_estimator/api/sessions_router.py), [dependencies.py](../backend/src/aie_estimator/dependencies.py), [settings.py](../backend/src/aie_estimator/settings.py)
 
 ## Usage Examples
 
@@ -20,7 +20,7 @@ curl -X POST "http://localhost:8000/api/v1/sessions/${SESSION_ID}/estimate-acb" 
   -F "output_format=phases_table"
 ```
 
-The response extends `EstimationResponse` with `boss_trace` (`iterations`, `final_decision`, `iterations_run`) and generation `usage` and `cost_usd` aggregated across all Actor and Critic calls (preserving `cost_usd=None` when any Actor call is unpriced), while post-turn compression and metadata extraction tokens and costs roll into `session.last_turn_observed` ([`TurnObservation`](../backend/src/aie_estimator/sessions/models.py)).
+The response extends `EstimationResponse` with `boss_trace` (`iterations`, `final_decision`, `iterations_run`) and generation `usage` and `cost_usd` aggregated across all Actor and Critic calls (preserving `cost_usd=None` when any Actor call is unpriced), while post-turn compression and metadata extraction tokens and costs roll into `session.last_turn_observed` ([`TurnObservation`](../backend/src/aie_estimator/generation/conversation/models.py)).
 
 ## Technical Considerations
 

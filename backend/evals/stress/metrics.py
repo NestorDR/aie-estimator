@@ -12,8 +12,8 @@ They reuse ``MetricResult`` from ``evals.metrics`` so reporting remains uniform.
 from typing import Final, Literal
 
 # --- App modules ---
-from aie_estimator.schemas.sessions import SessionInfoResponse
-from aie_estimator.sessions.models import TurnObservation
+from aie_estimator.domain.schemas.sessions import SessionInfoResponse
+from aie_estimator.generation.conversation.models import TurnObservation
 from evals.metrics import MetricResult
 
 DEFAULT_LATENCY_BUDGET_MS: Final[int] = 8000

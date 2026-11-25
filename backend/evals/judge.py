@@ -56,9 +56,9 @@ from pydantic import BaseModel, Field
 import structlog
 
 # --- App modules ---
-from aie_estimator.schemas.estimations import EstimationResponse
-from aie_estimator.services.providers.dispatcher import call_llm
-from aie_estimator.services.providers.generation_options import GenerationOptions
+from aie_estimator.domain.schemas.estimations import EstimationResponse
+from aie_estimator.foundation.llm.dispatcher import call_llm
+from aie_estimator.foundation.llm.generation_options import GenerationOptions
 from evals.dataset import GoldenCase
 from evals.metrics import MetricResult
 

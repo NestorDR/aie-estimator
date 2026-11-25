@@ -10,8 +10,8 @@ from pydantic import BaseModel, Field, model_validator
 import structlog
 
 # --- App modules ---
-from aie_estimator.schemas.estimations import DetailLevel, OutputFormat, ProjectType
-from aie_estimator.sessions.tier_resolver import Tier
+from aie_estimator.domain.schemas.estimations import DetailLevel, OutputFormat, ProjectType
+from aie_estimator.generation.conversation.tier_resolver import Tier
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
 

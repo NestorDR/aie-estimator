@@ -23,7 +23,7 @@ import pytest
 # --- App modules ---
 from aie_estimator.ingestion.pii.forget import main as forget_main
 from aie_estimator.ingestion.pii.pseudonymizer import compute_pii_hash, resolve_pii_salt
-from aie_estimator.persistence.migrate import apply_migrations
+from aie_estimator.foundation.persistence.migrate import apply_migrations
 from aie_estimator.server import create_app
 from aie_estimator.settings import Environment, Settings
 

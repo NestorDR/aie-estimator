@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 # --- App modules ---
-from aie_estimator.schemas.estimations import (
+from aie_estimator.domain.schemas.estimations import (
     EstimationResponse,
     Milestone,
     Phase,
@@ -16,7 +16,7 @@ from aie_estimator.schemas.estimations import (
     TeamComposition,
     TokenUsage,
 )
-from aie_estimator.sessions.tier_resolver import Tier
+from aie_estimator.generation.conversation.tier_resolver import Tier
 from evals.dataset import GoldenCase
 from evals.judge import JudgeVerdict, evaluate_with_judge, render_judge_prompt
 

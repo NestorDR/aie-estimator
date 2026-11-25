@@ -27,7 +27,7 @@ import structlog
 
 # --- App modules ---
 from aie_estimator.dependencies import get_estimation_service
-from aie_estimator.schemas.estimations import (
+from aie_estimator.domain.schemas.estimations import (
     DetailLevel,
     OutputFormat,
     Phase,
@@ -35,10 +35,10 @@ from aie_estimator.schemas.estimations import (
     ProjectType,
     TeamComposition,
 )
-from aie_estimator.schemas.sessions import SessionInfoResponse
+from aie_estimator.domain.schemas.sessions import SessionInfoResponse
 from aie_estimator.server import create_app
-from aie_estimator.sessions.models import Session, TurnObservation
-from aie_estimator.sessions.tier_resolver import Tier
+from aie_estimator.generation.conversation.models import Session, TurnObservation
+from aie_estimator.generation.conversation.tier_resolver import Tier
 from aie_estimator.utils.constants import DEFAULT_FAST_PROFILE
 from evals.stress.metrics import (
     DEFAULT_COST_BUDGET_USD,

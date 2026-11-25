@@ -9,7 +9,7 @@ from dataclasses import FrozenInstanceError
 import pytest
 
 # --- App modules ---
-from aie_estimator.schemas.estimations import DetailLevel, OutputFormat, ProjectType
+from aie_estimator.domain.schemas.estimations import DetailLevel, OutputFormat, ProjectType
 from evals.stress.fixtures.build_pdfs import STRESS_PDF_SIZES_KB
 from evals.stress.scenarios import (
     ATTACHMENT_SWEEP_TRANSCRIPT,

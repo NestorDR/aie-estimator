@@ -52,7 +52,7 @@ import statistics
 from typing import Final
 
 # --- App modules ---
-from aie_estimator.schemas.estimations import (
+from aie_estimator.domain.schemas.estimations import (
     LOW_CONFIDENCE_THRESHOLD,
     DeveloperEstimation,
     EstimationResponse,

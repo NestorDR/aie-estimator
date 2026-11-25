@@ -21,11 +21,11 @@ if /i not "!CURRENT_DIR!"=="!PROJECT_ROOT!" (
 
 :run_migrate
 :: DATABASE MIGRATION RUNNER
-:: Entrypoint: uv run python -m aie_estimator.persistence.migrate
+:: Entrypoint: uv run python -m aie_estimator.foundation.persistence.migrate
 ::
 :: Reads POSTGRES_* settings from .env.<APP_ENV> (default: dev) and applies
-:: pending .sql scripts in src/aie_estimator/persistence/migrations/.
-uv run python -m aie_estimator.persistence.migrate || goto command_failed
+:: pending .sql scripts in src/aie_estimator/foundation/persistence/migrations/.
+uv run python -m aie_estimator.foundation.persistence.migrate || goto command_failed
 
 echo [SUCCESS] Database migrations completed.
 echo !DATE! !TIME!

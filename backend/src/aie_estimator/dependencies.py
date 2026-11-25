@@ -11,7 +11,7 @@ from psycopg_pool import AsyncConnectionPool
 import structlog
 
 # --- App modules ---
-from aie_estimator.guardrails.input import get_moderation_client
+from aie_estimator.foundation.guardrails.input import get_moderation_client
 from aie_estimator.ingestion.catalog.loader import load_catalog
 from aie_estimator.ingestion.catalog.models import DataCatalog
 from aie_estimator.ingestion.loaders.filesystem import FileSystemLoader
@@ -19,21 +19,21 @@ from aie_estimator.ingestion.parsers.registry import ParserRegistry, default_reg
 from aie_estimator.ingestion.pii.analyzer import PiiAnalyzer, PresidioPiiAnalyzer
 from aie_estimator.ingestion.pii.mapping_store import PostgresMappingStore
 from aie_estimator.ingestion.pii.pseudonymizer import ConsistentPseudonymizer, resolve_pii_salt
-from aie_estimator.persistence.repositories.jobs import JobsRepository
-from aie_estimator.persistence.repositories.mappings import MappingsRepository
-from aie_estimator.persistence.repositories.quarantine import QuarantinedRecordsRepository
-from aie_estimator.services.boss_service import Boss
-from aie_estimator.services.cache import (
+from aie_estimator.foundation.persistence.repositories.jobs import JobsRepository
+from aie_estimator.foundation.persistence.repositories.mappings import MappingsRepository
+from aie_estimator.foundation.persistence.repositories.quarantine import QuarantinedRecordsRepository
+from aie_estimator.generation.agentic.boss_service import Boss
+from aie_estimator.generation.cag import (
     EstimationExactCache,
     EstimationSemanticCache,
     get_exact_cache as _get_exact_cache,
     get_semantic_cache as _get_semantic_cache,
 )
-from aie_estimator.services.critic_service import Critic
-from aie_estimator.services.estimations_service import EstimationService
-from aie_estimator.sessions.compression.policy import CompressionPolicy
-from aie_estimator.sessions.store import SessionStore
-from aie_estimator.sessions.tier_resolver import Tier
+from aie_estimator.generation.agentic.critic_service import Critic
+from aie_estimator.domain.estimations_service import EstimationService
+from aie_estimator.generation.conversation.compression.policy import CompressionPolicy
+from aie_estimator.generation.conversation.store import SessionStore
+from aie_estimator.generation.conversation.tier_resolver import Tier
 from aie_estimator.settings import Settings, get_settings as _get_settings
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()

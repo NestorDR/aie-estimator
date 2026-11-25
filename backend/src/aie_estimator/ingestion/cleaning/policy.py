@@ -29,7 +29,7 @@ import structlog
 # --- App modules ---
 from aie_estimator.ingestion.cleaning.budget_records import BudgetCleaningResult, serialize_record_payload
 from aie_estimator.ingestion.cleaning.schemas import BudgetRecord
-from aie_estimator.persistence.repositories.quarantine import QuarantinedRecordInput
+from aie_estimator.foundation.persistence.repositories.quarantine import QuarantinedRecordInput
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger(__name__)
 

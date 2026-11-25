@@ -11,7 +11,7 @@ from httpx import ASGITransport, AsyncClient
 import pytest
 
 # --- App modules ---
-from aie_estimator.sessions.models import MetadataExtractionResult
+from aie_estimator.generation.conversation.models import MetadataExtractionResult
 from tests.conftest import build_pdf_bytes
 
 _TRANSCRIPT_TEXT: Final[str] = "Estimate MyProject based on the attached PDF specification document."
@@ -52,14 +52,14 @@ async def test_pdf_attachment_enriches_prompt_and_influences_estimate(
     )
 
     with (
-        patch("aie_estimator.guardrails.input._check_moderation", new_callable=AsyncMock),
+        patch("aie_estimator.foundation.guardrails.input._check_moderation", new_callable=AsyncMock),
         patch(
-            "aie_estimator.services.estimations_service.call_llm",
+            "aie_estimator.domain.estimations_service.call_llm",
             new_callable=AsyncMock,
             return_value=pdf_result,
         ) as mock_estimation_llm,
         patch(
-            "aie_estimator.sessions.metadata_extractor.call_llm",
+            "aie_estimator.generation.conversation.metadata_extractor.call_llm",
             new_callable=AsyncMock,
             return_value={
                 "result": MetadataExtractionResult(

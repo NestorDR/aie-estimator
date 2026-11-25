@@ -2,10 +2,10 @@
 
 ## Overview
 
-The estimation service implements a two-tier caching architecture in [`../backend/src`](../backend/src/aie_estimator/services/cache/) to optimize latency and minimize LLM token expenditure:
+The estimation service implements a two-tier caching architecture in [`../backend/src`](../backend/src/aie_estimator/generation/cag/) to optimize latency and minimize LLM token expenditure:
 
-1. **Tier 1 (Exact-Match Cache)**: [`EstimationExactCache`](../backend/src/aie_estimator/services/cache/exact.py) computes a deterministic SHA-256 hash across all generation parameters. Lookups execute in ~1 ms with zero embedding overhead.
-2. **Tier 2 (Semantic Vector Cache)**: [`EstimationSemanticCache`](../backend/src/aie_estimator/services/cache/semantic.py) evaluates cosine vector distance in Redis using RediSearch on exact-match misses. Queries with equivalent intent return cached estimations in ~80 ms without invoking upstream LLM providers.
+1. **Tier 1 (Exact-Match Cache)**: [`EstimationExactCache`](../backend/src/aie_estimator/generation/cag/exact.py) computes a deterministic SHA-256 hash across all generation parameters. Lookups execute in ~1 ms with zero embedding overhead.
+2. **Tier 2 (Semantic Vector Cache)**: [`EstimationSemanticCache`](../backend/src/aie_estimator/generation/cag/semantic.py) evaluates cosine vector distance in Redis using RediSearch on exact-match misses. Queries with equivalent intent return cached estimations in ~80 ms without invoking upstream LLM providers.
 
 Pipeline flow:
 `check_input` → Tier 1 exact cache miss → OpenAI text embedding (`text-embedding-3-small`) → Tier 2 semantic cache query → (Miss) `call_llm` → `enforce_scope_response` → Dual-write persist to both caches.

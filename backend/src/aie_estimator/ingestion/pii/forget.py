@@ -23,8 +23,8 @@ from aie_estimator.ingestion.catalog.models import PiiFlag
 from aie_estimator.ingestion.pii.mapping_store import AsyncMappingStore, PostgresMappingStore
 from aie_estimator.ingestion.pii.pseudonymizer import compute_pii_hash, resolve_pii_salt
 from aie_estimator.logging import configure_logging
-from aie_estimator.persistence.database import close_pool, open_pool
-from aie_estimator.persistence.repositories.mappings import MappingsRepository
+from aie_estimator.foundation.persistence.database import close_pool, open_pool
+from aie_estimator.foundation.persistence.repositories.mappings import MappingsRepository
 from aie_estimator.settings import get_settings
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger(__name__)

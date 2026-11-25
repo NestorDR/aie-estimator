@@ -8,7 +8,7 @@ from typing import Final
 import pytest
 
 # --- App modules ---
-from aie_estimator.attachments.extractor import extract_text
+from aie_estimator.foundation.attachments.extractor import extract_text
 from evals.stress.fixtures.build_pdfs import (
     STRESS_PDF_SIZES_KB,
     build_calibrated_pdf,

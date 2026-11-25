@@ -1,4 +1,4 @@
-# tests/ingestion/cleaning/test_policy.py
+# tests/ingestion/cleaning/test_cleaning_policy.py
 
 # --- Python Standard Library ---
 import json

@@ -14,7 +14,7 @@ import httpx
 import structlog
 
 # --- App modules ---
-from aie_estimator.schemas.estimations import EstimationResponse
+from aie_estimator.domain.schemas.estimations import EstimationResponse
 from aie_estimator.server import create_app
 from evals.dataset import GoldenCase, load_dataset
 from evals.judge import evaluate_with_judge

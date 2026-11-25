@@ -11,7 +11,7 @@ from httpx import ASGITransport, AsyncClient
 import pytest
 
 # --- App modules ---
-from aie_estimator.sessions.models import MetadataExtractionResult
+from aie_estimator.generation.conversation.models import MetadataExtractionResult
 
 _TURN_1_TRANSCRIPT: Final[str] = "We are building MyProject, a B2B SaaS platform with FastAPI, PostgreSQL, and a 3-developer team."
 _TURN_2_TRANSCRIPT: Final[str] = "For MyProject, replace PostgreSQL with MongoDB, reject Microservices, and enforce SOC 2 compliance."
@@ -49,14 +49,14 @@ async def test_two_turn_session_metadata_chaining_for_myproject(
     )
 
     with (
-        patch("aie_estimator.guardrails.input._check_moderation", new_callable=AsyncMock),
+        patch("aie_estimator.foundation.guardrails.input._check_moderation", new_callable=AsyncMock),
         patch(
-            "aie_estimator.services.estimations_service.call_llm",
+            "aie_estimator.domain.estimations_service.call_llm",
             new_callable=AsyncMock,
             side_effect=[make_estimation_result(), make_estimation_result()],
         ) as mock_estimation_llm,
         patch(
-            "aie_estimator.sessions.metadata_extractor.call_llm",
+            "aie_estimator.generation.conversation.metadata_extractor.call_llm",
             new_callable=AsyncMock,
             side_effect=[
                 {"result": turn_1_delta, "usage": {"input_tokens": 80, "output_tokens": 30}},

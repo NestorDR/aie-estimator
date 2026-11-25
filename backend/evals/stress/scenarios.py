@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from typing import Final, Literal
 
 # --- App modules ---
-from aie_estimator.schemas.estimations import DetailLevel, OutputFormat, ProjectType
+from aie_estimator.domain.schemas.estimations import DetailLevel, OutputFormat, ProjectType
 from evals.stress.fixtures.build_pdfs import canary_facts
 from evals.stress.metrics import FactField
 

@@ -27,15 +27,15 @@ from aie_estimator.dependencies import (
 )
 from aie_estimator.ingestion.pii.analyzer import PresidioPiiAnalyzer
 from aie_estimator.ingestion.pii.pseudonymizer import ConsistentPseudonymizer
-from aie_estimator.persistence.repositories.jobs import JobsRepository
-from aie_estimator.persistence.repositories.mappings import MappingsRepository
-from aie_estimator.services.cache import (
+from aie_estimator.foundation.persistence.repositories.jobs import JobsRepository
+from aie_estimator.foundation.persistence.repositories.mappings import MappingsRepository
+from aie_estimator.generation.cag import (
     EstimationExactCache,
     EstimationSemanticCache,
 )
-from aie_estimator.services.estimations_service import EstimationService
-from aie_estimator.sessions.store import SessionStore
-from aie_estimator.sessions.tier_resolver import Tier
+from aie_estimator.domain.estimations_service import EstimationService
+from aie_estimator.generation.conversation.store import SessionStore
+from aie_estimator.generation.conversation.tier_resolver import Tier
 from aie_estimator.settings import Environment, Settings
 
 

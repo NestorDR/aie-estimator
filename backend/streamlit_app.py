@@ -14,8 +14,8 @@ from streamlit import runtime
 
 # --- App modules ---
 from aie_estimator.model_catalog import get_models_for_engine, ProviderMode
-from aie_estimator.schemas.estimations import DetailLevel, OutputFormat, ProjectType
-from aie_estimator.sessions.tier_resolver import Tier
+from aie_estimator.domain.schemas.estimations import DetailLevel, OutputFormat, ProjectType
+from aie_estimator.generation.conversation.tier_resolver import Tier
 from aie_estimator.settings import get_settings
 
 load_dotenv()

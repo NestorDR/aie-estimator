@@ -24,7 +24,7 @@ from aie_estimator.ingestion.pii.pseudonymizer import (
     compute_pii_hash,
     resolve_pii_salt,
 )
-from aie_estimator.persistence.repositories.mappings import Mapping
+from aie_estimator.foundation.persistence.repositories.mappings import Mapping
 from aie_estimator.settings import Environment, Settings
 
 

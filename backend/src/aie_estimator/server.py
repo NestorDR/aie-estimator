@@ -15,17 +15,17 @@ import psycopg
 import structlog
 
 # --- App modules ---
-from aie_estimator.attachments.extractor import AttachmentExtractionError
-from aie_estimator.guardrails.input import InputGuardrailViolation
+from aie_estimator.foundation.attachments.extractor import AttachmentExtractionError
+from aie_estimator.foundation.guardrails.input import InputGuardrailViolation
 from aie_estimator.ingestion.orchestrator import IngestionRejected
 from aie_estimator.logging import configure_logging
 from aie_estimator.model_catalog import get_supported_models
-from aie_estimator.persistence.database import close_pool, open_pool
-from aie_estimator.persistence.repositories.jobs import JobsRepository
-from aie_estimator.routers import estimations_router, health_router, ingestion_router, sessions_router
-from aie_estimator.services.cache import get_exact_cache, get_semantic_cache
-from aie_estimator.services.exceptions import LLMProviderError
-from aie_estimator.sessions.store import SessionNotFoundError
+from aie_estimator.foundation.persistence.database import close_pool, open_pool
+from aie_estimator.foundation.persistence.repositories.jobs import JobsRepository
+from aie_estimator.api import estimations_router, health_router, ingestion_router, sessions_router
+from aie_estimator.generation.cag import get_exact_cache, get_semantic_cache
+from aie_estimator.domain.exceptions import LLMProviderError
+from aie_estimator.generation.conversation.store import SessionNotFoundError
 from aie_estimator.settings import Settings, get_settings
 from aie_estimator.telemetry import instrument_fastapi_app, setup_telemetry
 

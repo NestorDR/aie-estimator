@@ -10,8 +10,8 @@ from pydantic import ValidationError
 import pytest
 
 # --- App modules ---
-from aie_estimator.schemas.estimations import ProjectType
-from aie_estimator.sessions.tier_resolver import Tier
+from aie_estimator.domain.schemas.estimations import ProjectType
+from aie_estimator.generation.conversation.tier_resolver import Tier
 from evals.dataset import GoldenCase, load_dataset
 
 

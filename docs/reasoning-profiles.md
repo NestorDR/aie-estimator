@@ -4,7 +4,7 @@
 
 Modern LLM providers (Anthropic Claude, Google Gemini, OpenAI GPT-6) use divergent APIs for controlling thinking depth and reasoning budgets. The reasoning subsystem provides a provider-agnostic normalization layer:
 
-1. **Qualitative Reasoning Effort**: Standardizes reasoning intensity into `"low"`, `"medium"`, and `"high"` via [`GenerationOptions`](../backend/src/aie_estimator/services/providers/generation_options.py).
+1. **Qualitative Reasoning Effort**: Standardizes reasoning intensity into `"low"`, `"medium"`, and `"high"` via [`GenerationOptions`](../backend/src/aie_estimator/foundation/llm/generation_options.py).
 2. **Provider Translation**:
    - **Anthropic Claude**: Adaptive thinking (`{"type": "adaptive"}`, `output_config.effort: "medium"`), strictly suppressing sampling `temperature`.
    - **Google Gemini**: Maps `reasoning_effort` to `generationConfig.thinkingConfig.thinkingLevel` via LiteLLM.
@@ -53,4 +53,4 @@ response = await call_llm(
 2. **Two-Level Resilience & Runtime Failover** (configured in [`../backend/src`](../backend/src/aie_estimator/llm_profiles.yml)):
    - **Level 1 (Intra-Tier Provider Rotation)**: LiteLLM rotates traffic to the lowest-cost healthy candidate within `reasoner-fast`. On HTTP 429, 5xx, or 30s timeouts, it retries against the next candidate provider up to `num_retries: 2`.
    - **Level 2 (Cross-Tier Escalation)**: If all Tier 1 candidates are exhausted, LiteLLM triggers `router_settings.fallbacks` (`reasoner-fast` → `reasoner-deep`), escalating execution to the frontier reasoning pool.
-3. **Startup Credential Pruning**: `get_litellm_router()` in [`../backend/src`](../backend/src/aie_estimator/services/providers/litellm_provider.py) inspects required API key environment variables, omitting uncredentialed models so the service boots successfully with partial API credentials.
+3. **Startup Credential Pruning**: `get_litellm_router()` in [`../backend/src`](../backend/src/aie_estimator/foundation/llm/litellm_provider.py) inspects required API key environment variables, omitting uncredentialed models so the service boots successfully with partial API credentials.

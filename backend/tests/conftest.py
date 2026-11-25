@@ -18,12 +18,12 @@ import pytest
 
 # --- App modules ---
 from aie_estimator.dependencies import get_session_store
-from aie_estimator.guardrails.input import get_moderation_client
+from aie_estimator.foundation.guardrails.input import get_moderation_client
 from aie_estimator.model_catalog import get_model_catalog
 from aie_estimator.server import create_app
-from aie_estimator.services.cache import get_exact_cache, get_semantic_cache
-from aie_estimator.services.providers.litellm_provider import get_litellm_router
-from aie_estimator.services.providers.native_providers import get_anthropic_client, get_openai_client
+from aie_estimator.generation.cag import get_exact_cache, get_semantic_cache
+from aie_estimator.foundation.llm.litellm_provider import get_litellm_router
+from aie_estimator.foundation.llm.native_providers import get_anthropic_client, get_openai_client
 from aie_estimator.settings import get_settings
 from aie_estimator.utils.constants import DEFAULT_GPT_LLM
 
@@ -99,19 +99,19 @@ def default_tiered_cache_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_semantic.close = AsyncMock(return_value=None)
 
     monkeypatch.setattr(
-        "aie_estimator.services.cache.exact.get_exact_cache",
+        "aie_estimator.generation.cag.exact.get_exact_cache",
         lambda: mock_exact,
     )
     monkeypatch.setattr(
-        "aie_estimator.services.cache.semantic.get_semantic_cache",
+        "aie_estimator.generation.cag.semantic.get_semantic_cache",
         lambda: mock_semantic,
     )
     monkeypatch.setattr(
-        "aie_estimator.services.cache.get_exact_cache",
+        "aie_estimator.generation.cag.get_exact_cache",
         lambda: mock_exact,
     )
     monkeypatch.setattr(
-        "aie_estimator.services.cache.get_semantic_cache",
+        "aie_estimator.generation.cag.get_semantic_cache",
         lambda: mock_semantic,
     )
     monkeypatch.setattr(
@@ -144,7 +144,7 @@ def app(monkeypatch: pytest.MonkeyPatch) -> Generator[FastAPI, None, None]:
     :return: Configured FastAPI application instance.
     """
     monkeypatch.setattr(
-        "aie_estimator.services.cache.semantic.EstimationSemanticCache.initialize_index",
+        "aie_estimator.generation.cag.semantic.EstimationSemanticCache.initialize_index",
         AsyncMock(return_value=None),
     )
     test_app = create_app()

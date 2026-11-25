@@ -12,15 +12,11 @@ AIE Estimator processes software project descriptions and domain parameters (`pr
 
 ## Architecture
 
-- **Schemas** ([`backend/src/aie_estimator/schemas/`](backend/src/aie_estimator/schemas/)): Pydantic v2 contracts (`EstimationRequest`, `ACBResponse`, `SessionInfoResponse`, `IngestionRunResponse`, etc.).
-- **Attachments** ([`backend/src/aie_estimator/attachments/`](backend/src/aie_estimator/attachments/)): Local text extraction (`.pdf`, `.docx`, `.txt`, `.md`), per-file and per-turn character budgets, and XML delimiter wrapping.
+- **Domain** ([`backend/src/aie_estimator/domain/`](backend/src/aie_estimator/domain/)): Core estimation orchestration (`estimations_service.py`, `exceptions.py`) and Pydantic v2 contracts (`schemas/`).
+- **Foundation** ([`backend/src/aie_estimator/foundation/`](backend/src/aie_estimator/foundation/)): Shared infrastructure—attachments (`attachments/`), guardrails (`guardrails/`), multi-provider LLM dispatch (`llm/`), PostgreSQL persistence (`persistence/`), and versioned Jinja2 templates (`prompts/`).
+- **Generation** ([`backend/src/aie_estimator/generation/`](backend/src/aie_estimator/generation/)): Actor-Critic-Boss orchestration (`agentic/`), two-tier Redis caching (`cag/`), and conversational session state (`conversation/`).
+- **API** ([`backend/src/aie_estimator/api/`](backend/src/aie_estimator/api/)): FastAPI HTTP routes (`POST /api/v1/estimate`, `POST /api/v1/sessions`, `GET /api/v1/sessions/{session_id}`, `POST /api/v1/sessions/{session_id}/estimate`, `POST /api/v1/sessions/{session_id}/estimate-acb`, `POST /api/v1/ingestion/runs`, `GET /api/v1/ingestion/jobs/{job_id}`, `GET /health`, `GET /`).
 - **Ingestion** ([`backend/src/aie_estimator/ingestion/`](backend/src/aie_estimator/ingestion/)): Offline corpus ingestion package (`catalog/`, `documents/`, `loaders/`, `parsers/`, `cleaning/`, `normalizers/`, `pii/`, `orchestrator.py`, `inspect_budgets.py`) separated from the latency-bound online CAG estimation path.
-- **Persistence** ([`backend/src/aie_estimator/persistence/`](backend/src/aie_estimator/persistence/)): Async raw-SQL PostgreSQL pool (`psycopg_pool.AsyncConnectionPool`), versioned `.sql` delta migrations (`migrate.py`), and `JobsRepository` / `MappingsRepository` / `QuarantinedRecordsRepository`.
-- **Sessions** ([`backend/src/aie_estimator/sessions/`](backend/src/aie_estimator/sessions/)): In-memory conversational session store, `ConversationHistory` with bounded anchor compression, 6-field `ProjectMetadata`, and post-turn metadata extractor.
-- **Routers** ([`backend/src/aie_estimator/routers/`](backend/src/aie_estimator/routers/)): HTTP routes (`POST /api/v1/estimate`, `POST /api/v1/sessions`, `GET /api/v1/sessions/{session_id}`, `POST /api/v1/sessions/{session_id}/estimate`, `POST /api/v1/sessions/{session_id}/estimate-acb`, `POST /api/v1/ingestion/runs`, `GET /api/v1/ingestion/jobs/{job_id}`, `GET /health`, `GET /`).
-- **Guardrails** ([`backend/src/aie_estimator/guardrails/`](backend/src/aie_estimator/guardrails/)): Input validation (`omni-moderation-latest`, prompt injection, PII heuristics) and low-confidence output normalization.
-- **Services** ([`backend/src/aie_estimator/services/`](backend/src/aie_estimator/services/)): Estimation orchestration, two-tier Redis caching (Tier 1 exact SHA-256, Tier 2 RediSearch vector similarity), and multi-provider dispatch with intra-tier rotation and cross-tier failover.
-- **Prompts** ([`backend/src/aie_estimator/prompts/`](backend/src/aie_estimator/prompts/)): Versioned Jinja2 templates (`estimation/v3`, `metadata_extraction/v1`, `conversation_summary/v1`, `critic/v1`) and loader.
 - **Configuration & Composition** ([`settings.py`](backend/src/aie_estimator/settings.py), [`dependencies.py`](backend/src/aie_estimator/dependencies.py), [`server.py`](backend/src/aie_estimator/server.py)): `pydantic-settings` environment management, cached dependency injection factories, and FastAPI application factory (`create_app`).
 - **Streamlit UI** ([`backend/streamlit_app.py`](backend/streamlit_app.py)): Session-only conversational Streamlit chat UI with tier selector, opt-in ACB review + `BossTrace` viewer, multi-file upload, sidebar `ProjectMetadata` inspection, and telemetry viewer.
 
@@ -74,17 +70,11 @@ aie-estimator/
 │   │       ├── telemetry.py            # OpenTelemetry TracerProvider and structlog context injection
 │   │       ├── llm_profiles.yml        # LiteLLM router profiles, tiers, and telemetry config
 │   │       ├── .env.example            # Example environment configuration
-│   │       ├── attachments/            # Local attachment text extraction and character budgets
-│   │       ├── guardrails/             # Defense-in-depth semantic validation
+│   │       ├── api/                    # FastAPI HTTP route handlers
+│   │       ├── domain/                 # Estimation orchestration, exceptions, and Pydantic schemas
+│   │       ├── foundation/             # Attachments, guardrails, LLM dispatch, persistence, prompts
+│   │       ├── generation/             # Agentic ACB, two-tier CAG caching, conversational sessions
 │   │       ├── ingestion/              # Offline corpus ingestion pipeline boundary
-│   │       ├── persistence/            # Async raw-SQL PostgreSQL pool, migrations, and repositories
-│   │       ├── prompts/                # Jinja2 prompt templates and loader
-│   │       ├── schemas/                # Pydantic request/response contracts
-│   │       ├── sessions/               # Conversational session state, history window, and store
-│   │       ├── routers/                # FastAPI HTTP route handlers
-│   │       ├── services/               # Core business logic, caching, and provider dispatch
-│   │       │   ├── cache/              # Two-tier Redis response caching (exact & semantic)
-│   │       │   └── providers/          # LiteLLM Router and native SDK integrations
 │   │       └── utils/                  # Canonical time, model, and session constants
 │   ├── tests/                          # Unit and integration test suites
 │   ├── .dockerignore
@@ -143,7 +133,7 @@ Run backend commands from `backend/` (see [`backend/README.md`](backend/README.m
 cd backend
 
 # Apply pending SQL migrations when POSTGRES_* credentials are configured (or `auto\migrate.cmd`)
-uv run python -m aie_estimator.persistence.migrate
+uv run python -m aie_estimator.foundation.persistence.migrate
 
 # Terminal 1: FastAPI backend at http://localhost:8000 (or `auto\dev.cmd`)
 uv run aie-estimator

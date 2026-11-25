@@ -35,7 +35,7 @@ from aie_estimator.ingestion.normalizers.canonical import normalize_documents
 from aie_estimator.ingestion.parsers.budget_json import BudgetJsonParser
 from aie_estimator.ingestion.parsers.protocol import ParseContext
 from aie_estimator.ingestion.parsers.registry import ParserRegistry
-from aie_estimator.persistence.repositories.quarantine import QuarantinedRecordInput
+from aie_estimator.foundation.persistence.repositories.quarantine import QuarantinedRecordInput
 
 
 class IngestionResult(BaseModel):

@@ -12,10 +12,10 @@ from pydantic import SecretStr
 import pytest
 
 # --- App modules ---
-from aie_estimator.attachments.extractor import AttachmentExtractionError
+from aie_estimator.foundation.attachments.extractor import AttachmentExtractionError
 from aie_estimator.model_catalog import get_supported_models
 from aie_estimator.server import Server, create_app
-from aie_estimator.services.exceptions import LLMProviderError
+from aie_estimator.domain.exceptions import LLMProviderError
 from aie_estimator.settings import Settings
 
 
@@ -51,7 +51,7 @@ def test_server_llm_provider_error_handler(
         raise LLMProviderError("Upstream provider connection refused.")
 
     monkeypatch.setattr(
-        "aie_estimator.services.estimations_service.EstimationService.generate_estimation",
+        "aie_estimator.domain.estimations_service.EstimationService.generate_estimation",
         mock_failing_generation,
     )
 
@@ -103,7 +103,7 @@ def test_server_unhandled_exception_handler(
         raise error
 
     monkeypatch.setattr(
-        "aie_estimator.services.estimations_service.EstimationService.generate_estimation",
+        "aie_estimator.domain.estimations_service.EstimationService.generate_estimation",
         mock_failing_generation,
     )
 
@@ -209,7 +209,7 @@ def test_server_attachment_exception_handler(
         raise error
 
     monkeypatch.setattr(
-        "aie_estimator.services.estimations_service.EstimationService.generate_estimation",
+        "aie_estimator.domain.estimations_service.EstimationService.generate_estimation",
         mock_failing_generation,
     )
 
@@ -251,7 +251,7 @@ def test_server_lifespan_opens_recovers_stale_jobs_and_closes_pool(monkeypatch: 
     :param monkeypatch: Pytest monkeypatch fixture.
     """
     monkeypatch.setattr(
-        "aie_estimator.services.cache.semantic.EstimationSemanticCache.initialize_index",
+        "aie_estimator.generation.cag.semantic.EstimationSemanticCache.initialize_index",
         AsyncMock(return_value=None),
     )
     mock_pool = MagicMock()

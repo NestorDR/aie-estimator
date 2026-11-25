@@ -5,7 +5,7 @@
 The application implements the Application Factory pattern in [`../backend/src`](../backend/src/aie_estimator/server.py) and a centralized Composition Root in [`../backend/src`](../backend/src/aie_estimator/dependencies.py). This architecture decouples the HTTP transport layer from domain orchestration, eliminates shared mutable singletons across test executions, and enables deterministic mocking via FastAPI's `app.dependency_overrides`.
 
 Layer flow:
-`create_app()` ([`server.py`](../backend/src/aie_estimator/server.py)) → Route Handlers ([`../backend/src`](../backend/src/aie_estimator/routers/)) → `Depends(get_estimation_service)` ([`dependencies.py`](../backend/src/aie_estimator/dependencies.py)) → [`EstimationService`](../backend/src/aie_estimator/services/estimations_service.py).
+`create_app()` ([`server.py`](../backend/src/aie_estimator/server.py)) → Route Handlers ([`../backend/src`](../backend/src/aie_estimator/api/)) → `Depends(get_estimation_service)` ([`dependencies.py`](../backend/src/aie_estimator/dependencies.py)) → [`EstimationService`](../backend/src/aie_estimator/domain/estimations_service.py).
 
 ---
 

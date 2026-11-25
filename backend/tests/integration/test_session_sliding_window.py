@@ -11,8 +11,8 @@ from httpx import ASGITransport, AsyncClient
 import pytest
 
 # --- App modules ---
-from aie_estimator.sessions.compression.summarizer import _SummaryEnvelope
-from aie_estimator.sessions.models import MetadataExtractionResult
+from aie_estimator.generation.conversation.compression.summarizer import _SummaryEnvelope
+from aie_estimator.generation.conversation.models import MetadataExtractionResult
 
 _TOTAL_TURNS: Final[int] = 8
 _MAX_TURNS: Final[int] = 6
@@ -52,19 +52,19 @@ async def test_eight_turn_conversation_respects_sliding_window_and_retains_turn_
     ]
 
     with (
-        patch("aie_estimator.guardrails.input._check_moderation", new_callable=AsyncMock),
+        patch("aie_estimator.foundation.guardrails.input._check_moderation", new_callable=AsyncMock),
         patch(
-            "aie_estimator.services.estimations_service.call_llm",
+            "aie_estimator.domain.estimations_service.call_llm",
             new_callable=AsyncMock,
             side_effect=[make_estimation_result() for _ in range(_TOTAL_TURNS)],
         ) as mock_estimation_llm,
         patch(
-            "aie_estimator.sessions.metadata_extractor.call_llm",
+            "aie_estimator.generation.conversation.metadata_extractor.call_llm",
             new_callable=AsyncMock,
             side_effect=extractor_responses,
         ),
         patch(
-            "aie_estimator.sessions.compression.summarizer.call_llm",
+            "aie_estimator.generation.conversation.compression.summarizer.call_llm",
             new_callable=AsyncMock,
             return_value={
                 "result": _SummaryEnvelope(summary="Turns 1-2 established MyProject core SaaS scope."),

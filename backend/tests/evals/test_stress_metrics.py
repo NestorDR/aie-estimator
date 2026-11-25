@@ -7,8 +7,8 @@ from datetime import UTC, datetime
 import pytest
 
 # --- App modules ---
-from aie_estimator.schemas.sessions import SessionInfoResponse
-from aie_estimator.sessions.models import ProjectMetadata, TurnObservation
+from aie_estimator.domain.schemas.sessions import SessionInfoResponse
+from aie_estimator.generation.conversation.models import ProjectMetadata, TurnObservation
 from evals.stress.metrics import (
     DEFAULT_COST_BUDGET_USD,
     DEFAULT_LATENCY_BUDGET_MS,
