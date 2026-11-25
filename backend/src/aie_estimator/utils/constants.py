@@ -30,6 +30,11 @@ LOGICAL_PROFILE_NAMES: Final[set[str]] = {DEFAULT_FAST_PROFILE, DEFAULT_DEEP_PRO
 DEFAULT_GPT_LLM: Final[str] = "gpt-6-luna"
 DEFAULT_CLAUDE_LLM: Final[str] = "claude-haiku-5-5"
 
+# Default RAG embedding model and its native vector size, shared between Settings and OpenAIEmbedder
+# so `dimensions=` is omitted from OpenAI API calls unless explicitly overridden.
+DEFAULT_EMBEDDING_MODEL: Final[str] = "text-embedding-3-small"
+DEFAULT_EMBEDDING_DIMENSIONS: Final[int] = 1536
+
 UNKNOWN_PROVIDER: Final[str] = "unknown"
 
 # Supported LLM providers and their model prefixes, used to identify vendors and map API key env vars

@@ -34,6 +34,7 @@ from aie_estimator.domain.estimations_service import EstimationService
 from aie_estimator.generation.conversation.compression.policy import CompressionPolicy
 from aie_estimator.generation.conversation.store import SessionStore
 from aie_estimator.generation.conversation.tier_resolver import Tier
+from aie_estimator.generation.rag.embedding.embedder import OpenAIEmbedder
 from aie_estimator.settings import Settings, get_settings as _get_settings
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
@@ -46,6 +47,40 @@ def get_settings() -> Settings:
     :return: Application Settings singleton instance.
     """
     return _get_settings()
+
+
+@lru_cache(maxsize=1)
+def get_openai_client() -> AsyncOpenAI | None:
+    """
+    Return the cached ``AsyncOpenAI`` client for RAG embeddings when ``openai_api_key`` is configured.
+
+    Disables SDK-level retries (``max_retries=0``) so ``OpenAIEmbedder`` owns retry timing and logging.
+
+    :return: Cached ``AsyncOpenAI`` client, or ``None`` if the API key is unset or empty.
+    """
+    settings = get_settings()
+    api_key = settings.openai_api_key.get_secret_value().strip() if settings.openai_api_key else ""
+    if not api_key:
+        return None
+    # AsyncOpenAI already retries 429/5xx with jitter + Retry-After (default max_retries=2).
+    # Set max_retries=0 so SDK retries do not nest with OpenAIEmbedder's explicit (1s, 2s, 4s)
+    # backoff loop (required for s07.0 parity and structured `embedding_batch_rate_limited` logs).
+    return AsyncOpenAI(api_key=api_key, max_retries=0)
+
+
+def get_embedder(
+    client: AsyncOpenAI | None = Depends(get_openai_client),
+) -> OpenAIEmbedder | None:
+    """
+    Construct the async ``OpenAIEmbedder`` when an OpenAI client is available.
+
+    :param client: Optional ``AsyncOpenAI`` client from ``get_openai_client``.
+
+    :return: Configured ``OpenAIEmbedder``, or ``None`` when ``OPENAI_API_KEY`` is missing.
+    """
+    if client is None:
+        return None
+    return OpenAIEmbedder(client=client)
 
 
 def get_exact_cache(settings: Settings = Depends(get_settings)) -> EstimationExactCache | None:

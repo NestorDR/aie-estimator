@@ -15,6 +15,8 @@ import structlog
 
 # --- App modules ---
 from aie_estimator.utils.constants import (
+    DEFAULT_EMBEDDING_DIMENSIONS,
+    DEFAULT_EMBEDDING_MODEL,
     DEFAULT_FAST_PROFILE,
     DEFAULT_SESSION_MAX_ANCHOR_PAIRS,
     DEFAULT_SESSION_MAX_TURNS,
@@ -67,6 +69,11 @@ class Settings(BaseSettings):
     conversational_prompt_version: str = "v3"
     litellm_local_model_cost_map: bool = True
     llm_profiles_path: Path = Path(__file__).resolve().parent / "llm_profiles.yml"
+
+    # Embedding settings (RAG pipeline)
+    embedding_model: str = DEFAULT_EMBEDDING_MODEL
+    embedding_dimensions: int = Field(default=DEFAULT_EMBEDDING_DIMENSIONS, gt=0)
+    embedding_batch_size: int = Field(default=100, gt=0)
 
     # Cache settings
     redis_host: str = "localhost"

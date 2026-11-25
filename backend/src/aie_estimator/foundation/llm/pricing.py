@@ -9,6 +9,8 @@ MODEL_COSTS: Final[dict[str, dict[str, float]]] = {
     # OpenAI - https://openai.com/business/pricing/#api
     "gpt-4o-mini": {"input": 0.15, "output": 0.60},
     "gpt-6-luna": {"input": 0.10, "output": 0.50},
+    # OpenAI Embeddings - https://developers.openai.com/api/docs/models/text-embedding-3-small
+    "text-embedding-3-small": {"input": 0.02, "output": 0.0},
     # Anthropic - https://platform.claude.com/docs/en/about-claude/pricing
     "claude-haiku-5-5": {"input": 0.25, "output": 1.25},
     "claude-sonnet-5-5": {"input": 2.00, "output": 10.00},

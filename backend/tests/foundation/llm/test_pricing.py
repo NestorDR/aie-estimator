@@ -15,6 +15,7 @@ from aie_estimator.foundation.llm.pricing import estimate_cost
         ("gpt-4o-mini", 0, 0, 0.0),
         ("  GPT-4O-MINI  ", 1_000_000, 1_000_000, 0.75),
         ("claude-haiku-5-5-20261022", 1_000, 1_000, 0.0015),
+        ("text-embedding-3-small", 1_000_000, 0, 0.02),
     ],
 )
 def test_estimate_cost_configured_models(

@@ -37,6 +37,10 @@ COPY src/ ./src/
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-editable --no-dev
 
+# Pre-warm tiktoken cl100k_base BPE rank file so air-gapped runtime containers never download it at startup.
+ENV TIKTOKEN_CACHE_DIR="/app/.tiktoken_cache"
+RUN /app/.venv/bin/python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
+
 
 
 
@@ -59,15 +63,18 @@ WORKDIR /app
 # non-editable `aie_estimator` package and its compiled bytecode) with non-root
 # ownership set at copy time (avoids an expensive recursive `RUN chown -R` layer).
 COPY --from=builder --chown=appuser:appgroup /app/.venv /app/.venv
+COPY --from=builder --chown=appuser:appgroup /app/.tiktoken_cache /app/.tiktoken_cache
 
 # Runtime environment configuration:
 # - PATH: Resolve `python`, `uvicorn`, and `aie-estimator` from the venv
+# - TIKTOKEN_CACHE_DIR: Pre-warmed BPE cache for offline token counting
 # - PYTHONUNBUFFERED=1: Stream stdout/stderr logs immediately without buffering
 # - PYTHONDONTWRITEBYTECODE=1: Prevent runtime .pyc writes (supports read-only rootfs)
 # - APP_ENV=prod: Default to production mode (JSON logging, reload disabled)
 # - SERVER_HOST=0.0.0.0: Listen on all container interfaces instead of localhost
 # - SERVER_PORT=8000: Default listening port
 ENV PATH="/app/.venv/bin:$PATH" \
+    TIKTOKEN_CACHE_DIR="/app/.tiktoken_cache" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     APP_ENV=prod \

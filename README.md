@@ -14,7 +14,7 @@ AIE Estimator processes software project descriptions and domain parameters (`pr
 
 - **Domain** ([`backend/src/aie_estimator/domain/`](backend/src/aie_estimator/domain/)): Core estimation orchestration (`estimations_service.py`, `exceptions.py`) and Pydantic v2 contracts (`schemas/`).
 - **Foundation** ([`backend/src/aie_estimator/foundation/`](backend/src/aie_estimator/foundation/)): Shared infrastructure—attachments (`attachments/`), guardrails (`guardrails/`), multi-provider LLM dispatch (`llm/`), PostgreSQL persistence (`persistence/`), and versioned Jinja2 templates (`prompts/`).
-- **Generation** ([`backend/src/aie_estimator/generation/`](backend/src/aie_estimator/generation/)): Actor-Critic-Boss orchestration (`agentic/`), two-tier Redis caching (`cag/`), and conversational session state (`conversation/`).
+- **Generation** ([`backend/src/aie_estimator/generation/`](backend/src/aie_estimator/generation/)): Actor-Critic-Boss orchestration (`agentic/`), two-tier Redis caching (`cag/`), conversational session state (`conversation/`), and async RAG embeddings (`rag/`).
 - **API** ([`backend/src/aie_estimator/api/`](backend/src/aie_estimator/api/)): FastAPI HTTP routes (`POST /api/v1/estimate`, `POST /api/v1/sessions`, `GET /api/v1/sessions/{session_id}`, `POST /api/v1/sessions/{session_id}/estimate`, `POST /api/v1/sessions/{session_id}/estimate-acb`, `POST /api/v1/ingestion/runs`, `GET /api/v1/ingestion/jobs/{job_id}`, `GET /health`, `GET /`).
 - **Ingestion** ([`backend/src/aie_estimator/ingestion/`](backend/src/aie_estimator/ingestion/)): Offline corpus ingestion package (`catalog/`, `documents/`, `loaders/`, `parsers/`, `cleaning/`, `normalizers/`, `pii/`, `orchestrator.py`, `inspect_budgets.py`) separated from the latency-bound online CAG estimation path.
 - **Configuration & Composition** ([`settings.py`](backend/src/aie_estimator/settings.py), [`dependencies.py`](backend/src/aie_estimator/dependencies.py), [`server.py`](backend/src/aie_estimator/server.py)): `pydantic-settings` environment management, cached dependency injection factories, and FastAPI application factory (`create_app`).
@@ -73,7 +73,7 @@ aie-estimator/
 │   │       ├── api/                    # FastAPI HTTP route handlers
 │   │       ├── domain/                 # Estimation orchestration, exceptions, and Pydantic schemas
 │   │       ├── foundation/             # Attachments, guardrails, LLM dispatch, persistence, prompts
-│   │       ├── generation/             # Agentic ACB, two-tier CAG caching, conversational sessions
+│   │       ├── generation/             # Agentic ACB, two-tier CAG caching, conversational sessions, RAG embeddings
 │   │       ├── ingestion/              # Offline corpus ingestion pipeline boundary
 │   │       └── utils/                  # Canonical time, model, and session constants
 │   ├── tests/                          # Unit and integration test suites
@@ -191,6 +191,7 @@ Architecture and feature guides in [`docs/`](docs/):
 - [Observability](docs/observability.md): Structlog event taxonomy, OpenTelemetry context injection, and Arize Phoenix tracing.
 - [PostgreSQL Persistence](docs/postgres-persistence.md): Async `psycopg_pool` lifecycle, versioned `.sql` delta migrations, and `JobsRepository` / `MappingsRepository` / `QuarantinedRecordsRepository`.
 - [Prompt Engine](docs/prompt-engine.md): Versioned Jinja2 templates and decoupled prompt/API versioning.
+- [RAG Embedding & Tokenization](docs/rag-embedding.md): Model-aware `tiktoken` counting, async batched OpenAI embedder, and centralized embedding pricing.
 - [Reasoning Profiles](docs/reasoning-profiles.md): Reasoning effort normalization, two-level failover, and credential pruning.
 - [Semantic Response Caching](docs/semantic-response-caching.md): Tier 1 exact SHA-256 cache, Tier 2 RediSearch vector cache, and shadow mode.
 - [Streamlit UI](docs/streamlit-conversational-ui.md): Session-only conversational chat UI, tier adaptation, ACB review toggle, multi-file upload, 404 recovery, and telemetry inspection.
