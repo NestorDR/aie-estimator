@@ -27,21 +27,27 @@ EMBEDDING_NATIVE_DIMENSIONS: Final[MappingProxyType[str, int]] = MappingProxyTyp
     }
 )
 
-_NON_ALNUM: Final[re.Pattern[str]] = re.compile(r"[^A-Za-z0-9]+")
+# Any sequence of characters that are not ASCII letters or digits (e.g. "-", ".", "/", ":", " ").
+# is replaced by "_" so model names are tidy and safe inside Redis index names and key prefixes
+# (":" is the key separator and "*", "?", "[" are glob wildcards).
+_NON_ALPHANUMERIC: Final[re.Pattern[str]] = re.compile(r"[^A-Za-z0-9]+")
+
 
 def embedding_signature(model: str, dimensions: int) -> str:
     """
     Build a stable identifier for an embedding space (model + vector size).
 
     Two vectors are comparable only if they share this signature, so it is used to
-    namespace vector indexes and keys.
+    namespace vector indexes and keys. The model name is normalized (non-alphanumeric
+    runs become ``_``, edges are stripped, lowercased) and the dimensions are appended.
+    Defensive convention, not a Redis rule.
 
     :param model: Embedding model name.
     :param dimensions: Effective vector size stored in the index.
 
     :return: Identifier safe for Redis names, e.g. ``text_embedding_3_small_1536``.
     """
-    return f"{_NON_ALNUM.sub('_', model).strip('_').lower()}_{dimensions}"
+    return f"{_NON_ALPHANUMERIC.sub('_', model).strip('_').lower()}_{dimensions}"
 
 
 def resolve_request_dimensions(model: str, dimensions: int) -> int | None:
