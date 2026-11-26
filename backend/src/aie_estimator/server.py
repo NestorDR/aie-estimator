@@ -22,7 +22,7 @@ from aie_estimator.logging import configure_logging
 from aie_estimator.model_catalog import get_supported_models
 from aie_estimator.foundation.persistence.database import close_pool, open_pool
 from aie_estimator.foundation.persistence.repositories.jobs import JobsRepository
-from aie_estimator.api import estimations_router, health_router, ingestion_router, sessions_router
+from aie_estimator.api import embeddings_router, estimations_router, health_router, ingestion_router, sessions_router
 from aie_estimator.generation.cag import get_exact_cache, get_semantic_cache
 from aie_estimator.domain.exceptions import LLMProviderError
 from aie_estimator.generation.conversation.store import SessionNotFoundError
@@ -164,6 +164,7 @@ class Server:
         app.include_router(estimations_router.router)
         app.include_router(sessions_router.router)
         app.include_router(ingestion_router.router)
+        app.include_router(embeddings_router.router)
 
         # Root endpoint
         @app.get("/", tags=["Root"])

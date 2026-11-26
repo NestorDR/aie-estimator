@@ -8,7 +8,7 @@ The estimation service implements a two-tier caching architecture in [`../backen
 2. **Tier 2 (Semantic Vector Cache)**: [`EstimationSemanticCache`](../backend/src/aie_estimator/generation/cag/semantic.py) evaluates cosine vector distance in Redis using RediSearch on exact-match misses. Queries with equivalent intent return cached estimations in ~80 ms without invoking upstream LLM providers.
 
 Pipeline flow:
-`check_input` → Tier 1 exact cache miss → OpenAI text embedding (`text-embedding-3-small`) → Tier 2 semantic cache query → (Miss) `call_llm` → `enforce_scope_response` → Dual-write persist to both caches.
+`check_input` → Tier 1 exact cache miss → OpenAI text embedding (`Settings.embedding_model`) → Tier 2 semantic cache query → (Miss) `call_llm` → `enforce_scope_response` → Dual-write persist to both caches.
 
 ---
 
@@ -46,8 +46,9 @@ if settings.enable_semantic_cache:
 
 ## Technical Considerations
 
-1. **Composite Bucket Partitioning**: Requests are partitioned using bucket tags combining `prompt_version`, `project_type`, `detail_level`, and `output_format` via `bucket_for()`. The RediSearch query restricts comparison to documents matching the escaped bucket tag (`escape_tag(bucket)`) before computing vector distances, eliminating cross-format cache pollution.
-2. **Native `redis.asyncio` RediSearch Integration**: Avoids third-party ORMs by using `redis.commands.search.field` (`TagField`, `TextField`, `VectorField`) and Python's standard library `struct.pack` for contiguous 32-bit float vector serialization under `dialect(2)`.
-3. **Shadow Mode (`SEMANTIC_CACHE_LOG_ONLY=true`)**: Evaluates RediSearch vector queries, logs similarity scores via `semantic_cache_hit_log_only`, but returns `None` to let requests proceed to the LLM for threshold calibration.
-4. **Fail-Open Policy**: If Redis or OpenAI embedding generation encounters network timeouts or exceptions, the cache logs a warning and gracefully falls open to direct LLM generation without failing the user request.
-5. **Test Isolation**: The test harness in [`../backend/tests`](../backend/tests/conftest.py) patches index initialization to an async no-op and defaults caches to safe miss states, eliminating physical socket connection attempts during test runs.
+1. **Composite Bucket Partitioning**: Requests are partitioned using bucket tags combining `prompt_version`, `tier`, `project_type`, `detail_level`, and `output_format` via `bucket_for()`. The RediSearch query restricts comparison to documents matching the escaped bucket tag (`escape_tag(bucket)`) before computing vector distances, eliminating cross-format cache pollution.
+2. **Embedding-Space Versioning**: `EstimationSemanticCache` reads `Settings.embedding_model` and `Settings.embedding_dimensions`, resolves the OpenAI `dimensions` parameter via [`resolve_request_dimensions()`](../backend/src/aie_estimator/utils/embeddings_utils.py), and appends [`embedding_signature()`](../backend/src/aie_estimator/utils/embeddings_utils.py) to the default RediSearch index (`estimations_idx_<signature>`) and key namespace (`estimation:semantic:<signature>`) so vectors from different models or dimensions never mix.
+3. **Native `redis.asyncio` RediSearch Integration**: Avoids third-party ORMs by using `redis.commands.search.field` (`TagField`, `TextField`, `VectorField`) and Python's standard library `struct.pack` for contiguous 32-bit float vector serialization under `dialect(2)`.
+4. **Shadow Mode (`SEMANTIC_CACHE_LOG_ONLY=true`)**: Evaluates RediSearch vector queries, logs similarity scores via `semantic_cache_hit_log_only`, but returns `None` to let requests proceed to the LLM for threshold calibration.
+5. **Fail-Open Policy**: If Redis or OpenAI embedding generation encounters network timeouts or exceptions, the cache logs a warning and gracefully falls open to direct LLM generation without failing the user request.
+6. **Test Isolation**: The test harness in [`../backend/tests`](../backend/tests/conftest.py) patches index initialization to an async no-op and defaults caches to safe miss states, eliminating physical socket connection attempts during test runs.

@@ -137,8 +137,8 @@ async def test_embed_one_recovers_after_transient_rate_limit(monkeypatch: pytest
     assert vector == [0.5, 0.6]
     assert sleep_mock.await_args_list == [call(1), call(2)]
     assert [entry.args[0] for entry in mock_log.warning.call_args_list] == [
-        "embedding_batch_rate_limited",
-        "embedding_batch_rate_limited",
+        "embedding_batch_rate_limit_hit",
+        "embedding_batch_rate_limit_hit",
     ]
 
 
@@ -266,3 +266,8 @@ def test_dependency_factories_handle_missing_key_caching_and_dimensions(monkeypa
     large_embedder = get_embedder(client)
     assert large_embedder is not None
     assert large_embedder._dimensions == 1536
+
+    monkeypatch.setenv("EMBEDDING_DIMENSIONS", "3072")
+    large_native_embedder = get_embedder(client)
+    assert large_native_embedder is not None
+    assert large_native_embedder._dimensions is None

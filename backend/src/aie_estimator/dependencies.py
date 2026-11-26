@@ -34,6 +34,8 @@ from aie_estimator.domain.estimations_service import EstimationService
 from aie_estimator.generation.conversation.compression.policy import CompressionPolicy
 from aie_estimator.generation.conversation.store import SessionStore
 from aie_estimator.generation.conversation.tier_resolver import Tier
+from aie_estimator.generation.rag.chunking.protocol import Chunker
+from aie_estimator.generation.rag.chunking.structural import JSONStructuralChunker
 from aie_estimator.generation.rag.embedding.embedder import OpenAIEmbedder
 from aie_estimator.settings import Settings, get_settings as _get_settings
 
@@ -64,7 +66,7 @@ def get_openai_client() -> AsyncOpenAI | None:
         return None
     # AsyncOpenAI already retries 429/5xx with jitter + Retry-After (default max_retries=2).
     # Set max_retries=0 so SDK retries do not nest with OpenAIEmbedder's explicit (1s, 2s, 4s)
-    # backoff loop (required for s07.0 parity and structured `embedding_batch_rate_limited` logs).
+    # backoff loop (required for s07.0 parity and structured `embedding_batch_rate_limit_hit` logs).
     return AsyncOpenAI(api_key=api_key, max_retries=0)
 
 
@@ -81,6 +83,17 @@ def get_embedder(
     if client is None:
         return None
     return OpenAIEmbedder(client=client)
+
+
+def get_chunker() -> Chunker:
+    """
+    Construct the budget chunking strategy used by the embedding ingest endpoint.
+
+    Typed as the ``Chunker`` protocol so Session 7 strategies can replace it without router changes.
+
+    :return: Stateless ``JSONStructuralChunker`` instance.
+    """
+    return JSONStructuralChunker()
 
 
 def get_exact_cache(settings: Settings = Depends(get_settings)) -> EstimationExactCache | None:
