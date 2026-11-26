@@ -40,8 +40,7 @@ def render_component_text(budget: HistoricalBudget, component: BudgetComponent) 
     # omitting client_metadata.name so vectors stay free of client brand names.
     return (
         f"[Project: {budget.project_summary}]\n"
-        f"[Client sector: {budget.client_metadata.sector} | "
-        f"Year: {budget.year} | Main tech: {budget.main_technology}]\n"
+        f"[Client sector: {budget.client_metadata.sector} | Year: {budget.year} | Main tech: {budget.main_technology}]\n"
         f"\n"
         f"Component: {component.name}\n"
         f"Description: {component.description}\n"
