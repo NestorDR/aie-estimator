@@ -48,11 +48,11 @@ router = APIRouter(
 
 
 def _failure(
-    span: Span,
-    reason: str,
-    status_code: int,
-    detail: str,
-    exc: Exception | None = None,
+        span: Span,
+        reason: str,
+        status_code: int,
+        detail: str,
+        exc: Exception | None = None,
 ) -> HTTPException:
     """
     Log and trace an ingest failure, then build the sanitized HTTP error to raise.
@@ -82,10 +82,10 @@ def _failure(
     description="Chunk historical budgets per component, embed every chunk in memory, and return vectors with token and cost stats.",
 )
 async def ingest_embeddings(
-    request: EmbeddingIngestRequest,
-    chunker: Chunker = Depends(get_chunker),
-    embedder: OpenAIEmbedder | None = Depends(get_embedder),
-    settings: Settings = Depends(get_settings),
+        request: EmbeddingIngestRequest,
+        chunker: Chunker = Depends(get_chunker),
+        embedder: OpenAIEmbedder | None = Depends(get_embedder),
+        settings: Settings = Depends(get_settings),
 ) -> EmbeddingIngestResponse:
     """
     Chunk the submitted budgets, embed every chunk, and return vectors with aggregate statistics.
@@ -107,19 +107,42 @@ async def ingest_embeddings(
 
         # 503 (not 500): a missing API key is a deployment condition, not a server bug.
         if embedder is None:
-            raise _failure(span, "embedder_unavailable", status.HTTP_503_SERVICE_UNAVAILABLE, _DETAIL_UNAVAILABLE)
+            raise _failure(
+                span=span,
+                reason="embedder_unavailable",
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=_DETAIL_UNAVAILABLE
+            )
 
         try:
             # Chunking runs inline: tiktoken over a few hundred short chunks takes milliseconds.
             chunks = chunker.chunk(request.budgets)
             vectors = await embedder.embed_many([chunk.text for chunk in chunks])
         # RateLimitError subclasses APIError, so it must be caught first to map to 503 instead of 502.
-        except RateLimitError as exc:
-            raise _failure(span, "rate_limited", status.HTTP_503_SERVICE_UNAVAILABLE, _DETAIL_RATE_LIMITED, exc) from exc
-        except APIError as exc:
-            raise _failure(span, "upstream_api_error", status.HTTP_502_BAD_GATEWAY, _DETAIL_UPSTREAM_ERROR, exc) from exc
-        except Exception as exc:  # noqa: BLE001
-            raise _failure(span, "unexpected_error", status.HTTP_500_INTERNAL_SERVER_ERROR, _DETAIL_UNEXPECTED, exc) from exc
+        except RateLimitError as e:
+            raise _failure(
+                span=span,
+                reason="rate_limited",
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=_DETAIL_RATE_LIMITED,
+                exc=e
+            ) from e
+        except APIError as e:
+            raise _failure(
+                span=span,
+                reason="upstream_api_error",
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=_DETAIL_UPSTREAM_ERROR,
+                exc=e
+            ) from e
+        except Exception as e:  # noqa: BLE001
+            raise _failure(
+                span=span,
+                reason="unexpected_error",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=_DETAIL_UNEXPECTED,
+                exc=e
+            ) from e
 
         # Local tiktoken count: embed_many returns vectors only, so this can differ slightly from billed tokens.
         total_tokens = sum(chunk.token_count for chunk in chunks)

@@ -58,6 +58,7 @@ aie-estimator/
 │   ├── evals/                          # Golden Dataset and Family 1-3 LLM evaluation harness
 │   │   └── stress/                     # Synthetic 20-turn stress test scenarios and async runner for CAG
 │   │       └── REPORT.md               # Stress test results and metrics
+│   ├── scripts/                        # Standalone CLI utilities (compare.py)
 │   ├── src/
 │   │   └── aie_estimator/
 │   │       ├── __init__.py
@@ -140,6 +141,12 @@ uv run aie-estimator
 
 # Terminal 2: Streamlit UI at http://localhost:8501 (or `auto\stl.cmd`)
 uv run streamlit run streamlit_app.py
+
+# Compare cosine similarity between two texts via OpenAI embeddings
+auto\compare_texts.cmd --1st "Backend services" --2nd "API development"
+# or: uv run python scripts/compare.py --1st "Backend services" --2nd "API development"
+# or: inside production Docker container
+docker compose --env-file backend/src/aie_estimator/.env.prod -f docker/docker-compose.prod.yml -p estimator-prod exec estimator python scripts/compare.py --1st "Backend services" --2nd "API development"
 ```
 
 ![Streamlit Product Estimation Form](docs/assets/session05_streamlit_ui.png)
@@ -192,7 +199,7 @@ Architecture and feature guides in [`docs/`](docs/):
 - [Observability](docs/observability.md): Structlog event taxonomy, OpenTelemetry context injection, and Arize Phoenix tracing.
 - [PostgreSQL Persistence](docs/postgres-persistence.md): Async `psycopg_pool` lifecycle, versioned `.sql` delta migrations, and `JobsRepository` / `MappingsRepository` / `QuarantinedRecordsRepository`.
 - [Prompt Engine](docs/prompt-engine.md): Versioned Jinja2 templates and decoupled prompt/API versioning.
-- [RAG Embedding & Tokenization](docs/rag-embedding.md): Model-aware `tiktoken` counting, async batched OpenAI embedder, and centralized embedding pricing.
+- [RAG Embedding & Tokenization](docs/rag-embedding.md): Model-aware `tiktoken` counting, async batched OpenAI embedder, centralized embedding pricing, stdlib cosine similarity CLI, and [three-pair sanity check](backend/src/aie_estimator/generation/rag/SANITY_CHECK.md).
 - [RAG Structural Chunking & Embedding Schemas](docs/rag-chunking.md): Strict `HistoricalBudget` / `Chunk` contracts, `Chunker` protocol, 1:1 `JSONStructuralChunker`, and curated sample dataset.
 - [Reasoning Profiles](docs/reasoning-profiles.md): Reasoning effort normalization, two-level failover, and credential pruning.
 - [Semantic Response Caching](docs/semantic-response-caching.md): Tier 1 exact SHA-256 cache, Tier 2 RediSearch vector cache, and shadow mode.

@@ -29,6 +29,10 @@ auto\stl.cmd              # or: uv run streamlit run streamlit_app.py
 
 # Inspect cleaned, pseudonymized historical budgets as JSON
 auto\inspect-budgets.cmd  # or: uv run python -m aie_estimator.ingestion.inspect_budgets
+
+# Compare cosine similarity between two texts via OpenAI embeddings
+auto\compare_texts.cmd --1st "Backend services" --2nd "API development"
+# or: uv run python scripts/compare.py --1st "Backend services" --2nd "API development"
 ```
 
 ## Code Quality & Tests

@@ -4,8 +4,9 @@
 # Exclude all files by default
 *
 
-# Explicitly include the source code and config
+# Explicitly include the source code, CLI scripts, and config
 !src/
+!scripts/
 !pyproject.toml
 !uv.lock
 !README.md

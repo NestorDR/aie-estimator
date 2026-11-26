@@ -64,6 +64,8 @@ WORKDIR /app
 # ownership set at copy time (avoids an expensive recursive `RUN chown -R` layer).
 COPY --from=builder --chown=appuser:appgroup /app/.venv /app/.venv
 COPY --from=builder --chown=appuser:appgroup /app/.tiktoken_cache /app/.tiktoken_cache
+# Include standalone CLI scripts (e.g., scripts/compare.py) for `docker compose exec estimator python scripts/compare.py`.
+COPY --chown=appuser:appgroup scripts/ ./scripts/
 
 # Runtime environment configuration:
 # - PATH: Resolve `python`, `uvicorn`, and `aie-estimator` from the venv
