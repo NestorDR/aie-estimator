@@ -1,7 +1,7 @@
 # Embedding Sanity Check
 
 - **Model**: `text-embedding-3-small` (1536 native dimensions)
-- **Tool**: [`backend/scripts/compare.py`](../../../../scripts/compare.py) (pure-stdlib cosine similarity via [`similarity.py`](analysis/similarity.py))
+- **Tool**: [`compare.py`](../../../../scripts/compare.py) (pure-stdlib cosine similarity via [`similarity.py`](analysis/similarity.py))
 - **Run date**: 2026-11-26
 
 | Pair | 1st Text | 2nd Text | Cosine Similarity | Expectation |
@@ -16,4 +16,4 @@
 - Pair A lands at `0.5958`, just under the orientative `0.6` threshold, because the two sentences share almost no surface vocabulary (`OAuth/JWT/fintech` vs. `Authorization/JSON Web Tokens/banking`) and rely purely on semantic bridging.
 - Pair C scores `0.5407`—nearly as high as the semantically equivalent Pair A—showing that short, generic phrases carry weak discriminating signal and cluster together in embedding space.
 
-This reinforces prepending project, sector, and technology context in `JSONStructuralChunker` so generic component names do not collapse into the same region during retrieval.
+This reinforces prepending project, sector, and technology context in [JSONStructuralChunker](chunking/structural.py#L77-77)  so generic component names do not collapse into the same region during retrieval.
