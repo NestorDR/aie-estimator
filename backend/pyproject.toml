@@ -8,20 +8,30 @@ requires-python = ">=3.14"
 dependencies = [
     "anthropic>=2.3.0",
     "en-core-web-sm",
+    # faker: Generates realistic fake values (names, emails, etc.) used as deterministic pseudonyms
+    # by the PII ConsistentPseudonymizer.
     "faker>=40.63.0",
     "fastapi>=0.146.0",
     "httpx>=0.28.1",
+    # instructor: Wraps LiteLLM/OpenAI/Anthropic clients to return Pydantic-validated structured outputs, 
+    # with automatic validation retries.
     "instructor>=1.17.0",
     "jinja2>=3.1.6",
     "litellm>=1.83.0",
     # OpenAI>=3.35.0 conflicts with instructor>=1.17.0 regarding `jitter` library versions
     "openai>=3.0.0,<3.35.0",
+    # OpenInference (Arize) instrumentor: turns LiteLLM calls into OpenTelemetry spans with LLM attributes
+    # (prompt, model, tokens) that Phoenix displays.
     "openinference-instrumentation-litellm>=0.1.20",
+    # OpenTelemetry: Distributed tracing API/SDK with OTLP (OpenTelemetry Protocol) export (gRPC :4317) to Arize Phoenix,
+    # FastAPI auto-instrumentation, and OpenInference spans for LiteLLM calls.
     "opentelemetry-api>=1.30.0",
     "opentelemetry-exporter-otlp>=1.30.0",
     "opentelemetry-instrumentation-fastapi>=0.51b0",
     "opentelemetry-sdk>=1.30.0",
     "pandas>=3.1.1",
+    # pandera: DataFrame schema validation for the budget cleaning pipeline (Session 6);
+    # lazy mode collects every row failure so invalid records can be quarantined.
     "pandera>=0.36.0",
     "presidio-analyzer>=2.2.366",
     "psycopg[binary,pool]>=3.3.0",
@@ -34,8 +44,9 @@ dependencies = [
     "redis>=8.1.0",
     "streamlit>=1.66.1",
     "structlog>=26.1.0",
-    # extra [standard] (uvloop & httptools) to improve overall API performance
+    # tiktoken: OpenAI BPE tokenizer, it counts tokens locally (no API call) for Chunk.token_count and embedding cost estimates.
     "tiktoken>=0.14.0",
+    # extra [standard] (uvloop & httptools) to improve overall API performance
     "uvicorn[standard]>=0.54.0,<1.0.0",
 ]
 
