@@ -2,10 +2,9 @@
 """
 Asynchronous batched OpenAI embedding service for the RAG pipeline.
 
-Batches multiple inputs into a single ``AsyncOpenAI.embeddings.create`` request
-to avoid per-chunk HTTP latency, uses ``asyncio.sleep`` backoff retries so the
-FastAPI event loop never blocks, and omits ``dimensions`` by default to preserve
-the model's native vector size.
+Batches multiple inputs into a single ``AsyncOpenAI.embeddings.create`` request to avoid
+per-chunk HTTP latency, uses ``asyncio.sleep`` backoff retries so the FastAPI event loop never blocks,
+and omits ``dimensions`` when it matches the model's native size.
 """
 
 # --- Python Standard Library ---
@@ -20,9 +19,10 @@ import structlog
 
 # --- App modules ---
 from aie_estimator.settings import get_settings
-from aie_estimator.utils.constants import DEFAULT_EMBEDDING_DIMENSIONS, DEFAULT_EMBEDDING_MODEL
+from aie_estimator.utils.embeddings_utils import resolve_request_dimensions
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
+
 
 _RETRY_BACKOFF_SECONDS: Final[tuple[int, ...]] = (1, 2, 4)
 
@@ -36,8 +36,10 @@ class OpenAIEmbedder:
         """
         Initialize the async embedder from the application settings singleton.
 
-        Omits ``dimensions`` from OpenAI API requests when ``embedding_dimensions``
-        matches ``DEFAULT_EMBEDDING_DIMENSIONS`` (native ``1536``).
+        The ``dimensions`` parameter is omitted from OpenAI API requests when
+        ``embedding_dimensions`` equals the native vector size of ``embedding_model``
+        (see ``EMBEDDING_NATIVE_DIMENSIONS``). Otherwise, it is sent to truncate the vector.
+        Models missing from that mapping always receive ``dimensions``.
 
         :param client: Configured ``AsyncOpenAI`` client instance.
         """
@@ -45,13 +47,9 @@ class OpenAIEmbedder:
         self._client: AsyncOpenAI = client
         self._model: str = settings.embedding_model
         self._batch_size: int = settings.embedding_batch_size
-        # Omit `dimensions` only for the default model's native size (1536); larger models
-        # like text-embedding-3-large (native 3072) must still receive dimensions=1536 when truncating.
-        is_native_default = (
-            settings.embedding_model == DEFAULT_EMBEDDING_MODEL
-            and settings.embedding_dimensions == DEFAULT_EMBEDDING_DIMENSIONS
+        self._dimensions: int | None = resolve_request_dimensions(
+            settings.embedding_model, settings.embedding_dimensions
         )
-        self._dimensions: int | None = None if is_native_default else settings.embedding_dimensions
 
     async def embed_one(self, text: str) -> list[float]:
         """
@@ -110,7 +108,7 @@ class OpenAIEmbedder:
 
         # Explicit (1s, 2s, 4s) RateLimitError backoff is implemented here (with client max_retries=0
         # in dependencies.py) rather than delegating to AsyncOpenAI's built-in retries so we honor
-        # the s07.0 schedule, emit `embedding_batch_rate_limited` structlog warnings, and keep retry
+        # the s07.0 schedule, emit `embedding_batch_rate_limit_hit` structlog warnings, and keep retry
         # timing deterministically testable.
         # Runs 1 initial attempt + `retry_attempts` retries, re-raising on the final failure without an extra sleep.
         retry_attempts = len(_RETRY_BACKOFF_SECONDS)
@@ -124,7 +122,7 @@ class OpenAIEmbedder:
 
                 wait_seconds = _RETRY_BACKOFF_SECONDS[attempt]
                 log.warning(
-                    "embedding_batch_rate_limited",
+                    "embedding_batch_rate_limit_hit",
                     attempt=attempt + 1,
                     retry_in_s=wait_seconds,
                     model=self._model,

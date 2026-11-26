@@ -15,8 +15,6 @@ import structlog
 
 # --- App modules ---
 from aie_estimator.utils.constants import (
-    DEFAULT_EMBEDDING_DIMENSIONS,
-    DEFAULT_EMBEDDING_MODEL,
     DEFAULT_FAST_PROFILE,
     DEFAULT_SESSION_MAX_ANCHOR_PAIRS,
     DEFAULT_SESSION_MAX_TURNS,
@@ -24,6 +22,7 @@ from aie_estimator.utils.constants import (
     PROVIDER_PREFIXES,
     SECONDS_PER_DAY,
 )
+from aie_estimator.utils.embeddings_utils import DEFAULT_EMBEDDING_DIMENSIONS, DEFAULT_EMBEDDING_MODEL
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
 _TEST_PII_HASH_SALT: Final[str] = "test-pii-hash-salt"

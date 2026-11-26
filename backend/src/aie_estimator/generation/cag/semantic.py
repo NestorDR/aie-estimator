@@ -6,7 +6,7 @@ from functools import lru_cache
 import hashlib
 import re
 import struct
-from typing import Final
+from typing import Any, Final
 
 # --- Third Party Libraries ---
 from openai import AsyncOpenAI
@@ -21,14 +21,13 @@ import structlog
 from aie_estimator.domain.schemas.estimations import BaseTierEstimation, EstimationRequest, PmEstimation
 from aie_estimator.generation.conversation.tier_resolver import Tier
 from aie_estimator.settings import get_settings
+from aie_estimator.utils.embeddings_utils import embedding_signature, resolve_request_dimensions
 
 log: Final[structlog.stdlib.BoundLogger] = structlog.get_logger()
 
-# Default RediSearch index identifier and key prefix constants.
+# Base RediSearch index name and key namespace. The effective names append the embedding signature.
 DEFAULT_INDEX_NAME: Final[str] = "estimations_idx"
 SEMANTIC_KEY_PREFIX: Final[str] = "estimation:semantic"
-EMBEDDING_MODEL: Final[str] = "text-embedding-3-small"
-EMBEDDING_DIMENSIONS: Final[int] = 1536
 DEFAULT_SOCKET_TIMEOUT: Final[float] = 1.0
 _TAG_SPECIAL_CHARS: Final[re.Pattern[str]] = re.compile(r"([,.<>{}\[\]\"':;!@#$%^&*()\-+=~|/\\\s])")
 
@@ -61,12 +60,14 @@ def vector_to_bytes(vector: list[float]) -> bytes:
     return struct.pack(f"{len(vector)}f", *vector)
 
 
-def make_semantic_key(bucket: str, description: str) -> str:
+def make_semantic_key(bucket: str, description: str, namespace: str = SEMANTIC_KEY_PREFIX) -> str:
     """
     Generate a deterministic SHA-256 Redis Hash key for an entry in the semantic cache.
 
     :param bucket: Deterministic category tag grouping request parameters.
     :param description: Raw natural language project description text.
+    :param namespace: Key namespace (without trailing colon), versioned by embedding signature.
+
     :return: Prefixed hexadecimal Redis key string.
     """
 
@@ -76,7 +77,7 @@ def make_semantic_key(bucket: str, description: str) -> str:
 
     raw_payload = f"{bucket}:{description}".encode("utf-8")
     digest = hashlib.sha256(raw_payload).hexdigest()
-    return f"{SEMANTIC_KEY_PREFIX}:{digest}"
+    return f"{namespace}:{digest}"
 
 
 class EstimationSemanticCache:
@@ -94,7 +95,7 @@ class EstimationSemanticCache:
             threshold: float | None = None,
             ttl: int | None = None,
             log_only: bool | None = None,
-            index_name: str = DEFAULT_INDEX_NAME,
+            index_name: str | None = None,
     ) -> None:
         """
         Initialize the semantic vector cache with Redis connection, OpenAI client, and thresholds.
@@ -104,7 +105,8 @@ class EstimationSemanticCache:
         :param threshold: Minimum cosine similarity threshold (0.0 to 1.0) to consider a cache hit.
         :param ttl: Default time-to-live in seconds for stored cache keys.
         :param log_only: When True, performs lookup and logs similarity scores without returning cached hits.
-        :param index_name: Name of the RediSearch vector index in Redis.
+        :param index_name: Explicit RediSearch index name. Defaults to
+            ``estimations_idx_<model>_<dimensions>`` so each embedding space gets its own index.
         """
         settings = get_settings()
         self.redis: redis.Redis = redis_client
@@ -114,7 +116,14 @@ class EstimationSemanticCache:
         self.threshold: float = threshold if threshold is not None else settings.semantic_cache_threshold
         self.ttl: int = ttl if ttl is not None else settings.semantic_cache_ttl
         self.log_only: bool = log_only if log_only is not None else settings.semantic_cache_log_only
-        self.index_name: str = index_name
+        self.embedding_model: str = settings.embedding_model
+        self.embedding_dimensions: int = settings.embedding_dimensions
+        self._request_dimensions: int | None = resolve_request_dimensions(
+            self.embedding_model, self.embedding_dimensions
+        )
+        signature = embedding_signature(self.embedding_model, self.embedding_dimensions)
+        self.index_name: str = index_name or f"{DEFAULT_INDEX_NAME}_{signature}"
+        self.key_namespace: str = f"{SEMANTIC_KEY_PREFIX}:{signature}"
 
     async def initialize_index(self) -> None:
         """
@@ -139,7 +148,7 @@ class EstimationSemanticCache:
                 "FLAT",
                 {
                     "TYPE": "FLOAT32",
-                    "DIM": EMBEDDING_DIMENSIONS,
+                    "DIM": self.embedding_dimensions,
                     "DISTANCE_METRIC": "COSINE",
                 },
             ),
@@ -147,7 +156,7 @@ class EstimationSemanticCache:
 
         # Index definition specifies the storage structure (HASH) and key prefix to monitor.
         definition = IndexDefinition(
-            prefix=[f"{SEMANTIC_KEY_PREFIX}:"],
+            prefix=[f"{self.key_namespace}:"],
             index_type=IndexType.HASH,
         )
 
@@ -190,16 +199,17 @@ class EstimationSemanticCache:
 
     async def get_embedding(self, text: str) -> list[float] | None:
         """
-        Generate a 1,536-dimensional vector embedding for the given text using OpenAI.
+        Generate a vector embedding for the given text using the configured OpenAI model.
 
         :param text: Natural language text to embed.
-        :return: List of 1,536 floating-point values, or None if embedding generation fails.
+        :return: List of floating-point values, or None if embedding generation fails.
         """
+        kwargs: dict[str, Any] = {"model": self.embedding_model, "input": text}
+        if self._request_dimensions is not None:
+            kwargs["dimensions"] = self._request_dimensions
+
         try:
-            response = await self.openai_client.embeddings.create(
-                model=EMBEDDING_MODEL,
-                input=text,
-            )
+            response = await self.openai_client.embeddings.create(**kwargs)
             return response.data[0].embedding
 
         except Exception as e:
@@ -215,25 +225,41 @@ class EstimationSemanticCache:
             response_model: type[BaseTierEstimation] = PmEstimation,
     ) -> BaseTierEstimation | None:
         """
-        Search the semantic vector cache for a previously cached response matching the request intent.
+            Search the semantic vector cache for a previously cached response matching the request intent.
 
-        Steps:
-        1. Form the deterministic bucket tag (``@bucket:{...}``).
-        2. Compute the 1,536-dim vector embedding of `request.description`.
-        3. Issue a RediSearch KNN vector query:
-           ``(@bucket:{<bucket>})=>[KNN 1 @embedding $vec AS vector_distance]``
-           - ``@bucket``: Filters to documents possessing the identical bucket tag.
-           - ``=>[KNN 1 ...]``: Finds the 1-nearest neighbor to vector ``$vec``.
-           - ``AS vector_distance`: Aliases the cosine distance metric (0 = identical, 2 = opposite).
-           - ``.dialect(2)``: Activates RediSearch vector syntax Dialect 2.
-        4. Calculate cosine similarity = ``1.0 - vector_distance``.
-        5. Verify ``similarity >= self.threshold``. If below, return None.
-        6. If ``self.log_only`` is active, record telemetry and return None to allow LLM execution.
+            Steps:
+            1. Form the deterministic bucket tag (``@bucket:{...}``) from the prompt version, tier and request options.
+            2. Compute the vector embedding (``self.embedding_dimensions`` dimensions) of ``request.description``.
+               If embedding generation fails, return None (fail open).
+            3. Issue a RediSearch KNN vector query against ``self.index_name``:
+               ``(@bucket:{<bucket>})=>[KNN 1 @embedding $vec AS vector_distance]``
+               - ``@bucket``: Filters to documents possessing the identical bucket tag.
+               - ``=>[KNN 1 ...]``: Finds the 1-nearest neighbor to vector ``$vec``.
+               - ``AS vector_distance``: Aliases the cosine distance metric (0 = identical, 2 = opposite).
+               - ``.dialect(2)``: Activates RediSearch vector syntax Dialect 2.
+               If the search raises a Redis error, return None (fail open).
+            4. Return None if the index has no matching document in the bucket.
+            5. Calculate cosine similarity = ``1.0 - vector_distance``.
+            6. Verify ``similarity >= self.threshold``. If below, return None.
+            7. If ``self.log_only`` is active, record telemetry and return None to allow LLM execution.
+            8. Otherwise, deserialize the stored JSON into ``response_model`` and return it.
 
-        :param request: User estimation request containing natural language description.
-        :param prompt_version: Active prompt version for bucket partitioning.
-        :return: Deserialized ``BaseTierEstimation`` subclass on hit, or None on miss or error.
-        """
+            Any failure (embedding, Redis, or an empty or below-threshold result) is treated as a cache miss,
+            so the caller always falls back to LLM generation.
+
+            :param request: User estimation request containing the natural language description and the
+                options (project type, detail level, output format) that partition the cache.
+            :param prompt_version: Active prompt version (e.g. ``'v3'``) used for bucket partitioning,
+                so entries generated with different prompts never match.
+            :param tier: Resolved stakeholder tier (developer, PM or executive) used for bucket partitioning,
+                so each tier only retrieves responses generated for its own audience. Defaults to ``Tier.PM``.
+            :param response_model: Pydantic model used to deserialize the cached JSON. It must match the schema
+                of the given ``tier``. Defaults to ``PmEstimation``.
+
+            :return: Deserialized ``response_model`` instance on a cache hit, or None on a miss,
+                below-threshold match, log-only mode, or any embedding or Redis error.
+            :raises pydantic.ValidationError: If the stored JSON does not match ``response_model``
+                (for example, an entry written under an older schema).        """
         bucket = self.bucket_for(request, prompt_version, tier=tier)
         embedding = await self.get_embedding(request.description)
         if embedding is None:
@@ -315,7 +341,7 @@ class EstimationSemanticCache:
         if embedding is None:
             return
 
-        key = make_semantic_key(bucket, request.description)
+        key = make_semantic_key(bucket, request.description, namespace=self.key_namespace)
         payload = {
             "bucket": bucket,
             "result_json": result.model_dump_json(),
@@ -328,7 +354,7 @@ class EstimationSemanticCache:
             if self.ttl > 0:
                 await self.redis.expire(key, self.ttl)
 
-            log.info("semantic_cache_entry_stored", bucket=bucket, key_prefix=key[:32], ttl=self.ttl)
+            log.info("semantic_cache_entry_stored", bucket=bucket, namespace=self.key_namespace, ttl=self.ttl)
 
         except RedisError as e:
             log.warning("semantic_cache_store_failed", bucket=bucket, error=repr(e))
