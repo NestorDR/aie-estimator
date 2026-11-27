@@ -1,4 +1,4 @@
-# docker/Dockerfile
+# backend/Dockerfile
 
 # Stage 1 — Builder
 # Multi-stage build isolates uv, build backend (uv_build), and cache artifacts

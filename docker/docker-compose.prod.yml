@@ -4,8 +4,8 @@ services:
   # --- FastAPI backend estimator service ---
   estimator:
     build:
-      context: ../backend                     # Project root directory relative to this file
-      dockerfile: ../backend/Dockerfile       # Multi-stage production Dockerfile, its path is relative to this docker-compose.yml
+      context: ../backend                     # Backend build context directory relative to this file
+      dockerfile: Dockerfile                  # Multi-stage production Dockerfile relative to build context
     image: aie-estimator:prod-0.1.0           # Tagged production image matching pyproject.toml version
     container_name: estimator-prod            # Fixed container name for the FastAPI service
     restart: unless-stopped                   # Restart automatically unless explicitly stopped
