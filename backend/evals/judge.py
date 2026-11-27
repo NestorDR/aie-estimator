@@ -154,13 +154,13 @@ async def evaluate_with_judge(
             response_model=JudgeVerdict,
         )
         verdict: JudgeVerdict = raw["result"]
-    except Exception as exc:
-        log.error("eval_judge_failed", case_id=case.id, error=str(exc))
+    except Exception as e:
+        log.error("eval_judge_failed", case_id=case.id, error=str(e))
         return MetricResult(
             name="llm_judge",
             score=0.0,
             passed=False,
-            details=f"judge error: {exc}",
+            details=f"judge error: {e}",
         )
 
     score = verdict.normalized_score

@@ -136,14 +136,14 @@ def main(argv: list[str] | None = None) -> int:
                 pseudonymize=not args.no_pii,
             )
         )
-    except (IngestionRejected, FileNotFoundError, ValueError) as exc:
+    except (IngestionRejected, FileNotFoundError, ValueError) as e:
         log.error(
             "ingestion_inspection_failed",
             source_name=DEFAULT_SOURCE_NAME,
-            error_type=type(exc).__name__,
-            error=str(exc),
+            error_type=type(e).__name__,
+            error=str(e),
         )
-        print(f"Error: {exc}", file=sys.stderr)
+        print(f"Error: {e}", file=sys.stderr)
         return 1
 
     payload = [budget.model_dump(mode="json") for budget in budgets]

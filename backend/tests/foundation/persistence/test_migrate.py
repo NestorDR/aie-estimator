@@ -60,7 +60,7 @@ def test_apply_migrations_executes_only_pending_versions() -> None:
         patch("aie_estimator.foundation.persistence.migrate.list_migration_scripts", return_value=scripts),
         patch("aie_estimator.foundation.persistence.migrate.psycopg.connect", return_value=mock_connect_cm),
     ):
-        applied = apply_migrations({"host": "localhost", "port": 5432, "user": "u", "password": "p", "dbname": "db"})  # noqa: S106
+        applied = apply_migrations({"host": "localhost", "port": 5432, "user": "u", "password": "p", "dbname": "db"})
 
     assert applied == ["0002_next.sql"]
     executed_sqls = [call.args[0] for call in mock_conn.execute.call_args_list]
@@ -90,7 +90,7 @@ def test_apply_migrations_propagates_sql_error() -> None:
         patch("aie_estimator.foundation.persistence.migrate.psycopg.connect", return_value=mock_connect_cm),
         pytest.raises(RuntimeError, match=r"SQL syntax error"),
     ):
-        apply_migrations({"host": "localhost", "port": 5432, "user": "u", "password": "p", "dbname": "db"})  # noqa: S106
+        apply_migrations({"host": "localhost", "port": 5432, "user": "u", "password": "p", "dbname": "db"})
 
 
 def test_migrate_main_raises_when_persistence_unconfigured() -> None:

@@ -428,8 +428,8 @@ def get_scenario(name: str) -> Scenario:
     """
     try:
         return _SCENARIOS[name]
-    except KeyError as exc:
-        raise ValueError(f"Unknown scenario {name!r}; available: {sorted(_SCENARIOS)}") from exc
+    except KeyError as e:
+        raise ValueError(f"Unknown scenario {name!r}; available: {sorted(_SCENARIOS)}") from e
 
 
 def all_scenarios() -> tuple[Scenario, ...]:

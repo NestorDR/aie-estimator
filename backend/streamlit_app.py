@@ -489,9 +489,9 @@ def _dispatch_turn_with_recovery(
                     attachments=attachments,
                 )
             )
-        except httpx.HTTPStatusError as exc:
-            if exc.response.status_code != 404:
-                msg, icon = format_http_error(exc.response)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code != 404:
+                msg, icon = format_http_error(e.response)
                 st.error(msg, icon=icon)
                 return None
 
@@ -515,11 +515,11 @@ def _dispatch_turn_with_recovery(
                     attachments=attachments,
                 )
             )
-    except httpx.HTTPStatusError as exc:
-        msg, icon = format_http_error(exc.response)
+    except httpx.HTTPStatusError as e:
+        msg, icon = format_http_error(e.response)
         st.error(msg, icon=icon)
-    except httpx.RequestError as exc:
-        st.error(f"Could not reach the estimator backend at `{sessions_endpoint}`: {exc}", icon=":material/error:")
+    except httpx.RequestError as e:
+        st.error(f"Could not reach the estimator backend at `{sessions_endpoint}`: {e}", icon=":material/error:")
     return None
 
 
@@ -727,8 +727,8 @@ if runtime.exists():
     if st.session_state.session_id and st.session_state.session_info is None:
         try:
             st.session_state.session_info = asyncio.run(get_session_info(st.session_state.session_id))
-        except httpx.HTTPStatusError as exc:
-            if exc.response.status_code == 404:
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
                 reset_conversation()
         except httpx.RequestError:
             pass

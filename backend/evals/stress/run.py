@@ -443,8 +443,8 @@ async def _run_one_unit(
         }
         try:
             obs, snapshot, wall_ms = await _execute_turn(client, session_id, unit, turn, files, model)
-        except Exception as exc:  # noqa: BLE001
-            row["error"] = f"{type(exc).__name__}: {str(exc)[:200]}"
+        except Exception as e:
+            row["error"] = f"{type(e).__name__}: {str(e)[:200]}"
             writer.writerow(row)
             return rows_written + 1
 

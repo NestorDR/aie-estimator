@@ -121,7 +121,7 @@ def get_semantic_cache(settings: Settings = Depends(get_settings)) -> Estimation
         return None
     try:
         return _get_semantic_cache()
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         log.warning("semantic_cache_initialization_failed", error=str(e))
         return None
 

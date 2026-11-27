@@ -27,6 +27,7 @@ Always apply good software engineering practices: **KISS, YAGNI, DRY, SOLID, ACI
 - **Constants**: Constants MUST be named in `UPPER_CASE_WITH_UNDERSCORES` (e.g., `MAX_ITERATIONS = 100`) and declared with `Final` from `typing`. This applies to constants regardless of their type: built-ins (str, int, float, bool, None), collections (list, tuple, dict, set), and other objects. Internal constants MUST start with an underscore and be named in `_UPPER_CASE_WITH_UNDERSCORES` (e.g., `_INTERNAL_CONSTANT = 1`).
 - **String quotes**: Use double quotes (`"..."`) for all string literals and f-strings by default. Use single quotes (`'...'`) only when they avoid escaping apostrophes or improve readability.
 - **Self-Descriptive Names**: Prefer clear and self-descriptive names; avoid acronyms and abbreviations.
+- **Exception variable naming**: Name caught exceptions `e` in `except` clauses (`except SomeError as e:`), rather than `exc`, `err`, or `ex`, unless an inner nested `except` block requires disambiguation.
 - **Package and Build System**: Backend dependencies and build backend are managed via `backend/pyproject.toml` using `uv_build` (`requires = ["uv_build>=0.13.1,<0.14.0"]`).
 - **Traceability**: Respect names already in use and do not break traceability with the original code. Do not assume unsolicited changes.
 - **Language**: Use English for all code comments, docstrings, and documentation.

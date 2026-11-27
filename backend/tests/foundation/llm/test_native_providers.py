@@ -354,7 +354,11 @@ async def test_call_anthropic_thinking_and_omits_temperature(
     call_kwargs = mock_create.call_args.kwargs
     assert call_kwargs["max_tokens"] == 4000
     assert call_kwargs["messages"] == [{"role": "user", "content": sample_transcription}]
-    assert call_kwargs["system"] == "CAG instructions"
+    system_payload = call_kwargs["system"]
+    if isinstance(system_payload, list):
+        assert any(block.get("text") == "CAG instructions" for block in system_payload)
+    else:
+        assert system_payload == "CAG instructions"
     assert {k: call_kwargs.get(k) for k in expected_params} == expected_params
     assert all(k not in call_kwargs for k in absent_params)
 

@@ -1,5 +1,15 @@
 # evals/run.py
 
+"""
+Async Golden Dataset evaluation runner for Family 1-3 LLM quality metrics.
+
+Executes estimation scenarios against either a live HTTP server (``--http``) or an
+in-process FastAPI ``ASGITransport`` app (default), evaluates deterministic Family 1
+checks, multi-run Family 2 consistency (``--runs``), and optional Family 3 LLM-as-Judge
+scoring (``--llm-judge``), and prints or writes a JSON summary report (``--output``).
+Kept outside ``tests/`` so offline ``pytest`` runs never trigger live LLM calls.
+"""
+
 # --- Python Standard Library ---
 import argparse
 import asyncio
@@ -117,13 +127,13 @@ async def _evaluate_case(
                     "metrics": [asdict(metric) for metric in guardrail_metrics],
                 }
             responses.append(result)
-    except Exception as exc:
+    except Exception as e:
         elapsed_ms = round((time.perf_counter() - started) * 1000, 1)
-        log.error("eval_case_failed", case_id=case.id, error=str(exc), latency_ms=elapsed_ms)
+        log.error("eval_case_failed", case_id=case.id, error=str(e), latency_ms=elapsed_ms)
         return {
             "id": case.id,
             "passed": False,
-            "error": str(exc),
+            "error": str(e),
             "latency_ms": elapsed_ms,
             "metrics": [],
         }
@@ -231,8 +241,8 @@ async def run_evaluation(args: argparse.Namespace) -> dict[str, Any]:
 
     if args.output:
         out_path = Path(args.output)
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        await asyncio.to_thread(out_path.parent.mkdir, parents=True, exist_ok=True)
+        await asyncio.to_thread(out_path.write_text, json.dumps(report, indent=2), encoding="utf-8")
         log.info("eval_report_saved", output=str(out_path))
 
     return report

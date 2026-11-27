@@ -119,16 +119,16 @@ async def _run_ingestion_job(
                     source_name=source_name,
                     records=result.quarantined,
                 )
-        except Exception as exc:  # noqa: BLE001
-            span.record_exception(exc)
+        except Exception as e:
+            span.record_exception(e)
             log.exception(
                 "ingestion_job_failed",
                 job_id=str(job_id),
                 source_name=source_name,
-                error=repr(exc),
-                exc_info=exc,
+                error=repr(e),
+                exc_info=e,
             )
-            await jobs_repo.mark_failed(job_id, error_message=str(exc))
+            await jobs_repo.mark_failed(job_id, error_message=str(e))
             return
 
         documents_count = len(documents)
@@ -184,12 +184,12 @@ async def create_ingestion_run(
     """
     try:
         source = require_included_source(catalog, request.source_name)
-    except IngestionRejected as exc:
-        if exc.reason == "unknown_source":
+    except IngestionRejected as e:
+        if e.reason == "unknown_source":
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail={"reason": exc.reason, "source_name": request.source_name},
-            ) from exc
+                detail={"reason": e.reason, "source_name": request.source_name},
+            ) from e
         raise
 
     job = await jobs_repo.create(request.source_name)

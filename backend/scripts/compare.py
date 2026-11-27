@@ -68,8 +68,8 @@ def main(argv: list[str] | None = None) -> int:
             _compare_texts(embedder, args.first_text, args.second_text),
             loop_factory=loop_factory,
         )
-    except ValueError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
         return 1
 
     print(f"Text 1: {args.first_text}")

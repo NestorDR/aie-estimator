@@ -79,7 +79,7 @@ class CumulativeSummarizer:
                 response_model=_SummaryEnvelope,
             )
             envelope = _SummaryEnvelope.model_validate(response.get("result"))
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             log.warning(
                 "history_summary_failed",
                 evicted_count=len(evicted),

@@ -3,6 +3,7 @@
 """Unit tests for Presidio domain recognizers, overlap resolution, and PresidioPiiAnalyzer."""
 
 # --- Python Standard Library ---
+import itertools
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -60,7 +61,7 @@ def test_presidio_analyzer_detects_builtin_and_domain_entities() -> None:
     assert PiiFlag.EMAIL_ADDRESS.value in detected_types
 
     # Verify spans are strictly non-overlapping and sorted ascending.
-    for prev, curr in zip(spans, spans[1:], strict=False):
+    for prev, curr in itertools.pairwise(spans):
         assert prev.end <= curr.start
 
 

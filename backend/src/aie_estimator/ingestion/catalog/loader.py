@@ -30,11 +30,11 @@ def load_catalog(path: str | Path) -> DataCatalog:
     try:
         raw = yaml.safe_load(catalog_path.read_text(encoding="utf-8"))
         catalog = DataCatalog.model_validate(raw)
-    except (yaml.YAMLError, ValidationError) as exc:
+    except (yaml.YAMLError, ValidationError) as e:
         log.warning(
             "catalog_validation_failed",
             path=str(catalog_path),
-            error_type=type(exc).__name__,
+            error_type=type(e).__name__,
         )
         raise
 

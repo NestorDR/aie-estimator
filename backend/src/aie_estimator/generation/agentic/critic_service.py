@@ -84,7 +84,7 @@ class Critic:
                 response_model=CriticFeedback,
             )
             feedback = CriticFeedback.model_validate(response.get("result"))
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             log.warning(
                 "critic_review_failed",
                 fallback="accept",

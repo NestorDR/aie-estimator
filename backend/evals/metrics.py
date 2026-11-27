@@ -121,6 +121,52 @@ def evaluate_schema_and_tier(case: GoldenCase, response: EstimationResponse) -> 
     return MetricResult("schema_and_tier_adherence", 1.0 if not problems else 0.0, not problems, "; ".join(problems) or "schema and tier invariants ok")
 
 
+def _is_zero_envelope(result: TierEstimationResult) -> bool:
+    """
+    Return whether an estimation result has a zero cost or effort envelope.
+
+    :param result: Tier-specific estimation payload.
+
+    :return: ``True`` when the primary effort or cost upper bound is zero.
+    """
+    if isinstance(result, DeveloperEstimation):
+        return result.total_hours_range.max_hours == 0
+    if isinstance(result, PmEstimation):
+        return result.total_cost_eur == 0
+    return result.headline_cost_range.max_eur == 0
+
+
+def _check_cost_and_duration_bounds(
+    case: GoldenCase,
+    result: PmEstimation | ExecutiveEstimation,
+) -> list[str]:
+    """
+    Validate cost and duration bounds for PM and executive estimation payloads.
+
+    :param case: Golden Dataset scenario.
+    :param result: PM or executive estimation payload.
+
+    :return: List of bound violation descriptions, empty when all checks pass.
+    """
+    problems: list[str] = []
+    if isinstance(result, PmEstimation):
+        cost_eur = float(result.total_cost_eur)
+        duration_weeks = float(result.total_duration_weeks)
+    else:
+        cost_eur = _scalar_anchor(result)
+        duration_weeks = (result.headline_duration_range.min_weeks + result.headline_duration_range.max_weeks) / 2.0
+
+    if case.expected_cost_range_eur is not None:
+        lo, hi = case.expected_cost_range_eur
+        if not (lo <= cost_eur <= hi):
+            problems.append(f"cost {cost_eur:.0f} EUR outside [{lo}, {hi}]")
+    if case.expected_duration_weeks_range is not None:
+        lo, hi = case.expected_duration_weeks_range
+        if not (lo <= duration_weeks <= hi):
+            problems.append(f"duration {duration_weeks:.1f} weeks outside [{lo}, {hi}]")
+    return problems
+
+
 def evaluate_numeric_bounds(case: GoldenCase, response: EstimationResponse) -> MetricResult:
     """
     Verify Family 1 effort, cost, duration, and confidence bounds against ``GoldenCase`` expectations.
@@ -134,13 +180,7 @@ def evaluate_numeric_bounds(case: GoldenCase, response: EstimationResponse) -> M
     result = response.result
 
     if case.expected_out_of_scope:
-        if isinstance(result, DeveloperEstimation):
-            is_zero = result.total_hours_range.max_hours == 0
-        elif isinstance(result, PmEstimation):
-            is_zero = result.total_cost_eur == 0
-        else:
-            is_zero = result.headline_cost_range.max_eur == 0
-        if not is_zero:
+        if not _is_zero_envelope(result):
             problems.append("out-of-scope response has non-zero cost or effort")
     else:
         if case.min_confidence_pct is not None and result.confidence_pct < case.min_confidence_pct:
@@ -152,21 +192,7 @@ def evaluate_numeric_bounds(case: GoldenCase, response: EstimationResponse) -> M
                 if not (lo <= hours_mid <= hi):
                     problems.append(f"hours midpoint {hours_mid:.1f} outside [{lo}, {hi}]")
         else:
-            if isinstance(result, PmEstimation):
-                cost_eur = float(result.total_cost_eur)
-                duration_weeks = float(result.total_duration_weeks)
-            else:
-                cost_eur = _scalar_anchor(result)
-                duration_weeks = (result.headline_duration_range.min_weeks + result.headline_duration_range.max_weeks) / 2.0
-
-            if case.expected_cost_range_eur is not None:
-                lo, hi = case.expected_cost_range_eur
-                if not (lo <= cost_eur <= hi):
-                    problems.append(f"cost {cost_eur:.0f} EUR outside [{lo}, {hi}]")
-            if case.expected_duration_weeks_range is not None:
-                lo, hi = case.expected_duration_weeks_range
-                if not (lo <= duration_weeks <= hi):
-                    problems.append(f"duration {duration_weeks:.1f} weeks outside [{lo}, {hi}]")
+            problems.extend(_check_cost_and_duration_bounds(case, result))
 
     return MetricResult("numeric_bounds", 1.0 if not problems else 0.0, not problems, "; ".join(problems) or "numeric bounds ok")
 

@@ -93,9 +93,9 @@ def validate_with_policy(
             quarantined_df = clean_df.iloc[0:0].copy()
             discarded_df = clean_df.iloc[0:0].copy()
             quarantine_inputs = []
-        except pa.errors.SchemaErrors as exc:
+        except pa.errors.SchemaErrors as e:
             valid_df, quarantined_df, discarded_df, schema_reasons = _route_schema_errors(
-                clean_df, exc, failures_by_check
+                clean_df, e, failures_by_check
             )
             quarantine_inputs = _build_quarantine_inputs(quarantined_df, schema_reasons)
 

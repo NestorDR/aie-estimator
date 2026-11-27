@@ -135,7 +135,7 @@ async def ingest_embeddings(
                 detail=_DETAIL_UPSTREAM_ERROR,
                 exc=e
             ) from e
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             raise _failure(
                 span=span,
                 reason="unexpected_error",
