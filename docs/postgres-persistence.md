@@ -18,7 +18,7 @@ Start PostgreSQL in development and apply pending SQL migrations:
 
 ```bash
 docker compose -f docker/docker-compose.dev.yml up -d postgres
-uv run python -m aie_estimator.foundation.persistence.migrate
+uv --directory backend run python -m aie_estimator.foundation.persistence.migrate
 ```
 
 Programmatic repository usage with an opened pool:

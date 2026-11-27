@@ -24,7 +24,7 @@ safe_docs = await pseudonymizer.pseudonymize_documents(documents, source_name="h
 ### Execute GDPR Article 17 erasure via CLI
 
 ```bash
-uv run python -m aie_estimator.ingestion.pii.forget --entity-type PERSON --value "Laura Miller"
+uv --directory backend run python -m aie_estimator.ingestion.pii.forget --entity-type PERSON --value "Laura Miller"
 ```
 
 ## Technical Considerations

@@ -31,13 +31,13 @@ canaries_50kb = attachment_canary_facts(50)
 Offline smoke test using `--dry-run` (strictly for smoke testing and CI verification):
 
 ```bash
-uv run python -m evals.stress.run --dry-run --output evals/stress/dry_run.csv --report-tables evals/stress/dry_tables.md
+uv --directory backend run python -m evals.stress.run --dry-run --output evals/stress/dry_run.csv --report-tables evals/stress/dry_tables.md
 ```
 
 Live baseline run against a local server (or via [`../backend/auto/stress.cmd`](../backend/auto/stress.cmd) on Windows):
 
 ```bash
-uv run python -m evals.stress.run --http http://127.0.0.1:8000 --repeats 1 --output evals/stress/results.csv --report-tables evals/stress/tables.md
+uv --directory backend run python -m evals.stress.run --http http://127.0.0.1:8000 --repeats 1 --output evals/stress/results.csv --report-tables evals/stress/tables.md
 ```
 
 ## Technical Considerations

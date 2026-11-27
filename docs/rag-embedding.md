@@ -36,7 +36,7 @@ A sample `budgets` payload is available at [`budgets_sample.json`](../backend/da
 
 ```bash
 # Local (from backend/)
-uv run python scripts/compare.py \
+uv --directory backend run python scripts/compare.py \
   --1st "Backend services" \
   --2nd "API development"
 

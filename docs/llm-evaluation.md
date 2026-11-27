@@ -14,16 +14,16 @@ Run the evaluation CLI from the repository root via `uv` or [`../backend/auto/ev
 
 ```powershell
 # Family 1 deterministic evaluation (in-process ASGI app)
-uv run python -m evals.run --limit 3
+uv --directory backend run python -m evals.run --limit 3
 
 # Full Families 1-3 baseline run with JSON report output
-uv run python -m evals.run --runs 3 --llm-judge --output evals/baseline.json
+uv --directory backend run python -m evals.run --runs 3 --llm-judge --output evals/baseline.json
 
 # Windows wrapper (equivalent flags)
 auto\eval --runs 3 --llm-judge --output evals\baseline.json
 
 # Target a running FastAPI server
-uv run python -m evals.run --http http://127.0.0.1:8000 --llm-judge
+uv --directory backend run python -m evals.run --http http://127.0.0.1:8000 --llm-judge
 ```
 
 ## Technical Considerations

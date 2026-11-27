@@ -14,10 +14,10 @@ In separate terminal sessions:
 
 ```bash
 # Terminal 1: Start FastAPI estimation backend
-uv run aie-estimator
+uv --directory backend run aie-estimator
 
 # Terminal 2: Start Streamlit conversational UI
-uv run streamlit run streamlit_app.py
+uv --directory backend run streamlit run streamlit_app.py
 ```
 
 The interface is available at `http://localhost:8501`.

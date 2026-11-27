@@ -47,7 +47,7 @@ result = ingest_source(
 Inspect cleaned, GDPR-pseudonymized budget JSON on `stdout` without writing to PostgreSQL or disk ([`inspect_budgets.py`](../backend/src/aie_estimator/ingestion/inspect_budgets.py)):
 
 ```bash
-uv run python -m aie_estimator.ingestion.inspect_budgets
+uv --directory backend run python -m aie_estimator.ingestion.inspect_budgets
 # Windows convenience wrapper (status banners routed to stderr so stdout stays valid JSON):
 auto\inspect-budgets --no-pii
 ```
