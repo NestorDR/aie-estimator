@@ -89,24 +89,32 @@ exclude = [
     "samples",
     "zero",
 ]
-# Linting rules.
-# E (pycodestyle) and F (pyflakes) are roughly equivalent to flake8's default rules.
-# I (isort) for import sorting.
-# B (bugbear) for detecting potential bugs.
-# N (naming) for naming conventions.
-# R (refactoring) for refactoring suggestions.
-# S (security) for security-related issues.
-select = ["E", "F", "B", "R", "S", "N"]
-ignore = [ # Ignored rules
-    "E501", # Ignored because line-length is handled by the 'line-length' setting.
-    "E203", # Whitespace before ':' (common conflict with Black).
-    "B008", # Ignore the use of functions as the default argument in function signatures (common in FastAPI).
-    "B017", # Ignore assert blind exception: `Exception`
+
+# Linting rules:
+# - B (flake8-bugbear): common Python bug patterns and design pitfalls.
+# - E (pycodestyle) & F (pyflakes): core syntax, style, and undefined-name checks (flake8 baseline).
+# - I (isort): for import sorting, but it is omitted because AGENTS.md enforces a custom 3-group commented import layout.
+# - N (pep8-naming): PEP 8 naming conventions.
+# - S (flake8-bandit): security checks.
+# - ASYNC (flake8-async): detects blocking I/O, sleep, or subprocess calls inside `async def`.
+# - PLR (Pylint Refactor): structural complexity and conditional-flow simplifications.
+# - RUF (Ruff-specific): modern Python hygiene (unused `# noqa`, unreferenced `create_task`, etc.).
+select = ["B", "E", "F", "N", "S", "ASYNC", "PLR", "RUF"]
+ignore = [
+    "E501",    # Line length is enforced by `[tool.ruff].line-length`.
+    "E203",    # Whitespace before ':' (Black/Ruff formatter compatibility).
+    "B008",    # Function calls in default arguments (standard FastAPI `Depends(...)` / `Form(...)`).
+    "B017",    # Blind `pytest.raises(Exception)` assertions.
+    "PLR0913", # Too many arguments (common in FastAPI route handlers with DI and typed constructors).
+    "PLR0917", # Too many positional arguments (redundant with FastAPI/service signatures).
+    "PLR2004", # Magic value comparisons (noisy on HTTP status codes, thresholds, and test assertions).
+    "RUF001",  # Ambiguous Unicode in strings (legitimate em-dashes `—` and math symbols `×`).
+    "RUF002",  # Ambiguous Unicode in docstrings (same as RUF001).
 ]
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = [
-    "S101", # Ignore the use of asserting in test files
-    "S311", # Ignore the use of pseudo-random generators in test files
+    "S101", # Allow `assert` statements in tests.
+    "S311", # Allow non-cryptographic `random` in test fixtures.
 ]
 
 [tool.pytest.ini_options]
