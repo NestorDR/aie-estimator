@@ -2,7 +2,7 @@
 
 ## Overview
 
-The offline multi-format ingestion pipeline converts catalog-approved enterprise sources into canonical `Document` records through a modular `loaders -> parsers -> normalizers` flow under [`../backend/src`](../backend/src/aie_estimator/ingestion/__init__.py):
+The offline multi-format ingestion pipeline converts catalog-approved enterprise sources into canonical `Document` records through a modular `loaders -> parsers -> normalizers` flow under [`ingestion/`](../backend/src/aie_estimator/ingestion/__init__.py):
 
 - **Canonical Contract**: [`documents/models.py`](../backend/src/aie_estimator/ingestion/documents/models.py) defines `Document`, `DocumentMetadata` (`extra="forbid"`), and `compute_content_hash()` (SHA-256 text fingerprint used for Topic 5 deduplication and Session 7 incremental re-indexing).
 - **Loaders**: [`loaders/filesystem.py`](../backend/src/aie_estimator/ingestion/loaders/filesystem.py) provides `LoadedBlob` and `FileSystemLoader` rooted at `Settings.ingestion_data_root`.
@@ -30,9 +30,9 @@ GET /api/v1/ingestion/jobs/<job_id>
 Programmatic execution against the repository catalog:
 
 ```python
-from aie_estimator import get_catalog, get_filesystem_loader, get_parser_registry
-from aie_estimator import ingest_source
-from aie_estimator import get_settings
+from aie_estimator.dependencies import get_catalog, get_filesystem_loader, get_parser_registry
+from aie_estimator.ingestion.orchestrator import ingest_source
+from aie_estimator.settings import get_settings
 
 settings = get_settings()
 result = ingest_source(

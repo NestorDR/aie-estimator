@@ -2,18 +2,18 @@
 
 ## Overview
 
-The attachment subsystem ([`extractor.py`](../backend/src/aie_estimator/foundation/attachments/extractor.py)) implements **Approach Local Text Extraction** for `.pdf`, `.docx`, `.txt`, and `.md` uploads. Plain text is extracted locally, bounded by [`Settings`](../backend/src/aie_estimator/settings.py) budgets, checked and PII-redacted via [`check_attachment_input`](../backend/src/aie_estimator/foundation/guardrails/input.py), and isolated inside XML `<attachments>` delimiters before reaching the prompt layer.
+The attachment subsystem ([`extractor.py`](../backend/src/aie_estimator/foundation/attachments/extractor.py)) implements **Approach Local Text Extraction** for `.pdf`, `.docx`, `.txt`, and `.md` uploads. Plain text is extracted locally, bounded by [`Settings`](../backend/src/aie_estimator/settings.py) budgets, checked and PII-redacted via [`sanitize_attachment_input`](../backend/src/aie_estimator/foundation/guardrails/input.py), and isolated inside XML `<attachments>` delimiters before reaching the prompt layer.
 
 ## Usage Examples
 
 ### Extract, sanitize, and enrich a turn
 
 ```python
-from aie_estimator import enrich_transcript, extract_text
-from aie_estimator import check_attachment_input, get_moderation_client
+from aie_estimator.foundation.attachments.extractor import enrich_transcript, extract_text
+from aie_estimator.foundation.guardrails.input import get_moderation_client, sanitize_attachment_input
 
 raw_text, _ = extract_text(filename="architecture.pdf", content=file_bytes)
-safe_text = await check_attachment_input(raw_text, openai_client=get_moderation_client())
+safe_text = await sanitize_attachment_input(raw_text, openai_client=get_moderation_client())
 prompt_input, kept_chars, truncated_chars = enrich_transcript(
     transcript="Estimate the backend API migration.",
     attachments=[("architecture.pdf", safe_text)],

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The versioned data catalog defines the audited source-of-truth contract for offline ingestion under [`../backend/src`](../backend/src/aie_estimator/ingestion/catalog/__init__.py):
+The versioned data catalog defines the audited source-of-truth contract for offline ingestion under [`catalog/`](../backend/src/aie_estimator/ingestion/catalog/__init__.py):
 
 - **Catalog Models**: [`models.py`](../backend/src/aie_estimator/ingestion/catalog/models.py) defines `extra="forbid"` Pydantic v2 models (`DataCatalog`, `CatalogSource`, `QualityScore`, `Sensitivity`, `CatalogDecision`, `PiiFlag`).
 - **Loader**: [`loader.py`](../backend/src/aie_estimator/ingestion/catalog/loader.py) provides `load_catalog()` using `yaml.safe_load` and structured logging (`catalog_loaded`, `catalog_validation_failed`).
@@ -17,10 +17,10 @@ The versioned data catalog defines the audited source-of-truth contract for offl
 Load and validate the configured catalog and render its Markdown audit report:
 
 ```python
-from aie_estimator import inspect_root
-from aie_estimator import load_catalog
-from aie_estimator import generate_audit_report
-from aie_estimator import get_settings
+from aie_estimator.ingestion.catalog.inspect import inspect_root
+from aie_estimator.ingestion.catalog.loader import load_catalog
+from aie_estimator.ingestion.catalog.report import generate_audit_report
+from aie_estimator.settings import get_settings
 
 settings = get_settings()
 facts = inspect_root(settings.ingestion_data_root)

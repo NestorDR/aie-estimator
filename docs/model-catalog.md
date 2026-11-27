@@ -2,7 +2,7 @@
 
 ## Overview
 
-[`../backend/src`](../backend/src/aie_estimator/model_catalog.py) manages model specifications, logical routing profiles, and request boundary validation based on configuration defined in [`../backend/src`](../backend/src/aie_estimator/llm_profiles.yml).
+[`model_catalog.py`](../backend/src/aie_estimator/model_catalog.py) manages model specifications, logical routing profiles, and request boundary validation based on configuration defined in [`llm_profiles.yml`](../backend/src/aie_estimator/llm_profiles.yml).
 
 | Model / Profile Identifier | Provider | Reasoning Capable | Logical Profile | Scope |
 | :--- | :--- | :---: | :---: | :--- |
@@ -32,7 +32,7 @@
 ### 2. Inspecting Catalog Programmatically
 
 ```python
-from aie_estimator import get_model_catalog, get_models_for_engine, get_supported_models
+from aie_estimator.model_catalog import get_model_catalog, get_models_for_engine, get_supported_models
 
 catalog = get_model_catalog()
 supported_models = get_supported_models()
@@ -47,7 +47,7 @@ print(spec.provider, spec.is_reasoning, spec.is_profile)
 ## Technical Considerations
 
 1. **Decoupled Metadata Layer**: Situated in [`model_catalog.py`](../backend/src/aie_estimator/model_catalog.py), separating domain schemas ([`domain/schemas/estimations.py`](../backend/src/aie_estimator/domain/schemas/estimations.py)) from provider infrastructure ([`foundation/llm/`](../backend/src/aie_estimator/foundation/llm/)) to eliminate circular imports.
-2. **Leaf Constants**: Canonical defaults (`DEFAULT_FAST_PROFILE`, `DEFAULT_DEEP_PROFILE`, `LOGICAL_PROFILE_NAMES`) reside in [`../backend/src`](../backend/src/aie_estimator/utils/constants.py), a leaf module with zero internal imports.
+2. **Leaf Constants**: Canonical defaults (`DEFAULT_FAST_PROFILE`, `DEFAULT_DEEP_PROFILE`, `LOGICAL_PROFILE_NAMES`) reside in [`constants.py`](../backend/src/aie_estimator/utils/constants.py), a leaf module with zero internal imports.
 3. **Engine-Scoped Filtering & Validation**: `get_models_for_engine(engine)` returns logical profiles (`is_profile=True`) for `"litellm"` and physical models (`is_profile=False`) for `"native"`. `resolve_engine_model(engine, model)` in [`model_catalog.py`](../backend/src/aie_estimator/model_catalog.py) validates compatibility and resolves omitted defaults, serving as the single source of truth for [`domain/schemas/estimations.py`](../backend/src/aie_estimator/domain/schemas/estimations.py), [`sessions_router.py`](../backend/src/aie_estimator/api/sessions_router.py), and [`../backend/streamlit_app.py`](../backend/streamlit_app.py).
 4. **Single Cache Architecture**: `get_model_catalog()` uses `@lru_cache(maxsize=4)`. `get_supported_models()` and `get_models_for_engine()` derive directly from the cached catalog to prevent cache drift.
-5. **OpenAPI Schema Enrichment**: `Server._setup_openapi()` in [`../backend/src`](../backend/src/aie_estimator/server.py) dynamically injects supported models into the OpenAPI schema for interactive dropdown selection in Swagger UI (`/docs`).
+5. **OpenAPI Schema Enrichment**: `Server._setup_openapi()` in [`server.py`](../backend/src/aie_estimator/server.py) dynamically injects supported models into the OpenAPI schema for interactive dropdown selection in Swagger UI (`/docs`).

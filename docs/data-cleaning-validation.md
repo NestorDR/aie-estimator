@@ -2,7 +2,7 @@
 
 ## Overview
 
-The cleaning and validation stage sits between format parsing and canonical `Document` normalization under [`../backend/src`](../backend/src/aie_estimator/ingestion/cleaning/__init__.py) to enforce data quality rules before downstream PII processing and indexing:
+The cleaning and validation stage sits between format parsing and canonical `Document` normalization under [`cleaning/`](../backend/src/aie_estimator/ingestion/cleaning/__init__.py) to enforce data quality rules before downstream PII processing and indexing:
 
 - **Tabular Budget Cleaning**: [`clean_budget_records()`](../backend/src/aie_estimator/ingestion/cleaning/budget_records.py) normalizes disguised nulls (`"TBD"`, `"N/A"`, `""`, etc. to `pd.NA`), currency aliases/casing (`"eur"`, `"€"` -> `"EUR"`), mixed ISO/`DD/MM/YYYY` dates (`dayfirst=True`), and numeric amounts, then computes deterministic SHA-256 `content_hash` digests per row.
 - **Schema & Policy Routing**: [`BudgetRecord`](../backend/src/aie_estimator/ingestion/cleaning/schemas.py) (`pandera.pandas` `DataFrameSchema` with `strict=True`, `lazy=True`, and cross-column `phases_sum_matches_total` check) and [`validate_with_policy()`](../backend/src/aie_estimator/ingestion/cleaning/policy.py) partition records into `valid`, `quarantined`, and `discarded` outcomes with a JSON-serializable `report`.
@@ -16,8 +16,8 @@ The cleaning and validation stage sits between format parsing and canonical `Doc
 Run tabular cleaning and policy validation on decoded budget records:
 
 ```python
-from aie_estimator import clean_budget_records
-from aie_estimator import validate_with_policy
+from aie_estimator.ingestion.cleaning.budget_records import clean_budget_records
+from aie_estimator.ingestion.cleaning.policy import validate_with_policy
 
 cleaned = clean_budget_records(raw_records)
 result = validate_with_policy(cleaned)

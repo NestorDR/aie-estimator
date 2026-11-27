@@ -9,7 +9,7 @@ Modern LLM providers (Anthropic Claude, Google Gemini, OpenAI GPT-6) use diverge
    - **Anthropic Claude**: Adaptive thinking (`{"type": "adaptive"}`, `output_config.effort: "medium"`), strictly suppressing sampling `temperature`.
    - **Google Gemini**: Maps `reasoning_effort` to `generationConfig.thinkingConfig.thinkingLevel` via LiteLLM.
    - **OpenAI / Router Models**: Employs top-level `reasoning_effort` (`"low"`, `"medium"`, `"high"`).
-3. **Logical Profiles**: Externalized in [`../backend/src`](../backend/src/aie_estimator/llm_profiles.yml): `reasoner-fast` (Tier 1 cost-optimized reasoning) and `reasoner-deep` (Tier 2 frontier reasoning).
+3. **Logical Profiles**: Externalized in [`llm_profiles.yml`](../backend/src/aie_estimator/llm_profiles.yml): `reasoner-fast` (Tier 1 cost-optimized reasoning) and `reasoner-deep` (Tier 2 frontier reasoning).
 
 ---
 
@@ -31,7 +31,7 @@ Modern LLM providers (Anthropic Claude, Google Gemini, OpenAI GPT-6) use diverge
 ### 2. Programmatic Dispatch with `GenerationOptions`
 
 ```python
-from aie_estimator import GenerationOptions, call_llm
+from aie_estimator.foundation.llm import GenerationOptions, call_llm
 
 opts = GenerationOptions(
     model="reasoner-deep",
@@ -50,7 +50,7 @@ response = await call_llm(
 ## Technical Considerations
 
 1. **Cache Key Isolation**: `EstimationExactCache.make_key()` incorporates `reasoning_effort` into its SHA-256 digest, preventing `"low"` effort requests from colliding with `"high"` effort cache entries.
-2. **Two-Level Resilience & Runtime Failover** (configured in [`../backend/src`](../backend/src/aie_estimator/llm_profiles.yml)):
+2. **Two-Level Resilience & Runtime Failover** (configured in [`llm_profiles.yml`](../backend/src/aie_estimator/llm_profiles.yml)):
    - **Level 1 (Intra-Tier Provider Rotation)**: LiteLLM rotates traffic to the lowest-cost healthy candidate within `reasoner-fast`. On HTTP 429, 5xx, or 30s timeouts, it retries against the next candidate provider up to `num_retries: 2`.
    - **Level 2 (Cross-Tier Escalation)**: If all Tier 1 candidates are exhausted, LiteLLM triggers `router_settings.fallbacks` (`reasoner-fast` → `reasoner-deep`), escalating execution to the frontier reasoning pool.
-3. **Startup Credential Pruning**: `get_litellm_router()` in [`../backend/src`](../backend/src/aie_estimator/foundation/llm/litellm_provider.py) inspects required API key environment variables, omitting uncredentialed models so the service boots successfully with partial API credentials.
+3. **Startup Credential Pruning**: `get_litellm_router()` in [`litellm_provider.py`](../backend/src/aie_estimator/foundation/llm/litellm_provider.py) inspects required API key environment variables, omitting uncredentialed models so the service boots successfully with partial API credentials.

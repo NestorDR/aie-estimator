@@ -2,13 +2,13 @@
 
 ## Overview
 
-The estimation service implements a two-tier caching architecture in [`../backend/src`](../backend/src/aie_estimator/generation/cag/) to optimize latency and minimize LLM token expenditure:
+The estimation service implements a two-tier caching architecture in [`cag/`](../backend/src/aie_estimator/generation/cag/) to optimize latency and minimize LLM token expenditure:
 
 1. **Tier 1 (Exact-Match Cache)**: [`EstimationExactCache`](../backend/src/aie_estimator/generation/cag/exact.py) computes a deterministic SHA-256 hash across all generation parameters. Lookups execute in ~1 ms with zero embedding overhead.
 2. **Tier 2 (Semantic Vector Cache)**: [`EstimationSemanticCache`](../backend/src/aie_estimator/generation/cag/semantic.py) evaluates cosine vector distance in Redis using RediSearch on exact-match misses. Queries with equivalent intent return cached estimations in ~80 ms without invoking upstream LLM providers.
 
 Pipeline flow:
-`check_input` → Tier 1 exact cache miss → OpenAI text embedding (`Settings.embedding_model`) → Tier 2 semantic cache query → (Miss) `call_llm` → `enforce_scope_response` → Dual-write persist to both caches.
+`sanitize_input` → Tier 1 exact cache miss → OpenAI text embedding (`Settings.embedding_model`) → Tier 2 semantic cache query → (Miss) `call_llm` → `enforce_scope_response` → Dual-write persist to both caches.
 
 ---
 
@@ -17,8 +17,8 @@ Pipeline flow:
 ### 1. Direct Lookup and Storage with `EstimationSemanticCache`
 
 ```python
-from aie_estimator import EstimationRequest
-from aie_estimator import get_semantic_cache
+from aie_estimator.domain.schemas.estimations import EstimationRequest
+from aie_estimator.dependencies import get_semantic_cache
 
 cache = get_semantic_cache()
 request = EstimationRequest(
@@ -51,4 +51,4 @@ if settings.enable_semantic_cache:
 3. **Native `redis.asyncio` RediSearch Integration**: Avoids third-party ORMs by using `redis.commands.search.field` (`TagField`, `TextField`, `VectorField`) and Python's standard library `struct.pack` for contiguous 32-bit float vector serialization under `dialect(2)`.
 4. **Shadow Mode (`SEMANTIC_CACHE_LOG_ONLY=true`)**: Evaluates RediSearch vector queries, logs similarity scores via `semantic_cache_hit_log_only`, but returns `None` to let requests proceed to the LLM for threshold calibration.
 5. **Fail-Open Policy**: If Redis or OpenAI embedding generation encounters network timeouts or exceptions, the cache logs a warning and gracefully falls open to direct LLM generation without failing the user request.
-6. **Test Isolation**: The test harness in [`../backend/tests`](../backend/tests/conftest.py) patches index initialization to an async no-op and defaults caches to safe miss states, eliminating physical socket connection attempts during test runs.
+6. **Test Isolation**: The test harness in [`conftest.py`](../backend/tests/conftest.py) patches index initialization to an async no-op and defaults caches to safe miss states, eliminating physical socket connection attempts during test runs.

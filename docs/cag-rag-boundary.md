@@ -2,11 +2,11 @@
 
 ## Overview
 
-The CAG-RAG pipeline boundary separates the latency-bound online estimation path from the throughput-oriented offline ingestion path under [`../backend/src`](../backend/src/aie_estimator/ingestion/__init__.py).
+The CAG-RAG pipeline boundary separates the latency-bound online estimation path from the throughput-oriented offline ingestion path under [`ingestion/`](../backend/src/aie_estimator/ingestion/__init__.py).
 
 ### 1. CAG-vs-RAG Architectural Decision
 
-Grounded in [`../backend/evals`](../backend/evals/stress/REPORT.md), pure Context-Augmented Generation (CAG) fails production latency and recall thresholds as corpus and conversation sizes grow (`61/65` turns exceeded `8,000 ms`, P50 reached `17,442 ms` at `>=10000` tokens, attachment truncation produced `0.0%` canary recall, and Turn-1 `ProjectMetadata` recall dropped to `0.0%` from Turn 2 onward in `pivot` and `contradiction`).
+Grounded in [`REPORT.md`](../backend/evals/stress/REPORT.md), pure Context-Augmented Generation (CAG) fails production latency and recall thresholds as corpus and conversation sizes grow (`61/65` turns exceeded `8,000 ms`, P50 reached `17,442 ms` at `>=10000` tokens, attachment truncation produced `0.0%` canary recall, and Turn-1 `ProjectMetadata` recall dropped to `0.0%` from Turn 2 onward in `pivot` and `contradiction`).
 
 The architecture adopts a **hybrid CAG + RAG** target evaluated across four constraints and four axes without shipping dead diagnostic code inside `../backend/src`:
 
@@ -23,13 +23,13 @@ The architecture adopts a **hybrid CAG + RAG** target evaluated across four cons
 | **Permanent static CAG** | `v3` tier templates ([`developer.j2`](../backend/src/aie_estimator/foundation/prompts/estimation/v3/developer.j2), [`pm.j2`](../backend/src/aie_estimator/foundation/prompts/estimation/v3/pm.j2), [`executive.j2`](../backend/src/aie_estimator/foundation/prompts/estimation/v3/executive.j2)), [`TIER_CONFIG`](../backend/src/aie_estimator/foundation/prompts/tier_config.py), `<output_schema>`, and [`_rules.j2`](../backend/src/aie_estimator/foundation/prompts/estimation/v3/_rules.j2) | Stays permanently in [`foundation/prompts/loader.py`](../backend/src/aie_estimator/foundation/prompts/loader.py) |
 | **Session 7 complement/replacement candidates** | Baseline rates ([`_scope_rates.j2`](../backend/src/aie_estimator/foundation/prompts/estimation/v3/_scope_rates.j2)) and calibration tables ([`_examples.j2`](../backend/src/aie_estimator/foundation/prompts/estimation/v3/_examples.j2) -> [`v1/examples.j2`](../backend/src/aie_estimator/foundation/prompts/estimation/v1/examples.j2)) | Retained in `v3` for Session 6; eligible for clean replacement or supplementation in Session 7 |
 | **Online session memory** | [`SessionStore`](../backend/src/aie_estimator/generation/conversation/store.py) sliding window, [`CompressionPolicy`](../backend/src/aie_estimator/generation/conversation/compression/policy.py), [`_project_metadata.j2`](../backend/src/aie_estimator/foundation/prompts/estimation/v3/_project_metadata.j2), [`_anchored_turns.j2`](../backend/src/aie_estimator/foundation/prompts/estimation/v3/_anchored_turns.j2), [`_conversation_summary.j2`](../backend/src/aie_estimator/foundation/prompts/estimation/v3/_conversation_summary.j2) | Per-session runtime state; outside both static CAG and offline RAG corpora |
-| **Offline RAG corpus** | Historical budgets, meeting transcripts, signed PDF contracts/proposals, and client/versioned rate cards | Enters exclusively via [`../backend/src`](../backend/src/aie_estimator/ingestion/__init__.py) |
+| **Offline RAG corpus** | Historical budgets, meeting transcripts, signed PDF contracts/proposals, and client/versioned rate cards | Enters exclusively via [`ingestion/`](../backend/src/aie_estimator/ingestion/__init__.py) |
 
 ---
 
 ## Usage Examples
 
-Target HTTP control contract for offline ingestion (to be wired once job persistence and orchestration land in Topics 2–4):
+HTTP control contract for offline ingestion ([`ingestion_router.py`](../backend/src/aie_estimator/api/ingestion_router.py)):
 
 ```http
 POST /api/v1/ingestion/runs
@@ -38,7 +38,7 @@ Content-Type: application/json
 {"source_name": "historical_budgets"}
 ```
 
-Expected immediate dispatch response (`202 Accepted`) and polling endpoint:
+Immediate dispatch response (`202 Accepted`) and polling endpoint:
 
 ```http
 HTTP/1.1 202 Accepted
@@ -51,8 +51,8 @@ GET /api/v1/ingestion/jobs/<uuid>
 
 ## Technical Considerations
 
-1. **Async Event-Loop & Windows `ProactorEventLoop` Isolation**: All online routers in [`../backend/src`](../backend/src/aie_estimator/api/__init__.py) are `async def` executing on Python 3.14's `ProactorEventLoop` on Windows. CPU-bound ingestion stages (PDF/DOCX parsing, tabular validation, NLP/PII detection) scheduled via FastAPI `BackgroundTasks` must run off the event loop—either via a synchronous `BackgroundTasks` target in AnyIO's worker threadpool or explicit `asyncio.to_thread(...)` calls—so concurrent `/api/v1/estimate` and `/health` requests never stall.
-2. **OpenTelemetry Span Lifecycle & Structured Logging**: Under [`telemetry.py`](../backend/src/aie_estimator/telemetry.py), `FastAPIInstrumentor` closes the `POST /api/v1/ingestion/runs` span when `202` is sent, before `BackgroundTasks` runs, and worker threads do not automatically inherit `contextvars`. Background ingestion runs must open their own root span (optionally linked to the triggering HTTP `SpanContext`), flush/shut down `TracerProvider` in [`Server.lifespan`](../backend/src/aie_estimator/server.py), and emit lowercase snake_case `<entity>_<action>_<phase>` events (`ingestion_run_requested`, `ingestion_job_started`, `ingestion_job_completed`, `ingestion_job_failed`).
-3. **Attachment Budget Baseline vs. Current Settings**: [`../backend/evals`](../backend/evals/stress/REPORT.md) recorded truncation at `12,000` characters during the stress baseline run, whereas [`Settings`](../backend/src/aie_estimator/settings.py) currently configures `max_attachment_chars = 60_000` and `max_total_attachment_chars = 60_000`.
-4. **Clean-Stage Sequencing & Package Rules**: [`../backend/src`](../backend/src/aie_estimator/ingestion/__init__.py) is a peer domain package to `foundation/attachments/`, `foundation/guardrails/`, `foundation/prompts/`, and `generation/conversation/`. Every `__init__.py` remains empty (module path comment only) unless an explicit facade is required, and no unbacked `/api/v1/ingestion/*` router stub or `CAGViability` module is introduced prior to Topic 2 persistence and Topic 4 orchestration.
-5. **Dev Auto-Reload Caveat**: [`__main__.py`](../backend/src/aie_estimator/__main__.py) enables Uvicorn `reload=True` outside `prod`; in-process `BackgroundTasks` interrupted by reload or shutdown require startup stale-job recovery in Topics 2–4.
+1. **Async Event-Loop & Windows `SelectorEventLoop` Isolation**: All online routers in [`api/`](../backend/src/aie_estimator/api/__init__.py) are `async def` executing on `asyncio.SelectorEventLoop` on Windows (required by `psycopg` async pools). CPU-bound ingestion stages (PDF/DOCX parsing, tabular validation, NLP/PII detection) scheduled via FastAPI `BackgroundTasks` run off the event loop—via synchronous `BackgroundTasks` execution in AnyIO's worker threadpool or `asyncio.to_thread(...)`—so concurrent `/api/v1/estimate` and `/health` requests never stall.
+2. **OpenTelemetry Span Lifecycle & Structured Logging**: Under [`telemetry.py`](../backend/src/aie_estimator/telemetry.py), `FastAPIInstrumentor` closes the `POST /api/v1/ingestion/runs` span when `202` is sent, before `BackgroundTasks` runs, and worker threads do not automatically inherit `contextvars`. Background ingestion runs open their own root span linked to the triggering HTTP `SpanContext`, flush/shut down `TracerProvider` in [`Server.lifespan`](../backend/src/aie_estimator/server.py), and emit lowercase snake_case `<entity>_<action>_<phase>` events (`ingestion_run_requested`, `ingestion_job_started`, `ingestion_job_completed`, `ingestion_job_failed`).
+3. **Attachment Budget Baseline vs. Current Settings**: [`REPORT.md`](../backend/evals/stress/REPORT.md) recorded truncation at `12,000` characters during the stress baseline run, whereas [`Settings`](../backend/src/aie_estimator/settings.py) currently configures `max_attachment_chars = 60_000` and `max_total_attachment_chars = 60_000`.
+4. **Package Boundary & Conventions**: [`ingestion/`](../backend/src/aie_estimator/ingestion/__init__.py) is a peer domain package to `foundation/attachments/`, `foundation/guardrails/`, `foundation/prompts/`, and `generation/conversation/`. Every `__init__.py` remains empty (module path comment only) unless an explicit facade is required.
+5. **Dev Auto-Reload Caveat**: [`__main__.py`](../backend/src/aie_estimator/__main__.py) enables Uvicorn `reload=True` outside `prod`; in-process `BackgroundTasks` interrupted by reload or shutdown are reconciled via startup stale-job recovery in `Server.lifespan`.
