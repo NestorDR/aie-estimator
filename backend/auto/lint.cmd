@@ -1,20 +1,30 @@
-:: auto/lint.cmd
-:: Purpose: Linter and autoformat.
-:: Usage: auto\lint.cmd (run from the project root directory)
+:: backend/auto/lint.cmd
+:: Purpose: Preview and apply Ruff lint fixes using the version pinned in uv.lock.
+:: Usage: auto\lint.cmd (run from the backend directory)
 
-:: UVX: In most cases, executing a tool with `uvx` is more appropriate than installing the tool (https://docs.astral.sh/uv/concepts/tools/#execution-vs-installation)
+@echo off
+cls
 
-:: Type checker and language server - ACTIVATE if you want the code to be stricter (good luck!)
-:: DEACTIVATED uvx ty check .
+:: setlocal preserves the original environment variables; endlocal restores them before exit
+setlocal
+set "_EXIT_CODE=0"
 
-:: Replace `uvx ruff` with `uv run --locked --group dev ruff` to use the Ruff version pinned in uv.lock.
-:: Suggested fixes without changing files
+:: Require invocation from the backend directory
+for %%I in ("%~dp0..") do set "PROJECT_ROOT=%%~fI"
+for %%I in ("%CD%") do set "CURRENT_DIR=%%~fI"
+if /i not "%CURRENT_DIR%"=="%PROJECT_ROOT%" (
+    echo Error: Run this script from the backend directory: "%PROJECT_ROOT%"
+    set "_EXIT_CODE=1"
+    goto end
+)
+
+:: Preview suggested fixes without modifying files
 uv run --locked --group dev ruff check . --diff
-:: Apply the fixes shown before
+
+:: Apply autofixable lint fixes in place
 uv run --locked --group dev ruff check . --fix
+set "_EXIT_CODE=%ERRORLEVEL%"
 
-:: To request the latest version of Ruff and refresh the cache, use the @latest suffix:
-:: uvx ruff@latest check . --fix
-
-:: Formatter - ACTIVATE if you want to run a very aggressive formatter
-:: DEACTIVATED uvx ruff format
+:end
+:: Restore the original environment variables and exit with the resulting exit code
+endlocal & exit /b %_EXIT_CODE%
